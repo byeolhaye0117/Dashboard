@@ -1,6 +1,7 @@
 import type {
-  Branch, Channel, ConsultationRow, DashboardData, ExpiringRow,
-  LowSessionRow, MemberDetail, MemberRow, NewMemberInput, Product, Staff,
+  Branch, BranchInput, Channel, ConsultationRow, DashboardData, ExpiringRow,
+  LowSessionRow, MemberDetail, MemberRow, NewMemberInput, Product, ProductInput,
+  Staff, StaffInput, StaffRow,
 } from '../lib/types'
 
 /**
@@ -32,4 +33,22 @@ export interface DataSource {
     result: ConsultationRow['result'],
     nextContactOn?: string | null,
   ): Promise<void>
+
+  // ── 설정 ─────────────────────────────────────────────────────────
+  // 지점·상품·직원은 관장이 직접 고칠 수 있어야 한다.
+  // 가격 하나 바꾸려고 DB 화면에 들어가야 한다면 쓰지 않게 된다.
+
+  /** 비활성 포함 전체 (설정 화면용) */
+  listAllBranches(): Promise<(Branch & { isActive: boolean })[]>
+  createBranch(input: BranchInput): Promise<void>
+  updateBranch(id: string, input: BranchInput): Promise<void>
+
+  listAllProducts(): Promise<Product[]>
+  createProduct(input: ProductInput): Promise<void>
+  updateProduct(id: string, input: ProductInput): Promise<void>
+
+  listStaff(): Promise<StaffRow[]>
+  updateStaff(id: string, input: StaffInput): Promise<void>
+
+  createChannel(name: string): Promise<void>
 }

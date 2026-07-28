@@ -30,6 +30,36 @@ export interface Product {
   durationDays: number | null
   sessionCount: number | null
   listPrice: number
+  isActive: boolean
+}
+
+/** 설정 화면에서 지점·상품·직원을 고칠 때 쓰는 모양 */
+export interface BranchInput {
+  code: string
+  name: string
+  isActive: boolean
+}
+
+export interface ProductInput {
+  branchId: string | null
+  name: string
+  kind: ProductKind
+  durationDays: number | null
+  sessionCount: number | null
+  listPrice: number
+  isActive: boolean
+}
+
+export interface StaffRow extends Staff {
+  isActive: boolean
+  branchName: string | null
+}
+
+export interface StaffInput {
+  branchId: string | null
+  name: string
+  role: Role
+  isActive: boolean
 }
 
 export interface Member {

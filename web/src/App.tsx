@@ -7,6 +7,7 @@ import MemberDetail from './pages/MemberDetail'
 import Register from './pages/Register'
 import Retention from './pages/Retention'
 import Consultations from './pages/Consultations'
+import Settings from './pages/Settings'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="register" element={<Register />} />
             <Route path="retention" element={<Retention />} />
             <Route path="consultations" element={<Consultations />} />
+            <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Dashboard />} />
           </Route>
         </Routes>

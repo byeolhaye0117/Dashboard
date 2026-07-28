@@ -9,6 +9,7 @@ const NAV = [
   { to: '/register', label: '신규 등록' },
   { to: '/retention', label: '재등록 관리' },
   { to: '/consultations', label: '상담' },
+  { to: '/settings', label: '설정' },
 ]
 
 function BranchPicker() {

@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type {
   Branch, Channel, ConsultationRow, Contract, DashboardData, ExpiringRow,
   LowSessionRow, MemberDetail, MemberRow, NewMemberInput, Payment, Product,
-  ProductKind, SessionStatus, Staff,
+  ProductKind, SessionStatus, Staff, StaffRow,
 } from '../lib/types'
 import { addDays, addMonths, daysBetween, monthRange, prevComparableRange, ymd } from '../lib/format'
 import type { DataSource } from './api'
@@ -20,9 +20,34 @@ function client(): SupabaseClient {
 
 /** 실패를 조용히 삼키면 화면에 0이 뜬다. 0과 "못 가져옴"은 완전히 다르다. */
 function unwrap<T>(res: { data: T | null; error: { message: string } | null }): T {
-  if (res.error) throw new Error(res.error.message)
+  if (res.error) throw new Error(friendly(res.error.message))
   if (res.data === null) throw new Error('데이터를 받지 못했습니다')
   return res.data
+}
+
+/**
+ * DB가 뱉는 영어 오류를 사람이 읽을 수 있는 말로 바꾼다.
+ *
+ * "duplicate key value violates unique constraint products_name_common_uniq"
+ * 를 그대로 띄우면 데스크는 무엇을 고쳐야 할지 알 수 없다.
+ * 원문은 뒤에 붙여 남긴다 — 개발자가 볼 때 필요하다.
+ */
+function friendly(raw: string): string {
+  const rules: [RegExp, string][] = [
+    [/branches_code_key/, '같은 지점 코드가 이미 있습니다. 다른 코드를 쓰세요.'],
+    [/products_name_(common|branch)_uniq/, '같은 이름의 상품이 이미 있습니다.'],
+    [/acquisition_channels_name_key/, '같은 이름의 유입경로가 이미 있습니다.'],
+    [/products_has_measure/, '기간(일) 또는 횟수 중 하나는 반드시 입력해야 합니다.'],
+    [/payments_sign_ok/, '환불 금액은 음수로, 결제 금액은 양수로 넣어야 합니다.'],
+    [/contracts_sessions_ok/, '사용 횟수가 총 횟수를 넘을 수 없습니다.'],
+    [/violates foreign key/, '연결된 항목을 찾을 수 없습니다. 지점이나 상품을 다시 확인하세요.'],
+    [/violates row-level security|permission denied/, '권한이 없습니다. 관장 계정으로 로그인했는지 확인하세요.'],
+    [/duplicate key/, '이미 있는 값입니다.'],
+    [/JWT|not authenticated/, '로그인이 만료되었습니다. 새로고침 후 다시 로그인하세요.'],
+    [/Failed to fetch|NetworkError/, '서버에 연결하지 못했습니다. 인터넷 연결을 확인하세요.'],
+  ]
+  for (const [re, msg] of rules) if (re.test(raw)) return msg
+  return raw
 }
 
 let branchCache: Branch[] | null = null
@@ -59,7 +84,7 @@ async function countNewMembersIn(branchId: string | null, from: string, to: stri
     .is('anonymized_at', null)
   if (branchId) q = q.eq('branch_id', branchId)
   const { count, error } = await q
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(friendly(error.message))
   return count ?? 0
 }
 
@@ -79,7 +104,7 @@ export const supabaseSource: DataSource = {
 
   async listProducts(branchId) {
     let q = client().from('products')
-      .select('id, branch_id, name, kind, duration_days, session_count, list_price')
+      .select('id, branch_id, name, kind, duration_days, session_count, list_price, is_active')
       .eq('is_active', true).order('sort_order').order('list_price')
     if (branchId) q = q.or(`branch_id.is.null,branch_id.eq.${branchId}`)
     const rows = unwrap(await q) as Record<string, unknown>[]
@@ -87,6 +112,7 @@ export const supabaseSource: DataSource = {
       id: r.id as string, branchId: (r.branch_id as string) ?? null, name: r.name as string,
       kind: r.kind as ProductKind, durationDays: (r.duration_days as number) ?? null,
       sessionCount: (r.session_count as number) ?? null, listPrice: Number(r.list_price),
+      isActive: r.is_active as boolean,
     })) satisfies Product[]
   },
 
@@ -147,7 +173,7 @@ export const supabaseSource: DataSource = {
             .lte('next_contact_on', today)
           if (branchId) q = q.eq('branch_id', branchId)
           const { count, error } = await q
-          if (error) throw new Error(error.message)
+          if (error) throw new Error(friendly(error.message))
           return count ?? 0
         })(),
       ])
@@ -360,13 +386,96 @@ export const supabaseSource: DataSource = {
       p_trainer_id: input.trainerId,
       p_consultation_id: input.fromConsultationId ?? null,
     })
-    if (error) throw new Error(error.message)
+    if (error) throw new Error(friendly(error.message))
     return { memberId: data as string }
   },
 
   async setConsultationResult(id, result, nextContactOn) {
     const { error } = await client().from('consultations')
       .update({ result, next_contact_on: nextContactOn ?? null }).eq('id', id)
-    if (error) throw new Error(error.message)
+    if (error) throw new Error(friendly(error.message))
+  },
+
+  // ── 설정 ─────────────────────────────────────────────────────────
+  async listAllBranches() {
+    const rows = unwrap(
+      await client().from('branches').select('id, code, name, is_active').order('sort_order'),
+    ) as Record<string, unknown>[]
+    return rows.map((r) => ({
+      id: r.id as string, code: r.code as string, name: r.name as string,
+      isActive: r.is_active as boolean,
+    }))
+  },
+
+  async createBranch(input) {
+    const { error } = await client().from('branches')
+      .insert({ code: input.code, name: input.name, is_active: input.isActive })
+    if (error) throw new Error(friendly(error.message))
+    branchCache = null
+  },
+
+  async updateBranch(id, input) {
+    const { error } = await client().from('branches')
+      .update({ code: input.code, name: input.name, is_active: input.isActive }).eq('id', id)
+    if (error) throw new Error(friendly(error.message))
+    branchCache = null
+  },
+
+  async listAllProducts() {
+    const rows = unwrap(
+      await client().from('products')
+        .select('id, branch_id, name, kind, duration_days, session_count, list_price, is_active')
+        .order('sort_order').order('list_price'),
+    ) as Record<string, unknown>[]
+    return rows.map((r) => ({
+      id: r.id as string, branchId: (r.branch_id as string) ?? null, name: r.name as string,
+      kind: r.kind as Product['kind'], durationDays: (r.duration_days as number) ?? null,
+      sessionCount: (r.session_count as number) ?? null, listPrice: Number(r.list_price),
+      isActive: r.is_active as boolean,
+    }))
+  },
+
+  async createProduct(input) {
+    const { error } = await client().from('products').insert({
+      branch_id: input.branchId, name: input.name, kind: input.kind,
+      duration_days: input.durationDays, session_count: input.sessionCount,
+      list_price: input.listPrice, is_active: input.isActive,
+    })
+    if (error) throw new Error(friendly(error.message))
+  },
+
+  async updateProduct(id, input) {
+    const { error } = await client().from('products').update({
+      branch_id: input.branchId, name: input.name, kind: input.kind,
+      duration_days: input.durationDays, session_count: input.sessionCount,
+      list_price: input.listPrice, is_active: input.isActive,
+    }).eq('id', id)
+    if (error) throw new Error(friendly(error.message))
+  },
+
+  async listStaff() {
+    const brs = await branches()
+    const rows = unwrap(
+      await client().from('staff').select('id, branch_id, name, role, is_active').order('name'),
+    ) as Record<string, unknown>[]
+    return rows.map((r) => ({
+      id: r.id as string, branchId: (r.branch_id as string) ?? null,
+      name: r.name as string, role: r.role as StaffRow['role'],
+      isActive: r.is_active as boolean,
+      branchName: r.branch_id ? nameOf(brs, r.branch_id as string) : null,
+    }))
+  },
+
+  async updateStaff(id, input) {
+    const { error } = await client().from('staff').update({
+      branch_id: input.branchId, name: input.name,
+      role: input.role, is_active: input.isActive,
+    }).eq('id', id)
+    if (error) throw new Error(friendly(error.message))
+  },
+
+  async createChannel(name) {
+    const { error } = await client().from('acquisition_channels').insert({ name })
+    if (error) throw new Error(friendly(error.message))
   },
 }

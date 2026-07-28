@@ -5,6 +5,12 @@ import { ymd } from '../lib/format'
 
 interface AppState {
   branches: Branch[]
+  /**
+   * 설정에서 지점을 추가·수정한 뒤 호출한다.
+   * 이게 없으면 지점을 새로 만들어도 상단 선택 목록에 나타나지 않아,
+   * 새 지점으로 회원을 등록할 수가 없다.
+   */
+  refreshBranches: () => Promise<void>
   /** null = 전 지점 */
   branchId: string | null
   setBranchId: (id: string | null) => void
@@ -36,9 +42,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(THEME_KEY, theme)
   }, [theme])
 
-  useEffect(() => {
-    db.listBranches().then(setBranches).catch(() => setBranches([]))
+  const refreshBranches = useCallback(async () => {
+    try {
+      setBranches(await db.listBranches())
+    } catch {
+      setBranches([])
+    }
   }, [])
+
+  useEffect(() => {
+    void refreshBranches()
+  }, [refreshBranches])
 
   const setBranchId = useCallback((id: string | null) => {
     setBranchIdRaw(id)
@@ -48,10 +62,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppState>(
     () => ({
-      branches, branchId, setBranchId, month, setMonth, theme,
+      branches, refreshBranches, branchId, setBranchId, month, setMonth, theme,
       toggleTheme: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
     }),
-    [branches, branchId, setBranchId, month, theme],
+    [branches, refreshBranches, branchId, setBranchId, month, theme],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

@@ -30,12 +30,12 @@ const int = (min: number, max: number) => min + Math.floor(rnd() * (max - min + 
 const TODAY = ymd(new Date())
 
 // ── 마스터 데이터 ────────────────────────────────────────────────────
-const BRANCHES: Branch[] = [
-  { id: 'br1', code: 'GN', name: '강남점' },
-  { id: 'br2', code: 'SW', name: '수원점' },
-  { id: 'br3', code: 'BC', name: '부천점' },
-  { id: 'br4', code: 'IS', name: '일산점' },
-  { id: 'br5', code: 'SD', name: '송도점' },
+const BRANCHES: (Branch & { isActive: boolean })[] = [
+  { id: 'br1', code: 'GN', name: '강남점', isActive: true },
+  { id: 'br2', code: 'SW', name: '수원점', isActive: true },
+  { id: 'br3', code: 'BC', name: '부천점', isActive: true },
+  { id: 'br4', code: 'IS', name: '일산점', isActive: true },
+  { id: 'br5', code: 'SD', name: '송도점', isActive: true },
 ]
 
 const CHANNELS: Channel[] = [
@@ -48,29 +48,31 @@ const CHANNELS: Channel[] = [
 ]
 
 const PRODUCTS: Product[] = [
-  { id: 'p1', branchId: null, name: '헬스 1개월', kind: 'membership', durationDays: 30, sessionCount: null, listPrice: 90_000 },
-  { id: 'p2', branchId: null, name: '헬스 3개월', kind: 'membership', durationDays: 90, sessionCount: null, listPrice: 240_000 },
-  { id: 'p3', branchId: null, name: '헬스 6개월', kind: 'membership', durationDays: 180, sessionCount: null, listPrice: 420_000 },
-  { id: 'p4', branchId: null, name: '헬스 12개월', kind: 'membership', durationDays: 365, sessionCount: null, listPrice: 690_000 },
-  { id: 'p5', branchId: null, name: 'PT 10회', kind: 'pt', durationDays: null, sessionCount: 10, listPrice: 750_000 },
-  { id: 'p6', branchId: null, name: 'PT 20회', kind: 'pt', durationDays: null, sessionCount: 20, listPrice: 1_400_000 },
-  { id: 'p7', branchId: null, name: 'PT 30회', kind: 'pt', durationDays: null, sessionCount: 30, listPrice: 1_950_000 },
-  { id: 'p8', branchId: null, name: '락커 3개월', kind: 'addon', durationDays: 90, sessionCount: null, listPrice: 60_000 },
-  { id: 'p9', branchId: null, name: '운동복 3개월', kind: 'addon', durationDays: 90, sessionCount: null, listPrice: 45_000 },
-  { id: 'p10', branchId: null, name: '필라테스 8회', kind: 'group', durationDays: null, sessionCount: 8, listPrice: 320_000 },
+  { id: 'p1', branchId: null, name: '헬스 1개월', kind: 'membership', durationDays: 30, sessionCount: null, listPrice: 90_000, isActive: true },
+  { id: 'p2', branchId: null, name: '헬스 3개월', kind: 'membership', durationDays: 90, sessionCount: null, listPrice: 240_000, isActive: true },
+  { id: 'p3', branchId: null, name: '헬스 6개월', kind: 'membership', durationDays: 180, sessionCount: null, listPrice: 420_000, isActive: true },
+  { id: 'p4', branchId: null, name: '헬스 12개월', kind: 'membership', durationDays: 365, sessionCount: null, listPrice: 690_000, isActive: true },
+  { id: 'p5', branchId: null, name: 'PT 10회', kind: 'pt', durationDays: null, sessionCount: 10, listPrice: 750_000, isActive: true },
+  { id: 'p6', branchId: null, name: 'PT 20회', kind: 'pt', durationDays: null, sessionCount: 20, listPrice: 1_400_000, isActive: true },
+  { id: 'p7', branchId: null, name: 'PT 30회', kind: 'pt', durationDays: null, sessionCount: 30, listPrice: 1_950_000, isActive: true },
+  { id: 'p8', branchId: null, name: '락커 3개월', kind: 'addon', durationDays: 90, sessionCount: null, listPrice: 60_000, isActive: true },
+  { id: 'p9', branchId: null, name: '운동복 3개월', kind: 'addon', durationDays: 90, sessionCount: null, listPrice: 45_000, isActive: true },
+  { id: 'p10', branchId: null, name: '필라테스 8회', kind: 'group', durationDays: null, sessionCount: 8, listPrice: 320_000, isActive: true },
 ]
 
 const SURNAMES = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황', '안', '송', '류', '전']
 const GIVEN = ['민준', '서연', '지호', '서윤', '도윤', '지우', '예준', '하윤', '주원', '지민', '시우', '수아', '건우', '지아', '우진', '채원', '선우', '다은', '연우', '유진', '현우', 'soo', '민서', '준서', '지훈', '예은', '태윤', '가은']
 
-const TRAINERS: Staff[] = BRANCHES.flatMap((b, bi) =>
+const STAFF: (Staff & { isActive: boolean })[] = BRANCHES.flatMap((b, bi) =>
   ['박', '이', '최'].map((s, i) => ({
     id: `tr${bi}${i}`,
     branchId: b.id,
     name: `${s}트레이너`,
     role: 'trainer' as const,
+    isActive: true,
   })),
 )
+const TRAINERS = STAFF
 
 // ── 생성 ─────────────────────────────────────────────────────────────
 const members: Member[] = []
@@ -271,9 +273,12 @@ const sleep = () => new Promise((r) => setTimeout(r, 60))
 export const demoSource: DataSource = {
   mode: 'demo',
 
-  async listBranches() { await sleep(); return BRANCHES },
-  async listProducts() { await sleep(); return PRODUCTS },
-  async listChannels() { await sleep(); return CHANNELS },
+  // 내부 배열을 그대로 넘기면 안 된다. 항목을 추가해도 참조가 같아서
+  // React가 "안 바뀌었다"고 판단하고 화면을 다시 그리지 않는다.
+  // (실제 Supabase는 매번 새 배열을 주므로 이 문제가 없다)
+  async listBranches() { await sleep(); return BRANCHES.filter((b) => b.isActive).map((b) => ({ ...b })) },
+  async listProducts() { await sleep(); return PRODUCTS.filter((p) => p.isActive).map((p) => ({ ...p })) },
+  async listChannels() { await sleep(); return CHANNELS.map((c) => ({ ...c })) },
   async listTrainers(branchId) {
     await sleep()
     return branchId ? TRAINERS.filter((t) => t.branchId === branchId) : TRAINERS
@@ -422,5 +427,64 @@ export const demoSource: DataSource = {
       cs.result = result
       cs.nextContactOn = nextContactOn ?? null
     }
+  },
+
+  // ── 설정 ─────────────────────────────────────────────────────────
+  async listAllBranches() { await sleep(); return BRANCHES.map((b) => ({ ...b })) },
+
+  async createBranch(input) {
+    await sleep()
+    if (BRANCHES.some((b) => b.code === input.code)) {
+      throw new Error(`지점 코드 '${input.code}'는 이미 사용 중입니다`)
+    }
+    BRANCHES.push({ id: id('br'), ...input })
+  },
+
+  async updateBranch(bid, input) {
+    await sleep()
+    if (BRANCHES.some((b) => b.code === input.code && b.id !== bid)) {
+      throw new Error(`지점 코드 '${input.code}'는 이미 사용 중입니다`)
+    }
+    const b = BRANCHES.find((x) => x.id === bid)
+    if (b) Object.assign(b, input)
+  },
+
+  async listAllProducts() { await sleep(); return PRODUCTS.map((p) => ({ ...p })) },
+
+  async createProduct(input) {
+    await sleep()
+    if (PRODUCTS.some((p) => p.name === input.name && p.branchId === input.branchId)) {
+      throw new Error(`'${input.name}' 상품이 이미 있습니다`)
+    }
+    PRODUCTS.push({ id: id('p'), ...input })
+  },
+
+  async updateProduct(pid, input) {
+    await sleep()
+    if (PRODUCTS.some((p) => p.name === input.name && p.branchId === input.branchId && p.id !== pid)) {
+      throw new Error(`'${input.name}' 상품이 이미 있습니다`)
+    }
+    const p = PRODUCTS.find((x) => x.id === pid)
+    if (p) Object.assign(p, input)
+  },
+
+  async listStaff() {
+    await sleep()
+    return STAFF.map((s) => ({
+      ...s,
+      branchName: s.branchId ? branchName(s.branchId) : null,
+    }))
+  },
+
+  async updateStaff(sid, input) {
+    await sleep()
+    const s = STAFF.find((x) => x.id === sid)
+    if (s) Object.assign(s, input)
+  },
+
+  async createChannel(name) {
+    await sleep()
+    if (CHANNELS.some((c) => c.name === name)) throw new Error(`'${name}'은 이미 있습니다`)
+    CHANNELS.push({ id: id('ch'), name })
   },
 }
