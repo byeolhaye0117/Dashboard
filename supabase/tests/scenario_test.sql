@@ -17,8 +17,8 @@ insert into auth.users (id) values
   ('33333333-3333-3333-3333-333333333333');  -- 강남 트레이너
 
 insert into public.branches (id, code, name) values
-  ('aaaaaaaa-0000-0000-0000-000000000001', 'GN', '강남점'),
-  ('aaaaaaaa-0000-0000-0000-000000000002', 'SW', '수원점');
+  ('aaaaaaaa-0000-0000-0000-000000000001', 'ZT1', '테스트강남점'),
+  ('aaaaaaaa-0000-0000-0000-000000000002', 'ZT2', '테스트수원점');
 
 insert into public.staff (id, branch_id, name, role) values
   ('11111111-1111-1111-1111-111111111111', null, '관장', 'owner'),
@@ -30,9 +30,9 @@ insert into public.acquisition_channels (id, name) values
   ('cccccccc-0000-0000-0000-000000000002', '지인소개');
 
 insert into public.products (id, branch_id, name, kind, duration_days, session_count, list_price) values
-  ('bbbbbbbb-0000-0000-0000-000000000001', null, '3개월 회원권', 'membership', 90,  null, 330000),
-  ('bbbbbbbb-0000-0000-0000-000000000002', null, 'PT 20회',      'pt',         null, 20,   1400000),
-  ('bbbbbbbb-0000-0000-0000-000000000003', null, '락커 3개월',   'addon',      90,  null, 60000);
+  ('bbbbbbbb-0000-0000-0000-000000000001', null, '테스트 3개월 회원권', 'membership', 90,  null, 330000),
+  ('bbbbbbbb-0000-0000-0000-000000000002', null, '테스트 PT 20회',      'pt',         null, 20,   1400000),
+  ('bbbbbbbb-0000-0000-0000-000000000003', null, '테스트 락커 3개월',   'addon',      90,  null, 60000);
 
 
 -- ─────────────────────────────────────────────────────────────────────

@@ -1,0 +1,95 @@
+@import 'tailwindcss';
+
+/* 다크모드는 <html data-theme="dark"> 로 전환한다 */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/*
+ * 색 정책
+ *  - 기본은 무채색. 색은 의미가 있을 때만 쓴다.
+ *  - 차트 데이터는 단일 계열(파랑) 하나뿐이다. 지점별 매출은 "누가 누구냐"가
+ *    아니라 "얼마냐"를 비교하는 것이므로 색을 나눌 이유가 없다.
+ *  - 상태색(만료임박·미수금 등)은 반드시 글자와 함께 쓴다. 색만으로는
+ *    색각 이상이 있는 사람에게 전달되지 않는다.
+ *  - 값은 검증된 기본 팔레트를 그대로 쓴다. 시리즈 색은 라이트/다크
+ *    양쪽 모두 표면 대비 3:1 이상을 통과한 값이다.
+ */
+@theme {
+  --font-sans:
+    'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic',
+    '맑은 고딕', 'Segoe UI', Roboto, sans-serif;
+
+  --color-canvas: #f9f9f7;
+  --color-surface: #fcfcfb;
+  --color-surface-2: #f2f2ef;
+  --color-ink: #0b0b0b;
+  --color-ink-2: #52514e;
+  --color-ink-3: #898781;
+  --color-line: #e1e0d9;
+  --color-axis: #c3c2b7;
+
+  --color-series: #2a78d6;
+
+  --color-ok: #0ca30c;
+  --color-warn: #fab219;
+  --color-serious: #ec835a;
+  --color-critical: #d03b3b;
+  --color-up: #006300;
+}
+
+[data-theme='dark'] {
+  --color-canvas: #0d0d0d;
+  --color-surface: #1a1a19;
+  --color-surface-2: #232322;
+  --color-ink: #ffffff;
+  --color-ink-2: #c3c2b7;
+  --color-ink-3: #898781;
+  --color-line: #2c2c2a;
+  --color-axis: #383835;
+
+  --color-series: #3987e5;
+
+  --color-ok: #0ca30c;
+  --color-warn: #fab219;
+  --color-serious: #ec835a;
+  --color-critical: #d03b3b;
+  --color-up: #0ca30c;
+}
+
+html {
+  color-scheme: light;
+}
+[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 세로로 줄이 맞아야 하는 숫자(표·축)에만 쓴다 */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 넓은 표는 페이지가 아니라 자기 안에서 가로 스크롤한다 */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-axis);
+  border-radius: 6px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-series);
+  outline-offset: 2px;
+}
