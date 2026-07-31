@@ -67,6 +67,17 @@ export function diagnosePrivateKey(raw: string | undefined): KeyDiagnosis {
   if (!k.includes(END)) problems.push("-----END PRIVATE KEY----- 부분이 없습니다");
 
   const body = k.replace(BEGIN, "").replace(END, "").replace(/\s+/g, "");
+
+  // 첫 줄만 들어온 전형적인 경우
+  if (k.includes(BEGIN) && body.length === 0) {
+    return {
+      ok: false,
+      detail:
+        "첫 줄만 들어왔습니다. 여러 줄을 한 줄짜리 칸에 붙여넣으면 뒷부분이 잘립니다. " +
+        "JSON 파일에서 \\n 이 글자 그대로 보이는 한 줄짜리 값을 복사해 넣어주세요.",
+    };
+  }
+
   if (body.length < 800) {
     problems.push(`내용이 너무 짧습니다 (${body.length}자, 보통 1600자 안팎)`);
   }
