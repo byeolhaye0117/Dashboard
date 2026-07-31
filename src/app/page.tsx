@@ -80,9 +80,9 @@ export default function LoginPage() {
   return (
     <main className="auth-wrap">
       <form className="auth-card" onSubmit={submit}>
-        <div className="auth-mark"><Icon name="dumbbell" size={22} strokeWidth={1.9} /></div>
+        <div className="auth-mark"><Icon name="dumbbell" size={24} strokeWidth={1.9} /></div>
         <h1>헬스장 업무 대시보드</h1>
-        <p className="lead">지점과 이름을 고르고 비밀번호를 입력하세요</p>
+        <p className="lead">지점과 이름을 고른 뒤 비밀번호를 입력하세요</p>
 
         <div className="field">
           <label htmlFor="branch">지점</label>

@@ -1,17 +1,17 @@
 "use client";
 
 /**
- * 공통 뼈대 — 상단 바 + 메뉴
+ * 공통 뼈대 — 떠 있는 사이드바 + 상단 바 + 본문
  *
- * PC     (1024px~)    왼쪽 세로 메뉴, 글씨까지
- * 태블릿 (768~1023)   왼쪽 메뉴가 아이콘만 남음
- * 휴대폰 (~767)       메뉴가 아래쪽 탭으로 내려감
+ * PC     (1024px~)    사이드바 펼침 (계정 카드 + 그룹별 메뉴)
+ * 태블릿 (768~1023)   사이드바가 아이콘만 남음
+ * 휴대폰 (~767)       사이드바 숨김, 아래 떠 있는 탭
  *
- * 배치는 globals.css 의 화면 크기 규칙이 담당한다. 여기서는 무엇을 보여줄지만 정한다.
+ * 배치는 globals.css 의 화면 크기 규칙이 담당한다.
  */
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
-import type { MenuItem } from "@/lib/menu";
+import { GROUP_ORDER, type MenuItem } from "@/lib/menuItems";
 import type { Session } from "@/lib/session";
 
 type Props = {
@@ -19,10 +19,11 @@ type Props = {
   menus: MenuItem[];
   branches: { code: string; name: string }[];
   active: string;
+  crumb?: string;
   children: React.ReactNode;
 };
 
-export default function Shell({ session, menus, branches, active, children }: Props) {
+export default function Shell({ session, menus, branches, active, crumb, children }: Props) {
   const [userOpen, setUserOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -52,76 +53,85 @@ export default function Shell({ session, menus, branches, active, children }: Pr
   const current = branches.find((b) => b.code === session.currentBranch);
 
   return (
-    <>
-      <header className="topbar">
-        <span className="brand">
-          헬스장 대시보드
-          <span className="brand-sub">{current?.name ?? ""}</span>
-        </span>
+    <div className="app">
+      <aside className="rail">
+        <div className="acct">
+          <span className="avatar">{session.name.slice(0, 1)}</span>
+          <span className="who">
+            <b>{session.name}</b>
+            <span>{session.roleName} · {current?.name ?? ""}</span>
+          </span>
+        </div>
 
-        {branches.length > 1 && (
-          <select
-            className="select"
-            value={session.currentBranch}
-            onChange={(e) => switchBranch(e.target.value)}
-            aria-label="지점 선택"
-          >
-            {branches.map((b) => (
-              <option key={b.code} value={b.code}>{b.name}</option>
-            ))}
-          </select>
-        )}
-
-        <span className="spacer" />
-
-        <button
-          className="icon-btn"
-          onClick={toggleTheme}
-          aria-label={theme === "dark" ? "밝은 화면으로" : "어두운 화면으로"}
-          title={theme === "dark" ? "밝은 화면으로" : "어두운 화면으로"}
-        >
-          <Icon name={theme === "dark" ? "sun" : "moon"} size={17} />
-        </button>
-
-        <div style={{ position: "relative" }}>
-          <button className="user-btn" onClick={() => setUserOpen((v) => !v)}>
-            {session.name}
-            <Icon name="chevron" size={13} strokeWidth={2} />
-          </button>
-          {userOpen && (
-            <div className="menu-pop">
-              <div className="who">
-                <b>{session.name}</b>
-                <span>{session.roleName} · {session.staffId}</span>
+        <div className="rail-scroll">
+          {GROUP_ORDER.map((g) => {
+            const items = menus.filter((m) => m.group === g);
+            if (items.length === 0) return null;
+            return (
+              <div className="rail-group" key={g}>
+                <h4>{g}</h4>
+                {items.map((m) => (
+                  <a key={m.key} href={m.href} className={active === m.key ? "on" : ""} title={m.label}>
+                    <Icon name={m.icon} size={18} />
+                    <span className="label">{m.label}</span>
+                  </a>
+                ))}
               </div>
-              <button onClick={() => { setPwOpen(true); setUserOpen(false); }}>
-                비밀번호 변경
-              </button>
-              <button
-                className="danger"
-                onClick={async () => {
+            );
+          })}
+        </div>
+
+        <div className="rail-foot">
+          <button className="icon-btn wide" onClick={toggleTheme}
+                  title={theme === "dark" ? "밝은 화면으로" : "어두운 화면으로"}>
+            <Icon name={theme === "dark" ? "sun" : "moon"} size={16} />
+            <span>{theme === "dark" ? "밝게" : "어둡게"}</span>
+          </button>
+        </div>
+      </aside>
+
+      <div className="main">
+        <header className="topbar">
+          <span className="crumb">{crumb ?? "홈"}</span>
+
+          {branches.length > 1 && (
+            <select className="select" value={session.currentBranch}
+                    onChange={(e) => switchBranch(e.target.value)} aria-label="지점 선택">
+              {branches.map((b) => (
+                <option key={b.code} value={b.code}>{b.name}</option>
+              ))}
+            </select>
+          )}
+
+          <span className="spacer" />
+
+          <button className="icon-btn" onClick={toggleTheme}
+                  aria-label={theme === "dark" ? "밝은 화면으로" : "어두운 화면으로"}>
+            <Icon name={theme === "dark" ? "sun" : "moon"} size={16} />
+          </button>
+
+          <div style={{ position: "relative" }}>
+            <button className="user-btn" onClick={() => setUserOpen((v) => !v)}>
+              {session.name}
+              <Icon name="chevron" size={13} strokeWidth={2} />
+            </button>
+            {userOpen && (
+              <div className="menu-pop">
+                <div className="head">
+                  <b>{session.name}</b>
+                  <span>{session.roleName} · {session.staffId}</span>
+                </div>
+                <button onClick={() => { setPwOpen(true); setUserOpen(false); }}>비밀번호 변경</button>
+                <button className="danger" onClick={async () => {
                   await fetch("/api/logout", { method: "POST" });
                   location.href = "/";
-                }}
-              >
-                로그아웃
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
+                }}>로그아웃</button>
+              </div>
+            )}
+          </div>
+        </header>
 
-      <div className="layout">
-        <nav className="rail" aria-label="주 메뉴">
-          {menus.map((m) => (
-            <a key={m.key} href={m.href} className={active === m.key ? "on" : ""} title={m.label}>
-              <Icon name={m.icon} size={18} />
-              <span className="label">{m.label}</span>
-            </a>
-          ))}
-        </nav>
-
-        <main className="content">{children}</main>
+        <main className="sheet">{children}</main>
       </div>
 
       <nav className="tabbar" aria-label="주 메뉴">
@@ -134,7 +144,7 @@ export default function Shell({ session, menus, branches, active, children }: Pr
       </nav>
 
       {pwOpen && <PasswordDialog onClose={() => setPwOpen(false)} />}
-    </>
+    </div>
   );
 }
 
