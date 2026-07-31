@@ -58,9 +58,30 @@ async function call(path: string, init?: RequestInit) {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`구글 시트 요청 실패 (${res.status}): ${body.slice(0, 300)}`);
+    throw new Error(explain(res.status, body));
   }
   return res.json();
+}
+
+/** 구글이 보낸 오류를 사람이 읽을 수 있는 말로 바꾼다 */
+function explain(status: number, body: string): string {
+  if (status === 403) {
+    return (
+      "구글 시트에 저장할 권한이 없습니다. " +
+      "시트 오른쪽 위 공유에서 대시보드 계정(dashboard-bot@...)의 권한을 " +
+      "뷰어가 아니라 편집자로 바꿔주세요."
+    );
+  }
+  if (status === 404) {
+    return "구글 시트를 찾지 못했습니다. 환경변수 GOOGLE_SHEET_ID 를 확인해주세요.";
+  }
+  if (status === 400 && body.includes("Unable to parse range")) {
+    return "시트에 해당 탭이 없습니다. 탭 이름을 바꾸거나 지우지 않았는지 확인해주세요.";
+  }
+  if (status === 429 || status === 503) {
+    return "구글 시트가 잠시 바쁩니다. 몇 초 뒤 다시 시도해주세요.";
+  }
+  return `구글 시트 요청 실패 (${status}): ${body.slice(0, 200)}`;
 }
 
 /** 안내 줄(※)을 건너뛰고 제목 줄을 찾는다 */
