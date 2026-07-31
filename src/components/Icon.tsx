@@ -8,7 +8,7 @@
 export type IconName =
   | "home" | "users" | "card" | "phone" | "dumbbell"
   | "clock" | "clipboard" | "box" | "badge" | "lock"
-  | "sun" | "moon" | "warn" | "check" | "chevron" | "fold" | "unfold" | "grid";
+  | "sun" | "moon" | "warn" | "check" | "chevron" | "fold" | "unfold" | "grid" | "plus";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   home: <path d="M3.2 10.4 12 3.4l8.8 7v9.1a1 1 0 0 1-1 1h-4.6v-6.1H8.8v6.1H4.2a1 1 0 0 1-1-1z" />,
@@ -74,6 +74,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   check: <path d="m4.5 12.4 5 5 10-11" />,
+  plus: <path d="M12 5.2v13.6M5.2 12h13.6" />,
   chevron: <path d="m8.5 5 7 7-7 7" />,
   fold: (
     <>

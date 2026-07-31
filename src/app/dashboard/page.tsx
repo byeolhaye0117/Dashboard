@@ -85,8 +85,10 @@ export default async function DashboardHome() {
             <a key={m.key} href={m.href} className="card-link">
               <span className="badge-ic"><Icon name={m.icon} size={17} strokeWidth={1.8} /></span>
               <span className="nm">{m.label}</span>
-              <span className="st">{MENU_NOTE[m.key] ?? "준비 중"}</span>
-              <span className="pill" style={{ marginTop: 10 }}>준비 중</span>
+              <span className="st">{MENU_NOTE[m.key] ?? ""}</span>
+              <span className={`pill${READY.has(m.key) ? " good" : ""}`} style={{ marginTop: 10 }}>
+                {READY.has(m.key) ? "사용 가능" : "준비 중"}
+              </span>
             </a>
           ))}
       </div>
@@ -111,6 +113,9 @@ export default async function DashboardHome() {
     </Shell>
   );
 }
+
+/** 지금 실제로 쓸 수 있는 메뉴 */
+const READY = new Set(["상담"]);
 
 /** 카드에 붙는 한 줄 설명 */
 const MENU_NOTE: Record<string, string> = {

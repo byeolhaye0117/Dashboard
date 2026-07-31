@@ -157,11 +157,34 @@ export async function getLoginStaffList(branchCode: string): Promise<PublicStaff
 
 /** 선택목록 시트의 드롭다운 값 */
 export async function getOptions(kind: string): Promise<string[]> {
+  const all = await getAllOptions();
+  return all[kind] ?? [];
+}
+
+/** 선택목록 전체를 한 번에 (구분별로 묶어서) */
+export async function getAllOptions(): Promise<Record<string, string[]>> {
   const { rows } = await readSheet(SHEET.선택목록);
-  return alive(rows)
-    .filter((r) => r["구분"] === kind && yes(r["사용여부"] || "Y"))
-    .sort((a, b) => num(a["정렬순서"]) - num(b["정렬순서"]))
-    .map((r) => r["값"]);
+  const map: Record<string, { v: string; o: number }[]> = {};
+  alive(rows)
+    .filter((r) => yes(r["사용여부"] || "Y"))
+    .forEach((r) => {
+      const k = r["구분"];
+      if (!k) return;
+      (map[k] ??= []).push({ v: r["값"], o: num(r["정렬순서"], 999) });
+    });
+  const out: Record<string, string[]> = {};
+  Object.entries(map).forEach(([k, list]) => {
+    out[k] = list.sort((a, b) => a.o - b.o).map((x) => x.v);
+  });
+  return out;
+}
+
+/** 사번 → 이름 */
+export async function getStaffNames(): Promise<Record<string, string>> {
+  const staff = await getStaffAll();
+  const out: Record<string, string> = {};
+  staff.forEach((s) => (out[s.id] = s.name));
+  return out;
 }
 
 export type Product = Row & { code: string; name: string };

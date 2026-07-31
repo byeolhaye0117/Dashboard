@@ -114,6 +114,21 @@ export async function appendRow(sheetName: string, headers: string[], row: Row) 
   );
 }
 
+/** 한 줄을 통째로 다시 쓴다 */
+export async function updateRow(
+  sheetName: string,
+  rowNumber: number,
+  headers: string[],
+  row: Row
+) {
+  const last = columnLetter(headers.length - 1);
+  const range = encodeURIComponent(`${sheetName}!A${rowNumber}:${last}${rowNumber}`);
+  await call(`/values/${range}?valueInputOption=USER_ENTERED`, {
+    method: "PUT",
+    body: JSON.stringify({ values: [headers.map((h) => row[h] ?? "")] }),
+  });
+}
+
 /** 특정 줄의 특정 칸 하나를 고친다 */
 export async function updateCell(
   sheetName: string,
