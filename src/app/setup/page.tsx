@@ -6,6 +6,7 @@
  */
 import { listSheetNames, readSheet } from "@/lib/sheets";
 import { diagnosePrivateKey } from "@/lib/privateKey";
+import { getStaffAll, getStaffBranches } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ const ENVS = [
   { key: "GOOGLE_SERVICE_ACCOUNT_EMAIL", label: "서비스 계정 이메일" },
   { key: "GOOGLE_PRIVATE_KEY", label: "서비스 계정 비밀키" },
   { key: "SESSION_SECRET", label: "로그인 암호화 키" },
+  { key: "ADMIN_INIT_PASSWORD", label: "대표 최초 로그인 비밀번호" },
 ];
 
 type Check = { name: string; ok: boolean; detail: string };
@@ -86,6 +88,67 @@ export default async function SetupPage() {
       } catch (e: any) {
         checks.push({ name: `${s} 탭`, ok: false, detail: String(e?.message ?? e).slice(0, 120) });
       }
+    }
+  }
+
+  // 로그인이 가능한 상태인지 — 대표 계정을 실제로 들여다본다
+  if (connected) {
+    try {
+      const [staff, branchMap] = await Promise.all([getStaffAll(), getStaffBranches()]);
+      const owners = staff.filter((s) => s.roleCode === "R1");
+
+      if (owners.length === 0) {
+        checks.push({
+          name: "대표 계정",
+          ok: false,
+          detail: "직원 탭에 직급코드가 R1 인 줄이 없습니다",
+        });
+      } else {
+        const o = owners[0];
+        const myBranches = branchMap.get(o.id) ?? [];
+        if (o.mainBranch && !myBranches.includes(o.mainBranch)) myBranches.push(o.mainBranch);
+
+        checks.push({
+          name: "대표 계정",
+          ok: o.active,
+          detail: o.active
+            ? `${o.name} · 사번 ${o.id} · 재직중`
+            : `${o.name} · 계정사용 또는 재직상태를 확인해주세요 (현재: ${o.status})`,
+        });
+
+        checks.push({
+          name: "대표 담당 지점",
+          ok: myBranches.length > 0,
+          detail:
+            myBranches.length > 0
+              ? `${myBranches.join(" · ")} 에서 로그인 가능`
+              : "직원담당지점 탭에 대표 사번이 없습니다",
+        });
+
+        const init = process.env.ADMIN_INIT_PASSWORD;
+        if (o.passwordHash) {
+          checks.push({
+            name: "대표 로그인 방법",
+            ok: true,
+            detail: "이미 정한 비밀번호로 로그인하세요 (임시 비밀번호는 더 이상 쓰이지 않습니다)",
+          });
+        } else if (init) {
+          checks.push({
+            name: "대표 로그인 방법",
+            ok: true,
+            detail: `임시 비밀번호로 로그인하세요 (${init.length}자)`,
+          });
+        } else {
+          checks.push({
+            name: "대표 로그인 방법",
+            ok: false,
+            detail:
+              "비밀번호가 아직 없는데 ADMIN_INIT_PASSWORD 도 없습니다. 환경변수에 넣고 다시 배포해주세요.",
+          });
+        }
+      }
+    } catch (e: any) {
+      checks.push({ name: "대표 계정", ok: false, detail: String(e?.message ?? e).slice(0, 160) });
     }
   }
 
