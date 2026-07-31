@@ -117,6 +117,11 @@ export default function Shell({ session, menus, branches, active, crumb, childre
 
       <div className="main">
         <header className="topbar">
+          <button className="menu-btn" onClick={() => setAllOpen(true)} aria-label="메뉴 열기">
+            <Icon name="menu" size={16} strokeWidth={2} />
+            메뉴
+          </button>
+
           <span className="crumb">{crumb ?? "홈"}</span>
 
           {branches.length > 1 && (

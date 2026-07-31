@@ -196,6 +196,14 @@ button { font-family: inherit; }
 .icon-btn:hover { color: var(--ink); background: var(--surface-2); }
 .icon-btn.wide { width: auto; flex: 1; gap: 6px; font-size: 12.5px; font-weight: 600; }
 
+.menu-btn {
+  align-items: center; gap: 6px; height: 32px; padding: 0 10px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit;
+}
+.menu-btn:hover { background: var(--surface-2); }
+
 .user-btn {
   display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
   background: var(--surface); color: var(--ink);
@@ -306,6 +314,10 @@ button { font-family: inherit; }
 }
 
 /* ── 휴대폰 ──────────────────────────────── */
+/* 기본은 숨김. 아래 화면 크기 규칙에서 다시 켠다 (순서가 중요하다) */
+.tabbar { display: none; }
+.menu-btn { display: none; }
+
 @media (max-width: 767px) {
   .app { padding: 8px 8px 76px; gap: 8px; }
   .rail { display: none; }
@@ -327,8 +339,8 @@ button { font-family: inherit; }
     font-size: 10.5px; font-weight: 600; color: var(--muted);
   }
   .tabbar a.on { color: var(--ink); background: var(--surface-3); }
+  .menu-btn { display: inline-flex; }
 }
-.tabbar { display: none; }
 
 /* ── 휴대폰 전체 메뉴 ─────────────────────── */
 .sheet-back {
