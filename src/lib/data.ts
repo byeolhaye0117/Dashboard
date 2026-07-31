@@ -1,0 +1,183 @@
+/**
+ * 시트 → 대시보드가 쓰는 형태로 바꾸는 곳
+ *
+ * 화면 코드는 시트 구조를 몰라도 되도록, 여기서만 시트 이름과 칸 이름을 다룬다.
+ */
+import { readSheet, alive, Row } from "./sheets";
+
+export const SHEET = {
+  지점: "지점",
+  직급: "직급",
+  권한: "권한",
+  직원: "직원",
+  직원담당지점: "직원담당지점",
+  상품: "상품",
+  상품판매지점: "상품판매지점",
+  선택목록: "선택목록",
+} as const;
+
+export type Branch = {
+  code: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  radius: number;
+};
+
+export type Staff = {
+  id: string;
+  name: string;
+  phone: string;
+  roleCode: string;
+  mainBranch: string;
+  passwordHash: string;
+  status: string;
+  active: boolean;
+  /** 시트에서 이 직원이 몇 번째 줄인지 (비밀번호를 고칠 때 쓴다) */
+  rowNumber: number;
+};
+
+export type Role = {
+  code: string;
+  name: string;
+  scope: string;
+  order: number;
+};
+
+export type Permission = {
+  roleCode: string;
+  menu: string;
+  view: boolean;
+  create: boolean;
+  update: boolean;
+  remove: boolean;
+  condition: string;
+};
+
+const yes = (v: string) => (v ?? "").trim().toUpperCase() === "Y";
+const num = (v: string, d = 0) => {
+  const n = Number((v ?? "").toString().replace(/,/g, ""));
+  return Number.isFinite(n) ? n : d;
+};
+
+export async function getBranches(): Promise<Branch[]> {
+  const { rows } = await readSheet(SHEET.지점);
+  return alive(rows)
+    .filter((r) => (r["운영상태"] ?? "운영중") === "운영중")
+    .map((r) => ({
+      code: r["지점코드"],
+      name: r["지점명"],
+      address: r["주소"] ?? "",
+      lat: num(r["위도"]),
+      lng: num(r["경도"]),
+      radius: num(r["허용반경(m)"], 200),
+    }));
+}
+
+export async function getRoles(): Promise<Role[]> {
+  const { rows } = await readSheet(SHEET.직급);
+  return alive(rows)
+    .filter((r) => yes(r["사용여부"] || "Y"))
+    .map((r) => ({
+      code: r["직급코드"],
+      name: r["직급명"],
+      scope: r["지점범위"] ?? "담당지점",
+      order: num(r["정렬순서"], 99),
+    }))
+    .sort((a, b) => a.order - b.order);
+}
+
+export async function getStaffAll(): Promise<Staff[]> {
+  const { rows, rowNumbers } = await readSheet(SHEET.직원);
+  const out: Staff[] = [];
+  rows.forEach((r, i) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    out.push({
+      id: r["사번"],
+      name: r["이름"],
+      phone: (r["휴대폰(로그인ID)"] ?? "").replace(/[^0-9]/g, ""),
+      roleCode: r["직급코드"],
+      mainBranch: r["주소속지점"] ?? "",
+      passwordHash: r["비밀번호(자동암호화)"] ?? "",
+      status: r["재직상태"] ?? "재직중",
+      active: yes(r["계정사용"] || "Y") && (r["재직상태"] ?? "재직중") === "재직중",
+      rowNumber: rowNumbers[i],
+    });
+  });
+  return out;
+}
+
+/** 직원이 담당하는 지점 코드 목록 */
+export async function getStaffBranches(): Promise<Map<string, string[]>> {
+  const { rows } = await readSheet(SHEET.직원담당지점);
+  const map = new Map<string, string[]>();
+  alive(rows).forEach((r) => {
+    const id = r["사번"];
+    if (!id) return;
+    const list = map.get(id) ?? [];
+    list.push(r["지점코드"]);
+    map.set(id, list);
+  });
+  return map;
+}
+
+export async function getPermissions(): Promise<Permission[]> {
+  const { rows } = await readSheet(SHEET.권한);
+  return alive(rows).map((r) => ({
+    roleCode: r["직급코드"],
+    menu: r["메뉴"],
+    view: yes(r["보기"]),
+    create: yes(r["등록"]),
+    update: yes(r["수정"]),
+    remove: yes(r["삭제"]),
+    condition: r["범위조건"] ?? "",
+  }));
+}
+
+/** 로그인 화면에 뿌릴 목록 — 비밀번호는 절대 포함하지 않는다 */
+export type PublicStaff = { id: string; name: string; roleName: string };
+
+export async function getLoginStaffList(branchCode: string): Promise<PublicStaff[]> {
+  const [staff, roles, branchMap] = await Promise.all([
+    getStaffAll(),
+    getRoles(),
+    getStaffBranches(),
+  ]);
+  const roleName = new Map(roles.map((r) => [r.code, r.name]));
+  return staff
+    .filter((s) => s.active)
+    .filter((s) => {
+      const list = branchMap.get(s.id) ?? [];
+      return list.includes(branchCode) || s.mainBranch === branchCode;
+    })
+    .map((s) => ({ id: s.id, name: s.name, roleName: roleName.get(s.roleCode) ?? "" }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+}
+
+/** 선택목록 시트의 드롭다운 값 */
+export async function getOptions(kind: string): Promise<string[]> {
+  const { rows } = await readSheet(SHEET.선택목록);
+  return alive(rows)
+    .filter((r) => r["구분"] === kind && yes(r["사용여부"] || "Y"))
+    .sort((a, b) => num(a["정렬순서"]) - num(b["정렬순서"]))
+    .map((r) => r["값"]);
+}
+
+export type Product = Row & { code: string; name: string };
+
+export async function getProducts(branchCode?: string): Promise<Product[]> {
+  const [{ rows }, sell] = await Promise.all([
+    readSheet(SHEET.상품),
+    readSheet(SHEET.상품판매지점),
+  ]);
+  const allowed = new Set(
+    alive(sell.rows)
+      .filter((r) => !branchCode || r["지점코드"] === branchCode)
+      .map((r) => r["상품코드"])
+  );
+  return alive(rows)
+    .filter((r) => (r["판매상태"] ?? "판매중") === "판매중")
+    .filter((r) => !branchCode || allowed.has(r["상품코드"]))
+    .map((r) => ({ ...r, code: r["상품코드"], name: r["상품명"] }));
+}
