@@ -8,7 +8,7 @@
 export type IconName =
   | "home" | "users" | "card" | "phone" | "dumbbell"
   | "clock" | "clipboard" | "box" | "badge" | "lock"
-  | "sun" | "moon" | "warn" | "check" | "chevron";
+  | "sun" | "moon" | "warn" | "check" | "chevron" | "fold" | "unfold" | "grid";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   home: <path d="M3.2 10.4 12 3.4l8.8 7v9.1a1 1 0 0 1-1 1h-4.6v-6.1H8.8v6.1H4.2a1 1 0 0 1-1-1z" />,
@@ -75,6 +75,26 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   check: <path d="m4.5 12.4 5 5 10-11" />,
   chevron: <path d="m8.5 5 7 7-7 7" />,
+  fold: (
+    <>
+      <rect x="3.4" y="4.4" width="17.2" height="15.2" rx="2.4" />
+      <path d="M9.6 4.4v15.2M17 9.4 14.4 12l2.6 2.6" />
+    </>
+  ),
+  unfold: (
+    <>
+      <rect x="3.4" y="4.4" width="17.2" height="15.2" rx="2.4" />
+      <path d="M9.6 4.4v15.2M14.4 9.4 17 12l-2.6 2.6" />
+    </>
+  ),
+  grid: (
+    <>
+      <rect x="3.6" y="3.6" width="7" height="7" rx="1.8" />
+      <rect x="13.4" y="3.6" width="7" height="7" rx="1.8" />
+      <rect x="3.6" y="13.4" width="7" height="7" rx="1.8" />
+      <rect x="13.4" y="13.4" width="7" height="7" rx="1.8" />
+    </>
+  ),
 };
 
 type Props = {

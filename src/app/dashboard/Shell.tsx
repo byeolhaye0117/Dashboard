@@ -26,13 +26,29 @@ type Props = {
 export default function Shell({ session, menus, branches, active, crumb, children }: Props) {
   const [userOpen, setUserOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
+  const [allOpen, setAllOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
     const saved = (localStorage.getItem("gym_theme") as "light" | "dark") || "light";
     setTheme(saved);
     document.documentElement.setAttribute("data-theme", saved);
+
+    // 접힘 상태: 저장된 값이 있으면 그대로, 없으면 태블릿에서만 접어둔다
+    const savedFold = localStorage.getItem("gym_rail");
+    if (savedFold === "fold" || savedFold === "open") {
+      setCollapsed(savedFold === "fold");
+    } else {
+      setCollapsed(window.matchMedia("(max-width: 1023px)").matches);
+    }
   }, []);
+
+  function toggleRail() {
+    const next = !collapsed;
+    setCollapsed(next);
+    localStorage.setItem("gym_rail", next ? "fold" : "open");
+  }
 
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
@@ -54,13 +70,16 @@ export default function Shell({ session, menus, branches, active, crumb, childre
 
   return (
     <div className="app">
-      <aside className="rail">
+      <aside className={`rail${collapsed ? " is-collapsed" : ""}`}>
         <div className="acct">
           <span className="avatar">{session.name.slice(0, 1)}</span>
           <span className="who">
             <b>{session.name}</b>
             <span>{session.roleName} · {current?.name ?? ""}</span>
           </span>
+          <button className="fold" onClick={toggleRail} aria-label="메뉴 접기">
+            <Icon name="fold" size={15} strokeWidth={1.8} />
+          </button>
         </div>
 
         <div className="rail-scroll">
@@ -82,6 +101,12 @@ export default function Shell({ session, menus, branches, active, crumb, childre
         </div>
 
         <div className="rail-foot">
+          {collapsed && (
+            <button className="icon-btn wide" onClick={toggleRail} title="메뉴 펼치기">
+              <Icon name="unfold" size={16} />
+              <span>펼치기</span>
+            </button>
+          )}
           <button className="icon-btn wide" onClick={toggleTheme}
                   title={theme === "dark" ? "밝은 화면으로" : "어두운 화면으로"}>
             <Icon name={theme === "dark" ? "sun" : "moon"} size={16} />
@@ -135,13 +160,42 @@ export default function Shell({ session, menus, branches, active, crumb, childre
       </div>
 
       <nav className="tabbar" aria-label="주 메뉴">
-        {menus.slice(0, 5).map((m) => (
+        {menus.slice(0, 4).map((m) => (
           <a key={m.key} href={m.href} className={active === m.key ? "on" : ""}>
             <Icon name={m.icon} size={19} />
             {m.short}
           </a>
         ))}
+        <button className="tab-more" onClick={() => setAllOpen(true)}>
+          <Icon name="grid" size={19} />
+          전체
+        </button>
       </nav>
+
+      {allOpen && (
+        <div className="sheet-back" onClick={() => setAllOpen(false)}>
+          <div className="menu-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="grip" />
+            {GROUP_ORDER.map((g) => {
+              const items = menus.filter((m) => m.group === g);
+              if (items.length === 0) return null;
+              return (
+                <div className="rail-group" key={g}>
+                  <h4>{g}</h4>
+                  <div className="m-grid">
+                    {items.map((m) => (
+                      <a key={m.key} href={m.href} className={active === m.key ? "on" : ""}>
+                        <Icon name={m.icon} size={20} />
+                        {m.label}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {pwOpen && <PasswordDialog onClose={() => setPwOpen(false)} />}
     </div>
