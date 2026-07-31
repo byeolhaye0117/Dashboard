@@ -5,6 +5,7 @@
  * 개발자를 부르지 않고도 원인을 찾을 수 있게 하기 위한 화면이다.
  */
 import { listSheetNames, readSheet } from "@/lib/sheets";
+import { diagnosePrivateKey } from "@/lib/privateKey";
 
 export const dynamic = "force-dynamic";
 
@@ -40,21 +41,31 @@ export default async function SetupPage() {
     });
   }
 
+  // 비밀키 형태 점검 (키 내용 자체는 화면에 절대 나오지 않는다)
+  const keyCheck = diagnosePrivateKey(process.env.GOOGLE_PRIVATE_KEY);
+  checks.push({ name: "비밀키 형태", ok: keyCheck.ok, detail: keyCheck.detail });
+
   let names: string[] = [];
   let connected = false;
+  let rawError = "";
   try {
     names = await listSheetNames();
     connected = true;
     checks.push({ name: "구글 시트 연결", ok: true, detail: `탭 ${names.length}개를 읽었습니다` });
   } catch (e: any) {
     const msg = String(e?.message ?? e);
+    rawError = msg;
     let hint = msg;
     if (msg.includes("403")) {
       hint = "시트에 서비스 계정을 편집자로 공유했는지 확인해주세요.";
     } else if (msg.includes("404")) {
       hint = "GOOGLE_SHEET_ID 가 틀렸습니다. 시트 주소를 다시 확인해주세요.";
-    } else if (msg.includes("invalid_grant") || msg.includes("DECODER")) {
-      hint = "GOOGLE_PRIVATE_KEY 가 잘못 붙여넣어졌습니다. 따옴표 없이 전체를 넣어주세요.";
+    } else if (msg.includes("invalid_grant")) {
+      hint = "구글이 이 계정을 거절했습니다. 서비스 계정 이메일과 비밀키가 같은 JSON 파일에서 나온 것인지 확인해주세요.";
+    } else if (msg.includes("DECODER") || msg.includes("PEM") || msg.includes("asn1")) {
+      hint = "비밀키를 읽지 못했습니다. JSON 파일의 private_key 값을 따옴표 없이 통째로 넣어주세요.";
+    } else if (msg.includes("Invalid JWT") || msg.includes("signature")) {
+      hint = "비밀키가 이 서비스 계정의 것이 아닙니다. 키를 새로 만들어 다시 넣어주세요.";
     }
     checks.push({ name: "구글 시트 연결", ok: false, detail: hint });
   }
@@ -112,6 +123,24 @@ export default async function SetupPage() {
           ))}
         </tbody>
       </table>
+
+      {rawError && (
+        <details style={{ marginTop: 22, fontSize: 12, color: "#6b7280" }}>
+          <summary style={{ cursor: "pointer" }}>구글이 보낸 원래 메시지 보기 (개발자용)</summary>
+          <pre
+            style={{
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+              background: "#f9fafb",
+              padding: 12,
+              borderRadius: 8,
+              marginTop: 8,
+            }}
+          >
+            {rawError.slice(0, 800)}
+          </pre>
+        </details>
+      )}
 
       <p style={{ marginTop: 24 }}>
         <a href="/" style={{ color: "#4f46e5" }}>로그인 화면으로</a>

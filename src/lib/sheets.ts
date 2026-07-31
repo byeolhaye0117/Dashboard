@@ -5,6 +5,7 @@
  * 제목 줄 위에 ※ 로 시작하는 안내 줄이 있을 수 있으므로 건너뛴다.
  */
 import { JWT } from "google-auth-library";
+import { normalizePrivateKey } from "./privateKey";
 
 const API = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -34,8 +35,8 @@ async function accessToken(): Promise<string> {
   }
   const client = new JWT({
     email: env("GOOGLE_SERVICE_ACCOUNT_EMAIL"),
-    // Vercel 환경변수에 붙여넣으면 줄바꿈이 \n 문자로 들어오므로 되돌린다
-    key: env("GOOGLE_PRIVATE_KEY").replace(/\\n/g, "\n"),
+    // 따옴표·쉼표가 딸려오거나 \n 이 글자로 들어와도 알아서 바로잡는다
+    key: normalizePrivateKey(env("GOOGLE_PRIVATE_KEY")),
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
   const { access_token, expiry_date } = await client.authorize();
