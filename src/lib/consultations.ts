@@ -6,6 +6,7 @@
  */
 import { readSheet, alive, appendRow, updateRow, type Row } from "./sheets";
 import { now } from "./time";
+import { formatPhone } from "./phone";
 
 export const SHEET_C = "상담";
 export const SHEET_A = "상담활동";
@@ -96,7 +97,7 @@ export async function createConsultation(
     접수일시: stamp,
     상담날짜: input.상담날짜,
     이름: input.이름,
-    전화번호: input.전화번호,
+    전화번호: formatPhone(input.전화번호),
     성별: input.성별 ?? "",
     나이대: input.나이대 ?? "",
     지점코드: input.지점코드,
@@ -137,6 +138,7 @@ export async function patchConsultation(
 
   const stamp = now();
   const merged: Row = { ...target, ...changes, 수정일시: stamp, 수정자: staffId };
+  if (merged["전화번호"]) merged["전화번호"] = formatPhone(merged["전화번호"]);
 
   // 등록완료로 바뀌면 등록여부도 같이 맞춘다
   if (merged["진행상태"] === DONE_STAGE) merged["등록여부"] = "Y";

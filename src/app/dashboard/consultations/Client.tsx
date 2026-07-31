@@ -6,6 +6,7 @@
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today } from "@/lib/time";
+import { showPhone } from "@/lib/phone";
 
 type Row = Record<string, string>;
 type Item = Row & { id: string };
@@ -173,7 +174,7 @@ export default function Client(p: Props) {
                 return (
                   <tr key={c.id} onClick={() => setDetail(c)}>
                     <td className="strong">{c["이름"]}</td>
-                    <td className="num">{c["전화번호"]}</td>
+                    <td className="num">{showPhone(c["전화번호"])}</td>
                     <td className="num dim">{(c["상담날짜"] ?? "").slice(5)}</td>
                     <td className="dim">{c["방문경로"]}</td>
                     <td className="dim">{p.staffNames[c["상담자사번"]] ?? "-"}</td>
@@ -337,6 +338,33 @@ function Detail({
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [f, setF] = useState<Record<string, string>>({ ...item });
+  const setV = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
+
+  async function saveEdit() {
+    if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
+    if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
+    setBusy(true);
+    const res = await fetch("/api/consultations/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: item.id,
+        changes: {
+          이름: f["이름"], 전화번호: f["전화번호"], 상담날짜: f["상담날짜"],
+          성별: f["성별"], 나이대: f["나이대"], 문의유형: f["문의유형"],
+          방문경로: f["방문경로"], 거주동네: f["거주동네"], 직업: f["직업"],
+          상담자사번: f["상담자사번"], 약속일시: f["약속일시"],
+          문의내용: f["문의내용"], 메모: f["메모"],
+        },
+      }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
+    location.reload();
+  }
 
   async function remove() {
     setBusy(true);
@@ -387,11 +415,65 @@ function Detail({
         <div className="detail-head">
           <div>
             <h3 style={{ margin: 0 }}>{item["이름"]}</h3>
-            <span className="dim num">{item["전화번호"]}</span>
+            <span className="dim num">{showPhone(item["전화번호"])}</span>
           </div>
           <span className={`pill ${STAGE_TONE[item["진행상태"]] ?? ""}`}>{item["진행상태"] || "신규"}</span>
         </div>
 
+        {editing ? (
+          <>
+            <div className="form-grid">
+              <L label="이름" req>
+                <input className="input" value={f["이름"] ?? ""} onChange={(e) => setV("이름", e.target.value)} />
+              </L>
+              <L label="연락처" req>
+                <input className="input" inputMode="tel" value={f["전화번호"] ?? ""}
+                       onChange={(e) => setV("전화번호", e.target.value)} />
+              </L>
+              <L label="상담일">
+                <input className="input" type="date" value={(f["상담날짜"] ?? "").slice(0, 10)}
+                       onChange={(e) => setV("상담날짜", e.target.value)} />
+              </L>
+              <L label="담당자">
+                <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => setV("상담자사번", e.target.value)}>
+                  {Object.entries(staffNames).map(([id, nm]) => (
+                    <option key={id} value={id}>{nm}</option>
+                  ))}
+                </select>
+              </L>
+              <Sel label="방문경로" k="방문경로" f={f} set={setV} opts={options["방문경로"]} />
+              <Sel label="문의유형" k="문의유형" f={f} set={setV} opts={options["문의유형"]} />
+              <Sel label="성별" k="성별" f={f} set={setV} opts={options["성별"]} />
+              <Sel label="나이대" k="나이대" f={f} set={setV} opts={options["나이대"]} />
+              <Sel label="거주동네" k="거주동네" f={f} set={setV} opts={options["거주동네"]} />
+              <Sel label="직업" k="직업" f={f} set={setV} opts={options["직업"]} />
+              <L label="방문 약속 일시" full>
+                <input className="input" type="datetime-local" value={f["약속일시"] ?? ""}
+                       onChange={(e) => setV("약속일시", e.target.value)} />
+              </L>
+              <L label="문의 내용" full>
+                <textarea className="input area" rows={3} value={f["문의내용"] ?? ""}
+                          onChange={(e) => setV("문의내용", e.target.value)} />
+              </L>
+              <L label="메모" full>
+                <textarea className="input area" rows={2} value={f["메모"] ?? ""}
+                          onChange={(e) => setV("메모", e.target.value)} />
+              </L>
+            </div>
+
+            {msg && <div className="alert-bad">{msg}</div>}
+
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => { setEditing(false); setF({ ...item }); setMsg(""); }}>
+                취소
+              </button>
+              <button className="btn-primary" style={{ marginTop: 0 }} onClick={saveEdit} disabled={busy}>
+                {busy ? "저장 중…" : "저장"}
+              </button>
+            </div>
+          </>
+        ) : (
+        <>
         <dl className="kv">
           <Kv k="상담일" v={korDate(item["상담날짜"])} />
           <Kv k="지점" v={branchName} />
@@ -466,7 +548,7 @@ function Detail({
           <div className="confirm-box">
             <b>이 상담을 삭제할까요?</b>
             <p>
-              {item["이름"]} · {item["전화번호"]}
+              {item["이름"]} · {showPhone(item["전화번호"])}
               <br />
               목록에서 사라집니다. 시트에는 기록이 남아 있어 되살릴 수 있습니다.
             </p>
@@ -484,8 +566,15 @@ function Detail({
                 삭제
               </button>
             )}
+            {canUpdate && (
+              <button className="btn-ghost" onClick={() => { setEditing(true); setMsg(""); }}>
+                수정
+              </button>
+            )}
             <button className="btn-ghost" onClick={onClose}>닫기</button>
           </div>
+        )}
+        </>
         )}
       </div>
     </div>
