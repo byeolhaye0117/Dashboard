@@ -67,7 +67,7 @@ export default async function ConsultationsPage() {
         currentBranch={session.currentBranch}
         me={session.staffId}
         onlyMine={onlyMine}
-        can={{ create: mine.create, update: mine.update }}
+        can={{ create: mine.create, update: mine.update, remove: mine.remove }}
       />
     </Shell>
   );

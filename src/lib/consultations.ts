@@ -145,6 +145,26 @@ export async function patchConsultation(
   await updateRow(SHEET_C, rowOf[id], headers, merged);
 }
 
+/**
+ * 상담 삭제
+ *
+ * 시트에서 줄을 실제로 지우지 않고 "삭제됨" 표시만 남긴다.
+ * 실수로 지워도 시트에서 삭제여부 칸을 비우면 되살아난다.
+ */
+export async function softDeleteConsultation(id: string, staffId: string): Promise<void> {
+  const { headers, items, rowOf } = await listConsultations();
+  const target = items.find((i) => i.id === id);
+  if (!target || !rowOf[id]) throw new Error("해당 상담을 찾지 못했습니다.");
+
+  const stamp = now();
+  await updateRow(SHEET_C, rowOf[id], headers, {
+    ...target,
+    삭제여부: "Y",
+    수정일시: stamp,
+    수정자: staffId,
+  });
+}
+
 export async function addActivity(
   consultationId: string,
   kind: string,

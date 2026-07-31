@@ -20,7 +20,7 @@ type Props = {
   currentBranch: string;
   me: string;
   onlyMine: boolean;
-  can: { create: boolean; update: boolean };
+  can: { create: boolean; update: boolean; remove: boolean };
 };
 
 const STAGES = ["신규", "연락중", "약속대기", "예약확정", "방문완료", "등록완료", "미등록"];
@@ -213,6 +213,7 @@ export default function Client(p: Props) {
           staffNames={p.staffNames}
           branchName={branchName(detail["지점코드"])}
           canUpdate={p.can.update}
+          canRemove={p.can.remove}
           onClose={() => setDetail(null)}
         />
       )}
@@ -317,7 +318,7 @@ function NewForm({
 
 /* ── 상세 ─────────────────────────────────── */
 function Detail({
-  item, activities, options, staffNames, branchName, canUpdate, onClose,
+  item, activities, options, staffNames, branchName, canUpdate, canRemove, onClose,
 }: {
   item: Item;
   activities: Row[];
@@ -325,6 +326,7 @@ function Detail({
   staffNames: Record<string, string>;
   branchName: string;
   canUpdate: boolean;
+  canRemove: boolean;
   onClose: () => void;
 }) {
   const [stage, setStage] = useState(item["진행상태"] || "신규");
@@ -334,6 +336,20 @@ function Detail({
   const [content, setContent] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+
+  async function remove() {
+    setBusy(true);
+    const res = await fetch("/api/consultations/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) return setMsg(data.error ?? "삭제하지 못했습니다.");
+    location.reload();
+  }
 
   async function saveStage() {
     setBusy(true);
@@ -446,9 +462,31 @@ function Detail({
 
         {msg && <div className="alert-bad">{msg}</div>}
 
-        <div className="modal-actions">
-          <button className="btn-ghost" onClick={onClose}>닫기</button>
-        </div>
+        {confirmDel ? (
+          <div className="confirm-box">
+            <b>이 상담을 삭제할까요?</b>
+            <p>
+              {item["이름"]} · {item["전화번호"]}
+              <br />
+              목록에서 사라집니다. 시트에는 기록이 남아 있어 되살릴 수 있습니다.
+            </p>
+            <div className="modal-actions" style={{ marginTop: 12 }}>
+              <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
+              <button className="btn-danger" onClick={remove} disabled={busy}>
+                {busy ? "삭제 중…" : "삭제"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="modal-actions">
+            {canRemove && (
+              <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>
+                삭제
+              </button>
+            )}
+            <button className="btn-ghost" onClick={onClose}>닫기</button>
+          </div>
+        )}
       </div>
     </div>
   );

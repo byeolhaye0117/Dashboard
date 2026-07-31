@@ -553,3 +553,23 @@ table.grid .late { color: var(--bad); font-weight: 700; }
 }
 .timeline .tl-body { color: var(--ink); }
 .timeline .tl-meta { grid-column: 2; font-size: 11.5px; color: var(--muted); }
+
+/* ── 삭제 확인 ─────────────────────────────── */
+.btn-danger {
+  height: 46px; padding: 0 16px;
+  background: var(--bad); color: #fff;
+  border: 0; border-radius: var(--r-sm);
+  font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
+}
+.btn-danger:disabled { opacity: .6; cursor: default; }
+.btn-ghost.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+.btn-ghost.danger:hover { background: var(--bad-soft); }
+
+.confirm-box {
+  margin-top: 16px; padding: 14px 16px;
+  background: var(--bad-soft);
+  border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
+  border-radius: var(--r);
+}
+.confirm-box b { display: block; font-size: 14px; color: var(--ink); }
+.confirm-box p { margin: 5px 0 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
