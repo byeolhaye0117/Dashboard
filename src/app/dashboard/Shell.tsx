@@ -3,10 +3,14 @@
 /**
  * 공통 뼈대 — 상단 바 + 메뉴
  *
- * PC        : 왼쪽 세로 메뉴
- * 태블릿·폰 : 아래쪽 가로 탭
+ * PC     (1024px~)    왼쪽 세로 메뉴, 글씨까지
+ * 태블릿 (768~1023)   왼쪽 메뉴가 아이콘만 남음
+ * 휴대폰 (~767)       메뉴가 아래쪽 탭으로 내려감
+ *
+ * 배치는 globals.css 의 화면 크기 규칙이 담당한다. 여기서는 무엇을 보여줄지만 정한다.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Icon from "@/components/Icon";
 import type { MenuItem } from "@/lib/menu";
 import type { Session } from "@/lib/session";
 
@@ -19,38 +23,82 @@ type Props = {
 };
 
 export default function Shell({ session, menus, branches, active, children }: Props) {
-  const [openMenu, setOpenMenu] = useState(false);
+  const [userOpen, setUserOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const saved = (localStorage.getItem("gym_theme") as "light" | "dark") || "light";
+    setTheme(saved);
+    document.documentElement.setAttribute("data-theme", saved);
+  }, []);
+
+  function toggleTheme() {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    localStorage.setItem("gym_theme", next);
+    document.documentElement.setAttribute("data-theme", next);
+  }
+
+  async function switchBranch(code: string) {
+    await fetch("/api/switch-branch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch: code }),
+    });
+    location.reload();
+  }
+
+  const current = branches.find((b) => b.code === session.currentBranch);
 
   return (
-    <div style={{ minHeight: "100dvh" }}>
-      <header style={S.header}>
-        <div style={S.brand}>헬스장 대시보드</div>
+    <>
+      <header className="topbar">
+        <span className="brand">
+          헬스장 대시보드
+          <span className="brand-sub">{current?.name ?? ""}</span>
+        </span>
 
         {branches.length > 1 && (
-          <select style={S.branchSelect} defaultValue={session.currentBranch}>
+          <select
+            className="select"
+            value={session.currentBranch}
+            onChange={(e) => switchBranch(e.target.value)}
+            aria-label="지점 선택"
+          >
             {branches.map((b) => (
               <option key={b.code} value={b.code}>{b.name}</option>
             ))}
           </select>
         )}
 
-        <div style={{ position: "relative", marginLeft: "auto" }}>
-          <button style={S.userBtn} onClick={() => setOpenMenu((v) => !v)}>
-            {session.name} <span style={{ color: "#9ca3af", fontSize: 12 }}>▾</span>
+        <span className="spacer" />
+
+        <button
+          className="icon-btn"
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "밝은 화면으로" : "어두운 화면으로"}
+          title={theme === "dark" ? "밝은 화면으로" : "어두운 화면으로"}
+        >
+          <Icon name={theme === "dark" ? "sun" : "moon"} size={17} />
+        </button>
+
+        <div style={{ position: "relative" }}>
+          <button className="user-btn" onClick={() => setUserOpen((v) => !v)}>
+            {session.name}
+            <Icon name="chevron" size={13} strokeWidth={2} />
           </button>
-          {openMenu && (
-            <div style={S.dropdown}>
-              <div style={S.dropInfo}>
-                {session.roleName}
-                <br />
-                <span style={{ color: "#9ca3af", fontSize: 11 }}>{session.staffId}</span>
+          {userOpen && (
+            <div className="menu-pop">
+              <div className="who">
+                <b>{session.name}</b>
+                <span>{session.roleName} · {session.staffId}</span>
               </div>
-              <button style={S.dropItem} onClick={() => { setPwOpen(true); setOpenMenu(false); }}>
+              <button onClick={() => { setPwOpen(true); setUserOpen(false); }}>
                 비밀번호 변경
               </button>
               <button
-                style={{ ...S.dropItem, color: "#dc2626" }}
+                className="danger"
                 onClick={async () => {
                   await fetch("/api/logout", { method: "POST" });
                   location.href = "/";
@@ -63,51 +111,30 @@ export default function Shell({ session, menus, branches, active, children }: Pr
         </div>
       </header>
 
-      <div style={S.body}>
-        <nav className="gym-side" style={S.side}>
+      <div className="layout">
+        <nav className="rail" aria-label="주 메뉴">
           {menus.map((m) => (
-            <a
-              key={m.key}
-              href={m.href}
-              style={{
-                ...S.sideItem,
-                background: active === m.key ? "#eef2ff" : "transparent",
-                color: active === m.key ? "#4f46e5" : "#374151",
-                fontWeight: active === m.key ? 700 : 500,
-              }}
-            >
-              <span style={{ fontSize: 16 }}>{m.icon}</span>
-              <span>{m.label}</span>
+            <a key={m.key} href={m.href} className={active === m.key ? "on" : ""} title={m.label}>
+              <Icon name={m.icon} size={18} />
+              <span className="label">{m.label}</span>
             </a>
           ))}
         </nav>
 
-        <main className="gym-content" style={S.content}>{children}</main>
+        <main className="content">{children}</main>
       </div>
 
-      <nav className="gym-bottom" style={S.bottom}>
+      <nav className="tabbar" aria-label="주 메뉴">
         {menus.slice(0, 5).map((m) => (
-          <a
-            key={m.key}
-            href={m.href}
-            style={{ ...S.bottomItem, color: active === m.key ? "#4f46e5" : "#6b7280" }}
-          >
-            <div style={{ fontSize: 18 }}>{m.icon}</div>
-            <div style={{ fontSize: 10, marginTop: 2 }}>{m.label}</div>
+          <a key={m.key} href={m.href} className={active === m.key ? "on" : ""}>
+            <Icon name={m.icon} size={19} />
+            {m.short}
           </a>
         ))}
       </nav>
 
       {pwOpen && <PasswordDialog onClose={() => setPwOpen(false)} />}
-
-      <style>{`
-        @media (max-width: 900px) {
-          .gym-side { display: none !important; }
-          .gym-bottom { display: flex !important; }
-          .gym-content { padding-bottom: 78px !important; }
-        }
-      `}</style>
-    </div>
+    </>
   );
 }
 
@@ -118,8 +145,8 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
 
   async function save() {
-    if (pw.length < 4) return setMsg("4자 이상으로 정해주세요.");
-    if (pw !== pw2) return setMsg("두 번 입력한 비밀번호가 다릅니다.");
+    if (pw.length < 4) return setMsg("비밀번호는 4자 이상으로 정해주세요.");
+    if (pw !== pw2) return setMsg("두 번 입력한 비밀번호가 서로 다릅니다.");
     setBusy(true);
     const res = await fetch("/api/change-password", {
       method: "POST",
@@ -128,34 +155,28 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
     });
     const data = await res.json();
     setBusy(false);
-    if (!res.ok) return setMsg(data.error ?? "바꾸지 못했습니다.");
+    if (!res.ok) return setMsg(data.error ?? "비밀번호를 바꾸지 못했습니다.");
     location.reload();
   }
 
   return (
-    <div style={S.modalWrap} onClick={onClose}>
-      <div style={S.modal} onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ margin: "0 0 16px", fontSize: 17 }}>비밀번호 변경</h3>
-        <input
-          style={S.modalInput}
-          type="password"
-          placeholder="새 비밀번호"
-          value={pw}
-          onChange={(e) => setPw(e.target.value)}
-        />
-        <input
-          style={{ ...S.modalInput, marginTop: 10 }}
-          type="password"
-          placeholder="새 비밀번호 확인"
-          value={pw2}
-          onChange={(e) => setPw2(e.target.value)}
-        />
-        {msg && <div style={{ color: "#b91c1c", fontSize: 13, marginTop: 10 }}>{msg}</div>}
-        <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-          <button style={{ ...S.modalBtn, background: "#f3f4f6", color: "#374151" }} onClick={onClose}>
-            취소
-          </button>
-          <button style={S.modalBtn} onClick={save} disabled={busy}>
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>비밀번호 변경</h3>
+        <div className="field">
+          <label htmlFor="pw1">새 비밀번호</label>
+          <input id="pw1" className="input" type="password" value={pw}
+                 onChange={(e) => setPw(e.target.value)} autoComplete="new-password" />
+        </div>
+        <div className="field">
+          <label htmlFor="pw2">한 번 더 입력</label>
+          <input id="pw2" className="input" type="password" value={pw2}
+                 onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" />
+        </div>
+        {msg && <div className="alert-bad">{msg}</div>}
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onClose}>취소</button>
+          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
             {busy ? "저장 중…" : "저장"}
           </button>
         </div>
@@ -163,115 +184,3 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
-
-const S: Record<string, React.CSSProperties> = {
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    height: 56,
-    padding: "0 16px",
-    background: "#fff",
-    borderBottom: "1px solid #ececf0",
-    position: "sticky",
-    top: 0,
-    zIndex: 20,
-  },
-  brand: { fontWeight: 800, fontSize: 15 },
-  branchSelect: {
-    padding: "6px 10px",
-    border: "1px solid #e3e5e9",
-    borderRadius: 8,
-    fontSize: 13,
-    background: "#fff",
-  },
-  userBtn: {
-    padding: "7px 12px",
-    border: "1px solid #e3e5e9",
-    borderRadius: 8,
-    background: "#fff",
-    fontSize: 13,
-    cursor: "pointer",
-  },
-  dropdown: {
-    position: "absolute",
-    right: 0,
-    top: 40,
-    width: 170,
-    background: "#fff",
-    border: "1px solid #ececf0",
-    borderRadius: 10,
-    boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
-    overflow: "hidden",
-  },
-  dropInfo: { padding: "10px 14px", fontSize: 12, color: "#6b7280", borderBottom: "1px solid #f3f4f6" },
-  dropItem: {
-    display: "block",
-    width: "100%",
-    padding: "11px 14px",
-    border: "none",
-    background: "#fff",
-    textAlign: "left",
-    fontSize: 13,
-    cursor: "pointer",
-  },
-  body: { display: "flex", alignItems: "flex-start" },
-  side: { width: 190, padding: 12, position: "sticky", top: 56, flexShrink: 0 },
-  sideItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "11px 12px",
-    borderRadius: 10,
-    textDecoration: "none",
-    fontSize: 14,
-    marginBottom: 2,
-  },
-  content: { flex: 1, padding: "24px 20px", minWidth: 0, maxWidth: 1100 },
-  bottom: {
-    display: "none",
-    position: "fixed",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    background: "#fff",
-    borderTop: "1px solid #ececf0",
-    zIndex: 20,
-  },
-  bottomItem: {
-    flex: 1,
-    padding: "9px 0 11px",
-    textAlign: "center",
-    textDecoration: "none",
-  },
-  modalWrap: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.4)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 50,
-    padding: 20,
-  },
-  modal: { width: "100%", maxWidth: 340, background: "#fff", borderRadius: 14, padding: 22 },
-  modalInput: {
-    width: "100%",
-    padding: "12px 13px",
-    border: "1.5px solid #e3e5e9",
-    borderRadius: 9,
-    fontSize: 14,
-    boxSizing: "border-box",
-  },
-  modalBtn: {
-    flex: 1,
-    padding: "12px",
-    border: "none",
-    borderRadius: 9,
-    background: "#4f46e5",
-    color: "#fff",
-    fontWeight: 700,
-    fontSize: 14,
-    cursor: "pointer",
-  },
-};

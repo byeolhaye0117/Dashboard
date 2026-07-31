@@ -3,11 +3,12 @@
 /**
  * 로그인 화면
  *
- * 지점 선택 → 직원 선택 → 비밀번호.
- * 아이디를 외울 필요가 없어 헬스장 현장에 맞는 방식이다.
+ * 지점 선택 → 이름 선택 → 비밀번호.
+ * 아이디를 외울 필요가 없어 현장에 맞는 방식이다.
  */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Icon from "@/components/Icon";
 
 type Branch = { code: string; name: string };
 type Staff = { id: string; name: string; roleName: string };
@@ -24,6 +25,13 @@ export default function LoginPage() {
   const [loadingStaff, setLoadingStaff] = useState(false);
 
   useEffect(() => {
+    const saved = localStorage.getItem("gym_theme");
+    if (saved === "dark" || saved === "light") {
+      document.documentElement.setAttribute("data-theme", saved);
+    }
+    const last = localStorage.getItem("gym_last_branch");
+    if (last) setBranch(last);
+
     fetch("/api/branches")
       .then((r) => r.json())
       .then((d) => (Array.isArray(d) ? setBranches(d) : setError(d.error ?? "지점을 불러오지 못했습니다.")))
@@ -45,7 +53,7 @@ export default function LoginPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!branch || !staffId) return setError("지점과 직원을 선택해주세요.");
+    if (!branch || !staffId) return setError("지점과 이름을 선택해주세요.");
     if (!password) return setError("비밀번호를 입력해주세요.");
 
     setLoading(true);
@@ -60,6 +68,7 @@ export default function LoginPage() {
         setError(data.error ?? "로그인하지 못했습니다.");
         return;
       }
+      localStorage.setItem("gym_last_branch", branch);
       router.push("/dashboard");
     } catch {
       setError("연결이 원활하지 않습니다. 잠시 후 다시 시도해주세요.");
@@ -69,108 +78,63 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={S.wrap}>
-      <form onSubmit={submit} style={S.card}>
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <h1 style={S.title}>헬스장 업무 대시보드</h1>
-          <p style={S.sub}>지점과 이름을 고르고 비밀번호를 입력하세요</p>
+    <main className="auth-wrap">
+      <form className="auth-card" onSubmit={submit}>
+        <div className="auth-mark"><Icon name="dumbbell" size={22} strokeWidth={1.9} /></div>
+        <h1>헬스장 업무 대시보드</h1>
+        <p className="lead">지점과 이름을 고르고 비밀번호를 입력하세요</p>
+
+        <div className="field">
+          <label htmlFor="branch">지점</label>
+          <select id="branch" className="input" value={branch} onChange={(e) => setBranch(e.target.value)}>
+            <option value="">지점을 선택하세요</option>
+            {branches.map((b) => (
+              <option key={b.code} value={b.code}>{b.name}</option>
+            ))}
+          </select>
         </div>
 
-        <label style={S.label}>지점</label>
-        <select style={S.input} value={branch} onChange={(e) => setBranch(e.target.value)}>
-          <option value="">지점을 선택하세요</option>
-          {branches.map((b) => (
-            <option key={b.code} value={b.code}>{b.name}</option>
-          ))}
-        </select>
+        <div className="field">
+          <label htmlFor="staff">이름</label>
+          <select
+            id="staff"
+            className="input"
+            value={staffId}
+            onChange={(e) => setStaffId(e.target.value)}
+            disabled={!branch || loadingStaff}
+          >
+            <option value="">
+              {!branch ? "지점을 먼저 선택하세요" : loadingStaff ? "불러오는 중…" : "이름을 선택하세요"}
+            </option>
+            {staff.map((s) => (
+              <option key={s.id} value={s.id}>{s.name} ({s.roleName})</option>
+            ))}
+          </select>
+        </div>
 
-        <label style={S.label}>이름</label>
-        <select
-          style={{ ...S.input, background: branch ? "#fff" : "#f2f3f5" }}
-          value={staffId}
-          onChange={(e) => setStaffId(e.target.value)}
-          disabled={!branch || loadingStaff}
-        >
-          <option value="">
-            {!branch ? "지점을 먼저 선택하세요" : loadingStaff ? "불러오는 중…" : "이름을 선택하세요"}
-          </option>
-          {staff.map((s) => (
-            <option key={s.id} value={s.id}>{s.name} ({s.roleName})</option>
-          ))}
-        </select>
+        <div className="field">
+          <label htmlFor="pw">비밀번호</label>
+          <input
+            id="pw"
+            className="input"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="비밀번호"
+            autoComplete="current-password"
+          />
+        </div>
 
-        <label style={S.label}>비밀번호</label>
-        <input
-          style={S.input}
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="비밀번호"
-          autoComplete="current-password"
-        />
+        {error && <div className="alert-bad">{error}</div>}
 
-        {error && <div style={S.error}>{error}</div>}
-
-        <button type="submit" style={{ ...S.button, opacity: loading ? 0.6 : 1 }} disabled={loading}>
+        <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? "확인 중…" : "로그인"}
         </button>
 
-        <p style={S.foot}>
-          로그인이 안 되면 <a href="/setup" style={{ color: "#4f46e5" }}>연결 점검</a> 화면을 확인하세요
+        <p className="auth-foot">
+          로그인이 안 되면 <a href="/setup">연결 점검</a> 화면을 확인하세요
         </p>
       </form>
     </main>
   );
 }
-
-const S: Record<string, React.CSSProperties> = {
-  wrap: {
-    minHeight: "100dvh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 380,
-    background: "#fff",
-    borderRadius: 18,
-    padding: 32,
-    boxShadow: "0 10px 40px rgba(0,0,0,0.08)",
-  },
-  title: { margin: 0, fontSize: 22, fontWeight: 700 },
-  sub: { margin: "8px 0 0", fontSize: 13, color: "#8a8f98" },
-  label: { display: "block", fontSize: 13, fontWeight: 600, color: "#4b5563", margin: "16px 0 6px" },
-  input: {
-    width: "100%",
-    padding: "13px 14px",
-    fontSize: 15,
-    border: "1.5px solid #e3e5e9",
-    borderRadius: 10,
-    outline: "none",
-    boxSizing: "border-box",
-    background: "#fff",
-  },
-  error: {
-    marginTop: 14,
-    padding: "10px 12px",
-    background: "#fef2f2",
-    color: "#b91c1c",
-    fontSize: 13,
-    borderRadius: 8,
-  },
-  button: {
-    width: "100%",
-    marginTop: 22,
-    padding: "15px",
-    fontSize: 16,
-    fontWeight: 700,
-    color: "#fff",
-    background: "#4f46e5",
-    border: "none",
-    borderRadius: 10,
-    cursor: "pointer",
-  },
-  foot: { marginTop: 18, marginBottom: 0, textAlign: "center", fontSize: 12, color: "#9aa0a6" },
-};

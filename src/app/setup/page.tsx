@@ -7,6 +7,7 @@
 import { listSheetNames, readSheet } from "@/lib/sheets";
 import { diagnosePrivateKey } from "@/lib/privateKey";
 import { getStaffAll, getStaffBranches } from "@/lib/data";
+import Icon from "@/components/Icon";
 
 export const dynamic = "force-dynamic";
 
@@ -155,58 +156,56 @@ export default async function SetupPage() {
   const allOk = checks.every((c) => c.ok);
 
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: "32px 20px", fontFamily: "system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: 24, marginBottom: 4 }}>연결 점검</h1>
-      <p style={{ color: "#666", fontSize: 14, marginTop: 0 }}>
-        대시보드가 구글 시트를 제대로 읽을 수 있는지 확인합니다.
-      </p>
+    <main style={{ maxWidth: 720, margin: "0 auto", padding: "36px 20px 60px" }}>
+      <h1 className="h1">연결 점검</h1>
+      <p className="sub">대시보드가 구글 시트를 제대로 읽을 수 있는지 확인합니다.</p>
 
       <div
+        className="banner"
         style={{
-          background: allOk ? "#ecfdf5" : "#fef2f2",
-          border: `1px solid ${allOk ? "#a7f3d0" : "#fecaca"}`,
-          borderRadius: 10,
-          padding: 16,
-          margin: "20px 0",
+          background: allOk ? "var(--good-soft)" : "var(--bad-soft)",
+          borderColor: allOk ? "var(--good)" : "var(--bad)",
         }}
       >
-        <strong style={{ color: allOk ? "#065f46" : "#991b1b" }}>
-          {allOk ? "모두 정상입니다. 로그인 화면으로 가셔도 됩니다." : "아래 빨간 항목을 확인해주세요."}
-        </strong>
+        <span className="lead" style={{ color: allOk ? "var(--good)" : "var(--bad)" }}>
+          <Icon name={allOk ? "check" : "warn"} size={18} />
+        </span>
+        <div>
+          <b>{allOk ? "모두 정상입니다" : "아래 빨간 항목을 확인해주세요"}</b>
+          <p>{allOk ? "로그인 화면으로 가셔도 됩니다." : "각 줄에 원인이 적혀 있습니다."}</p>
+        </div>
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-        <tbody>
-          {checks.map((c) => (
-            <tr key={c.name} style={{ borderBottom: "1px solid #eee" }}>
-              <td style={{ padding: "10px 6px", width: 28 }}>{c.ok ? "✅" : "❌"}</td>
-              <td style={{ padding: "10px 6px", fontWeight: 600 }}>{c.name}</td>
-              <td style={{ padding: "10px 6px", color: c.ok ? "#666" : "#b91c1c" }}>{c.detail}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="panel">
+        <div className="bd" style={{ padding: "4px 15px" }}>
+          <table className="check-table">
+            <tbody>
+              {checks.map((c) => (
+                <tr key={c.name}>
+                  <td style={{ color: c.ok ? "var(--good)" : "var(--bad)" }}>
+                    <Icon name={c.ok ? "check" : "warn"} size={15} strokeWidth={2} />
+                  </td>
+                  <td>{c.name}</td>
+                  <td className={c.ok ? "pass" : "fail"}>{c.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {rawError && (
-        <details style={{ marginTop: 22, fontSize: 12, color: "#6b7280" }}>
+        <details style={{ marginTop: 18, fontSize: 12, color: "var(--muted)" }}>
           <summary style={{ cursor: "pointer" }}>구글이 보낸 원래 메시지 보기 (개발자용)</summary>
-          <pre
-            style={{
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-all",
-              background: "#f9fafb",
-              padding: 12,
-              borderRadius: 8,
-              marginTop: 8,
-            }}
-          >
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--surface-2)",
+                        padding: 12, borderRadius: 8, marginTop: 8 }}>
             {rawError.slice(0, 800)}
           </pre>
         </details>
       )}
 
-      <p style={{ marginTop: 24 }}>
-        <a href="/" style={{ color: "#4f46e5" }}>로그인 화면으로</a>
+      <p style={{ marginTop: 22 }}>
+        <a href="/" style={{ color: "var(--accent)", fontWeight: 600 }}>로그인 화면으로</a>
       </p>
     </main>
   );
