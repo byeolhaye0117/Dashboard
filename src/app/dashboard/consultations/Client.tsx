@@ -28,6 +28,33 @@ const STAGES = ["예약", "약속전환", "등록", "미등록"];
 
 const CHANNELS = ["전화문의", "네이버톡톡", "카카오채널", "네이버플레이스예약", "문자"];
 
+/**
+ * 미등록 사유 — 두 가지는 원인이 완전히 다르다
+ *
+ * 미방문 : 약속은 잡혔는데 오지 않았다 → 예약 관리·리마인드 문제
+ * 등록실패: 방문은 했는데 등록하지 않았다 → 상담·가격·시설 문제
+ *
+ * 섞어서 세면 어느 쪽을 고쳐야 할지 알 수 없어 따로 둔다.
+ */
+const NOSHOW_REASONS = [
+  "연락 두절",
+  "약속 취소",
+  "일정 미룸",
+  "말없이 안 옴",
+];
+const FAIL_REASONS = [
+  "가격 부담",
+  "거리 · 위치",
+  "운영 시간 안 맞음",
+  "시설 · 환경",
+  "타 업체 등록",
+  "단순 문의였음",
+  "기타",
+];
+
+/** 이 사유가 미방문 쪽인가 */
+const isNoShowReason = (r: string) => NOSHOW_REASONS.includes((r ?? "").trim());
+
 const STAGE_TONE: Record<string, string> = {
   예약: "point",
   약속전환: "warn",
@@ -132,10 +159,12 @@ export default function Client(p: Props) {
   ).length;
 
   // 미등록 사유 중 가장 많은 것
+  const failed = inMonth.filter((c) => stageNow(c) === "미등록");
+  const noShow = failed.filter((c) => isNoShowReason(c["미등록사유"])).length;
   const failTop = (() => {
     const cnt: Record<string, number> = {};
-    inMonth
-      .filter((c) => stageNow(c) === "미등록" && c["미등록사유"])
+    failed
+      .filter((c) => c["미등록사유"])
       .forEach((c) => (cnt[c["미등록사유"]] = (cnt[c["미등록사유"]] ?? 0) + 1));
     const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
     return top ? top[0] : "";
@@ -198,9 +227,14 @@ export default function Client(p: Props) {
               {" "}그중 <b className="warn-text">{overdue}건</b>은 연락 예정일이 지났습니다.
             </>
           )}
-          {fail > 0 && failTop && (
+          {fail > 0 && (
             <>
-              {" "}미등록 사유는 <b>{failTop}</b>가 가장 많습니다.
+              {" "}미등록 {fail}건 중 <b>{noShow}건</b>은 약속하고도 오지 않은 경우입니다.
+              {failTop && (
+                <>
+                  {" "}사유는 <b>{failTop}</b>가 가장 많습니다.
+                </>
+              )}
             </>
           )}
         </p>
@@ -379,6 +413,7 @@ function NewForm({
     if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
     if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
     if (!f["문의채널"]) return setMsg("문의가 어디로 들어왔는지 골라주세요.");
+    if (f["진행상태"] === "미등록" && !f["미등록사유"]) return setMsg("미등록 사유를 골라주세요.");
     setBusy(true);
     const res = await fetch("/api/consultations", {
       method: "POST",
@@ -435,10 +470,13 @@ function NewForm({
           </L>
           {f["진행상태"] === "미등록" && (
             <L label="미등록 사유" full>
-              <select className="input" value={f["미등록사유"] ?? ""} onChange={(e) => set("미등록사유", e.target.value)}>
-                <option value="">선택</option>
-                {(options["미등록사유"] ?? []).map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
+              <ReasonPick
+                value={f["미등록사유"] ?? ""}
+                onChange={(v) => set("미등록사유", v)}
+                detail={f["메모"] ?? ""}
+                onDetail={(v) => set("메모", v)}
+                extra={options["미등록사유"]}
+              />
             </L>
           )}
           <Sel label="성별" k="성별" f={f} set={set} opts={options["성별"]} />
@@ -492,6 +530,7 @@ function Detail({
   const [stage, setStage] = useState(stageNow(item));
   const [nextDate, setNextDate] = useState(item["다음연락예정일"] ?? "");
   const [reason, setReason] = useState(item["미등록사유"] ?? "");
+  const [reasonMemo, setReasonMemo] = useState("");
   const [kind, setKind] = useState((options["상담활동종류"] ?? ["전화"])[0]);
   const [content, setContent] = useState("");
   const [msg, setMsg] = useState("");
@@ -539,6 +578,9 @@ function Detail({
   }
 
   async function saveStage() {
+    // 사유를 안 남기면 나중에 왜 놓쳤는지 알 수 없다
+    if (stage === "미등록" && !reason) return setMsg("미등록 사유를 골라주세요.");
+
     setBusy(true);
     const res = await fetch("/api/consultations/update", {
       method: "POST",
@@ -549,8 +591,23 @@ function Detail({
       }),
     });
     const data = await res.json();
-    setBusy(false);
-    if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
+    if (!res.ok) {
+      setBusy(false);
+      return setMsg(data.error ?? "저장하지 못했습니다.");
+    }
+
+    // 자세한 사정은 연락 이력에 남겨서 나중에 읽을 수 있게 한다
+    if (stage === "미등록" && reasonMemo.trim()) {
+      await fetch("/api/consultations/activity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: item.id,
+          kind: isNoShowReason(reason) ? "미방문" : "미등록",
+          content: `${reason} · ${reasonMemo.trim()}`,
+        }),
+      });
+    }
     location.reload();
   }
 
@@ -659,6 +716,10 @@ function Detail({
           <Kv k="담당자" v={staffNames[item["상담자사번"]] ?? "-"} />
           <Kv k="접수자" v={staffNames[item["접수자사번"]] ?? "-"} />
           <Kv k="방문 약속" v={item["약속일시"]?.replace("T", " ")} />
+          <Kv
+            k={isNoShowReason(item["미등록사유"]) ? "미방문 사유" : "미등록 사유"}
+            v={item["미등록사유"]}
+          />
         </dl>
 
         {item["문의내용"] && (
@@ -708,10 +769,13 @@ function Detail({
               <button className="btn-ghost" onClick={saveStage} disabled={busy}>저장</button>
             </div>
             {stage === "미등록" && (
-              <select className="input" style={{ marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)}>
-                <option value="">미등록 사유를 골라주세요</option>
-                {(options["미등록사유"] ?? []).map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
+              <ReasonPick
+                value={reason}
+                onChange={setReason}
+                detail={reasonMemo}
+                onDetail={setReasonMemo}
+                extra={options["미등록사유"]}
+              />
             )}
           </>
         )}
@@ -776,6 +840,68 @@ function Sel({ label, k, f, set, opts }: {
         {(opts ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
     </L>
+  );
+}
+
+/**
+ * 미등록 사유 고르기
+ *
+ * 미방문인지 방문 후 등록실패인지를 먼저 나누고, 그다음 사유를 고른다.
+ * 시트 선택목록에 대표님이 따로 넣은 값이 있으면 뒤에 같이 보여준다.
+ */
+function ReasonPick({
+  value, onChange, detail, onDetail, extra,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  detail: string;
+  onDetail: (v: string) => void;
+  extra?: string[];
+}) {
+  const known = [...NOSHOW_REASONS, ...FAIL_REASONS];
+  const more = (extra ?? []).filter((r) => r && !known.includes(r));
+
+  return (
+    <div className="reason-box">
+      <div className="reason-tabs">
+        <button
+          type="button"
+          className={`mini-tab${value && isNoShowReason(value) ? " on" : ""}`}
+          onClick={() => onChange(NOSHOW_REASONS[0])}
+        >
+          미방문
+        </button>
+        <button
+          type="button"
+          className={`mini-tab${value && !isNoShowReason(value) ? " on" : ""}`}
+          onClick={() => onChange(FAIL_REASONS[0])}
+        >
+          방문했으나 미등록
+        </button>
+      </div>
+
+      <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">사유를 골라주세요</option>
+        <optgroup label="미방문 — 약속했는데 안 옴">
+          {NOSHOW_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+        </optgroup>
+        <optgroup label="방문했으나 미등록">
+          {FAIL_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+        </optgroup>
+        {more.length > 0 && (
+          <optgroup label="직접 추가한 사유">
+            {more.map((r) => <option key={r} value={r}>{r}</option>)}
+          </optgroup>
+        )}
+      </select>
+
+      <input
+        className="input"
+        placeholder="자세한 사정이 있으면 적어주세요 (선택)"
+        value={detail}
+        onChange={(e) => onDetail(e.target.value)}
+      />
+    </div>
   );
 }
 

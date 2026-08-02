@@ -290,6 +290,18 @@ button { font-family: inherit; }
 }
 .alert-soft b { font-weight: 800; }
 
+/* 미등록 사유 고르기 */
+.reason-box { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.reason-tabs { display: flex; gap: 6px; }
+.mini-tab {
+  flex: 1; height: 32px; padding: 0 10px;
+  background: var(--surface-2); color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.mini-tab:hover { color: var(--ink); }
+.mini-tab.on { background: var(--ink); color: var(--ink-on); border-color: var(--ink); }
+
 .track { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
 .track > i { display: block; height: 100%; border-radius: 3px; background: var(--point); }
 
