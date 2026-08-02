@@ -72,16 +72,29 @@ export default function Client(p: Props) {
 
   const thisMonth = now.slice(0, 7);
   const inMonth = p.items.filter((c) => (c["상담날짜"] ?? "").startsWith(thisMonth));
-  const appt = inMonth.filter(hasAppt).length;
-  const apptRate = inMonth.length ? Math.round((appt / inMonth.length) * 100) : 0;
+  const base = inMonth.length;
+  const pct = (n: number) => (base ? Math.round((n / base) * 100) : 0);
+
+  const appt = inMonth.filter(hasAppt).length;               // 약속을 잡은 건
   const done = inMonth.filter((c) => c["진행상태"] === "등록완료").length;
-  const doneRate = inMonth.length ? Math.round((done / inMonth.length) * 100) : 0;
+  const fail = inMonth.filter((c) => c["진행상태"] === "미등록").length;
+  const open = base - done - fail;                            // 아직 결론이 안 난 건
   const overdue = p.items.filter(
     (c) =>
       !["등록완료", "미등록"].includes(c["진행상태"]) &&
       c["다음연락예정일"] &&
       c["다음연락예정일"] < now
   ).length;
+
+  // 미등록 사유 중 가장 많은 것
+  const failTop = (() => {
+    const cnt: Record<string, number> = {};
+    inMonth
+      .filter((c) => c["진행상태"] === "미등록" && c["미등록사유"])
+      .forEach((c) => (cnt[c["미등록사유"]] = (cnt[c["미등록사유"]] ?? 0) + 1));
+    const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+    return top ? top[0] : "";
+  })();
 
   const branchName = (code: string) => p.branches.find((b) => b.code === code)?.name ?? code;
 
@@ -109,25 +122,38 @@ export default function Client(p: Props) {
           <div className="vl num">{inMonth.length}</div>
           <div className="dt">전체 {p.items.length}건 누적</div>
         </div>
-        <div className="stat">
-          <div className="lb">약속전환</div>
-          <div className="vl num">{appt}</div>
-          <div className="dt">연락해서 약속을 잡은 건</div>
-        </div>
         <div className="stat hero">
           <div className="lb">약속전환율</div>
-          <div className="vl num">{apptRate}%</div>
-          <div className="dt">문의 {inMonth.length}건 중 {appt}건</div>
+          <div className="vl num">{pct(appt)}%</div>
+          <div className="dt">문의 {base}건 중 {appt}건 약속</div>
         </div>
         <div className="stat">
-          <div className="lb">등록 완료</div>
-          <div className="vl num">{done}</div>
-          <div className="dt">
-            등록률 {doneRate}%
-            {overdue > 0 && <span style={{ color: "var(--bad)" }}> · 연락 놓친 건 {overdue}</span>}
-          </div>
+          <div className="lb">등록전환율</div>
+          <div className="vl num" style={{ color: "var(--good)" }}>{pct(done)}%</div>
+          <div className="dt">{base}건 중 {done}건 등록</div>
+        </div>
+        <div className="stat">
+          <div className="lb">등록실패율</div>
+          <div className="vl num" style={{ color: fail ? "var(--bad)" : undefined }}>{pct(fail)}%</div>
+          <div className="dt">{base}건 중 {fail}건 미등록</div>
         </div>
       </div>
+
+      {base > 0 && (
+        <p className="stat-note">
+          이번 달 문의 {base}건 가운데 <b>{open}건</b>이 아직 진행 중입니다.
+          {overdue > 0 && (
+            <>
+              {" "}그중 <b className="warn-text">{overdue}건</b>은 연락 예정일이 지났습니다.
+            </>
+          )}
+          {fail > 0 && failTop && (
+            <>
+              {" "}미등록 사유는 <b>{failTop}</b>가 가장 많습니다.
+            </>
+          )}
+        </p>
+      )}
 
       <div className="filters">
         <div className="chips">
