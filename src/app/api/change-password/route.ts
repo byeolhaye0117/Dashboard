@@ -3,10 +3,9 @@ import bcrypt from "bcryptjs";
 import { readSheet, updateCell } from "@/lib/sheets";
 import { SHEET, getStaffAll } from "@/lib/data";
 import { readSession, createSession } from "@/lib/session";
+import { PW_COLUMN, TEMP_COLUMN } from "@/lib/staffAdmin";
 
 export const dynamic = "force-dynamic";
-
-const PW_COLUMN = "비밀번호(자동암호화)";
 
 /** 본인 비밀번호 변경 */
 export async function POST(req: Request) {
@@ -33,6 +32,10 @@ export async function POST(req: Request) {
 
     const hash = await bcrypt.hash(String(newPassword), 10);
     await updateCell(SHEET.직원, staff.rowNumber, col, hash);
+
+    // 본인이 정한 비밀번호이므로 임시 표시를 지운다
+    const tempCol = headers.indexOf(TEMP_COLUMN);
+    if (tempCol >= 0) await updateCell(SHEET.직원, staff.rowNumber, tempCol, "");
 
     await createSession({ ...session, mustChangePassword: false });
     return NextResponse.json({ ok: true });

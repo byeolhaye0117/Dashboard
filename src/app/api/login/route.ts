@@ -40,6 +40,8 @@ export async function POST(req: Request) {
     if (staff.passwordHash) {
       const ok = await bcrypt.compare(password, staff.passwordHash);
       if (!ok) return fail();
+      // 관리자가 발급해준 임시 비밀번호면 본인 것으로 바꾸게 한다
+      mustChangePassword = staff.temp;
     } else {
       // 비밀번호가 아직 없는 계정
       const init = process.env.ADMIN_INIT_PASSWORD;

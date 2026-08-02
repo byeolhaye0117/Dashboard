@@ -301,6 +301,22 @@ button { font-family: inherit; }
 }
 .mini-tab:hover { color: var(--ink); }
 .mini-tab.on { background: var(--ink); color: var(--ink-on); border-color: var(--ink); }
+.mini-tab:disabled { opacity: .55; cursor: default; }
+
+/* 담당 지점처럼 여러 개를 고르는 줄 */
+.pick-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick-row .mini-tab { flex: 0 0 auto; min-width: 84px; }
+
+/* 발급된 임시 비밀번호 — 한 번만 보이는 값이라 크게 띄운다 */
+.pw-show {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 12px; padding: 14px 16px;
+  background: var(--surface-2); border: 1px dashed var(--line); border-radius: var(--r-sm);
+}
+.pw-val {
+  flex: 1; font-size: 24px; font-weight: 800; letter-spacing: .12em;
+  color: var(--ink); user-select: all; word-break: break-all;
+}
 
 .track { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
 .track > i { display: block; height: 100%; border-radius: 3px; background: var(--point); }

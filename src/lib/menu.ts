@@ -38,6 +38,14 @@ export async function abilitiesFor(roleCode: string): Promise<Map<string, Abilit
     );
   // 홈은 로그인한 사람 누구나 본다
   map.set("홈", { view: true, create: false, update: false, remove: false, condition: "" });
+
+  // 대표가 관리 화면에서 잠기는 것만은 막는다.
+  // 시트 권한 탭에 줄이 아예 없을 때만 채워 넣으므로, 대표님이 직접 정하신 값은 그대로 둔다.
+  if (roleCode === "R1") {
+    const ALL: Ability = { view: true, create: true, update: true, remove: true, condition: "" };
+    if (!map.has("직원관리")) map.set("직원관리", ALL);
+    if (!map.has("권한설정")) map.set("권한설정", ALL);
+  }
   return map;
 }
 

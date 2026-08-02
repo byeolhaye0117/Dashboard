@@ -34,6 +34,8 @@ export type Staff = {
   passwordHash: string;
   status: string;
   active: boolean;
+  /** 임시 비밀번호 상태 — 처음 로그인할 때 새로 정하게 한다 */
+  temp: boolean;
   /** 시트에서 이 직원이 몇 번째 줄인지 (비밀번호를 고칠 때 쓴다) */
   rowNumber: number;
 };
@@ -100,6 +102,7 @@ export async function getStaffAll(): Promise<Staff[]> {
       roleCode: r["직급코드"],
       mainBranch: r["주소속지점"] ?? "",
       passwordHash: r["비밀번호(자동암호화)"] ?? "",
+      temp: yes(r["비밀번호임시"] ?? ""),
       status: r["재직상태"] ?? "재직중",
       active: yes(r["계정사용"] || "Y") && (r["재직상태"] ?? "재직중") === "재직중",
       rowNumber: rowNumbers[i],
