@@ -104,6 +104,8 @@ export type NewConsultation = {
   약속일시?: string;
   다음연락예정일?: string;
   메모?: string;
+  진행상태?: string;
+  미등록사유?: string;
 };
 
 export async function createConsultation(
@@ -113,6 +115,13 @@ export async function createConsultation(
   const { headers, items } = await listConsultations();
   const id = nextId(items.map((i) => i.id), "C", 5);
   const stamp = now();
+
+  const picked = (input.진행상태 ?? "").trim();
+  const stage = (STAGES as readonly string[]).includes(picked)
+    ? picked
+    : input.약속일시
+      ? "약속전환"
+      : "신규";
 
   const row: Row = {
     상담번호: id,
@@ -131,10 +140,11 @@ export async function createConsultation(
     상담자사번: input.상담자사번 || staffId,
     접수자사번: staffId,
     약속일시: input.약속일시 ?? "",
-    진행상태: input.약속일시 ? "약속전환" : "신규",
-    등록여부: "N",
+    // 접수하는 사람이 고른 상태를 그대로 쓴다. 안 고르면 약속 유무로 정한다
+    진행상태: stage,
+    등록여부: stage === DONE_STAGE ? "Y" : "N",
     전환회원번호: "",
-    미등록사유: "",
+    미등록사유: stage === "미등록" ? (input.미등록사유 ?? "") : "",
     다음연락예정일: input.다음연락예정일 ?? "",
     메모: input.메모 ?? "",
     등록일시: stamp,

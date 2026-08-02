@@ -292,6 +292,7 @@ function NewForm({
     상담날짜: today(),
     지점코드: defaultBranch,
     상담자사번: me,
+    진행상태: "신규",
   });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -345,16 +346,39 @@ function NewForm({
             </select>
           </L>
           <Sel label="문의유형" k="문의유형" f={f} set={set} opts={options["문의유형"]} />
+          <L label="진행 상태">
+            <select className="input" value={f["진행상태"] ?? "신규"} onChange={(e) => set("진행상태", e.target.value)}>
+              {STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
+            </select>
+          </L>
           <L label="담당자">
             <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => set("상담자사번", e.target.value)}>
               {counselors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </L>
+          {f["진행상태"] === "미등록" && (
+            <L label="미등록 사유" full>
+              <select className="input" value={f["미등록사유"] ?? ""} onChange={(e) => set("미등록사유", e.target.value)}>
+                <option value="">선택</option>
+                {(options["미등록사유"] ?? []).map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </L>
+          )}
           <Sel label="성별" k="성별" f={f} set={set} opts={options["성별"]} />
           <Sel label="나이대" k="나이대" f={f} set={set} opts={options["나이대"]} />
           <L label="방문 약속 일시" full>
-            <input className="input" type="datetime-local" value={f["약속일시"] ?? ""}
-                   onChange={(e) => set("약속일시", e.target.value)} />
+            <input
+              className="input"
+              type="datetime-local"
+              value={f["약속일시"] ?? ""}
+              onChange={(e) => {
+                set("약속일시", e.target.value);
+                // 약속을 잡으면 상태도 같이 올려준다. 원하면 다시 바꿀 수 있다
+                if (e.target.value && (f["진행상태"] === "신규" || !f["진행상태"])) {
+                  set("진행상태", "약속전환");
+                }
+              }}
+            />
           </L>
           <L label="문의 내용" full>
             <textarea className="input area" rows={3} value={f["문의내용"] ?? ""}
