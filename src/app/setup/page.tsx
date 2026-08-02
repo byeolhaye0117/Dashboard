@@ -204,8 +204,11 @@ export default async function SetupPage() {
         </details>
       )}
 
-      <p style={{ marginTop: 22 }}>
-        <a href="/" style={{ color: "var(--accent)", fontWeight: 600 }}>로그인 화면으로</a>
+      <p style={{ marginTop: 22, display: "flex", gap: 12, alignItems: "baseline" }}>
+        <a href="/" style={{ color: "var(--point)", fontWeight: 600 }}>로그인 화면으로</a>
+        <span className="build-tag">
+          화면 버전 {(process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7) || "로컬"}
+        </span>
       </p>
     </main>
   );

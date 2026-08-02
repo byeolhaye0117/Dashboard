@@ -133,6 +133,10 @@ export default function LoginPage() {
 
         <p className="auth-foot">
           로그인이 안 되면 <a href="/setup">연결 점검</a> 화면을 확인하세요
+          <br />
+          <span className="build-tag">
+            화면 버전 {(process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7) || "로컬"}
+          </span>
         </p>
       </form>
     </main>
