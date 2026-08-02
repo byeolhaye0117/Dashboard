@@ -131,7 +131,7 @@ export async function createConsultation(
     상담자사번: input.상담자사번 || staffId,
     접수자사번: staffId,
     약속일시: input.약속일시 ?? "",
-    진행상태: input.약속일시 ? "예약확정" : "신규",
+    진행상태: input.약속일시 ? "약속전환" : "신규",
     등록여부: "N",
     전환회원번호: "",
     미등록사유: "",

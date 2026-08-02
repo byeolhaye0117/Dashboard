@@ -122,19 +122,19 @@ export default function Client(p: Props) {
           <div className="vl num">{inMonth.length}</div>
           <div className="dt">전체 {p.items.length}건 누적</div>
         </div>
-        <div className="stat hero">
+        <div className="stat">
           <div className="lb">약속전환율</div>
           <div className="vl num">{pct(appt)}%</div>
           <div className="dt">문의 {base}건 중 {appt}건 약속</div>
         </div>
         <div className="stat">
           <div className="lb">등록전환율</div>
-          <div className="vl num" style={{ color: "var(--good)" }}>{pct(done)}%</div>
+          <div className="vl num">{pct(done)}%</div>
           <div className="dt">{base}건 중 {done}건 등록</div>
         </div>
         <div className="stat">
           <div className="lb">등록실패율</div>
-          <div className="vl num" style={{ color: fail ? "var(--bad)" : undefined }}>{pct(fail)}%</div>
+          <div className="vl num">{pct(fail)}%</div>
           <div className="dt">{base}건 중 {fail}건 미등록</div>
         </div>
       </div>
