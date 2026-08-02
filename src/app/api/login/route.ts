@@ -2,8 +2,19 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getStaffAll, getStaffBranches, getRoles } from "@/lib/data";
 import { createSession } from "@/lib/session";
+import { setPassword } from "@/lib/staffAdmin";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * 이 값이 암호화된 비밀번호인가
+ *
+ * bcrypt 로 암호화한 값은 항상 $2a$ / $2b$ / $2y$ 로 시작하는 60글자다.
+ * 그렇지 않으면 사람이 시트에 글자 그대로 적어 넣은 것이다.
+ */
+function looksEncrypted(v: string): boolean {
+  return /^\$2[aby]\$\d{2}\$.{53}$/.test(v);
+}
 
 /**
  * 로그인.
@@ -37,11 +48,18 @@ export async function POST(req: Request) {
 
     let mustChangePassword = false;
 
-    if (staff.passwordHash) {
+    if (staff.passwordHash && looksEncrypted(staff.passwordHash)) {
       const ok = await bcrypt.compare(password, staff.passwordHash);
       if (!ok) return fail();
       // 관리자가 발급해준 임시 비밀번호면 본인 것으로 바꾸게 한다
       mustChangePassword = staff.temp;
+    } else if (staff.passwordHash) {
+      // 시트 비밀번호 칸에 사람이 직접 적어 넣은 경우.
+      // 맞으면 받아주되, 그 자리에서 암호로 바꿔 저장한다.
+      // 시트에 비밀번호가 글자 그대로 남아 있으면 시트를 여는 사람 누구나 볼 수 있다.
+      if (password !== staff.passwordHash) return fail();
+      await setPassword(staff.id, password, true);
+      mustChangePassword = true;
     } else {
       // 비밀번호가 아직 없는 계정
       const init = process.env.ADMIN_INIT_PASSWORD;
