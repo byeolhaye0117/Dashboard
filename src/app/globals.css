@@ -577,3 +577,13 @@ table.grid .late { color: var(--bad); font-weight: 700; }
 .modal-lead {
   margin: -8px 0 16px; font-size: 12.5px; color: var(--muted); line-height: 1.6;
 }
+
+/* 칩 사이 구분선 — 채널과 전환 단계를 나눈다 */
+.chip-div {
+  width: 1px; height: 20px; background: var(--line);
+  margin: 0 4px; align-self: center; flex: 0 0 1px;
+}
+/* 가장 중요한 숫자 */
+.stat.hero { background: var(--ink); border-color: var(--ink); }
+.stat.hero .lb, .stat.hero .dt { color: color-mix(in srgb, var(--ink-on) 62%, transparent); }
+.stat.hero .vl { color: var(--ink-on); }

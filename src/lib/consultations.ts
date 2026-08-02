@@ -11,17 +11,41 @@ import { formatPhone } from "./phone";
 export const SHEET_C = "상담";
 export const SHEET_A = "상담활동";
 
-/** 진행 상태는 순서가 있다. 뒤로 갈수록 등록에 가깝다 */
+/**
+ * 진행 상태 — 뒤로 갈수록 등록에 가깝다
+ *
+ * 예약    : 예약이 들어온 것 (네이버 플레이스 예약 등). 아직 우리가 한 일은 없다
+ * 약속전환: 우리가 연락해서 방문 약속을 잡은 것. 이게 핵심 지표다
+ */
 export const STAGES = [
   "신규",
   "연락중",
-  "약속대기",
-  "예약확정",
+  "예약",
+  "약속전환",
   "방문완료",
   "등록완료",
   "미등록",
 ] as const;
 export type Stage = (typeof STAGES)[number];
+
+/** 문의가 들어오는 통로 */
+export const CHANNELS = [
+  "전화문의",
+  "네이버톡톡",
+  "카카오채널",
+  "네이버플레이스예약",
+  "문자",
+] as const;
+
+/**
+ * 문의 채널이 시트의 어느 칸에 들어 있는지
+ *
+ * 시트 제목 줄이 아직 "방문경로" 인 경우가 있어 둘 다 받아준다.
+ * 저장할 때도 두 이름에 같이 넣어두면, 실제로 있는 칸에만 들어간다.
+ */
+export function readChannel(r: Row): string {
+  return (r["문의채널"] || r["방문경로"] || "").trim();
+}
 
 /** 등록으로 이어진 상태 */
 export const DONE_STAGE: Stage = "등록완료";
@@ -75,9 +99,7 @@ export type NewConsultation = {
   지점코드: string;
   문의유형?: string;
   문의내용?: string;
-  방문경로?: string;
-  거주동네?: string;
-  직업?: string;
+  문의채널?: string;
   상담자사번?: string;
   약속일시?: string;
   다음연락예정일?: string;
@@ -103,9 +125,9 @@ export async function createConsultation(
     지점코드: input.지점코드,
     문의유형: input.문의유형 ?? "",
     문의내용: input.문의내용 ?? "",
-    방문경로: input.방문경로 ?? "",
-    거주동네: input.거주동네 ?? "",
-    직업: input.직업 ?? "",
+    // 시트 제목 줄이 문의채널이든 방문경로든 들어가도록 둘 다 채운다
+    문의채널: input.문의채널 ?? "",
+    방문경로: input.문의채널 ?? "",
     상담자사번: input.상담자사번 || staffId,
     접수자사번: staffId,
     약속일시: input.약속일시 ?? "",
@@ -139,6 +161,11 @@ export async function patchConsultation(
   const stamp = now();
   const merged: Row = { ...target, ...changes, 수정일시: stamp, 수정자: staffId };
   if (merged["전화번호"]) merged["전화번호"] = formatPhone(merged["전화번호"]);
+  // 문의 채널은 시트 제목 줄이 어느 쪽이든 맞도록 두 칸에 같이 넣는다
+  if (changes["문의채널"] !== undefined) {
+    merged["문의채널"] = changes["문의채널"];
+    merged["방문경로"] = changes["문의채널"];
+  }
 
   // 등록완료로 바뀌면 등록여부도 같이 맞춘다
   if (merged["진행상태"] === DONE_STAGE) merged["등록여부"] = "Y";

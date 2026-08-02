@@ -24,20 +24,27 @@ type Props = {
   can: { create: boolean; update: boolean; remove: boolean };
 };
 
-const STAGES = ["신규", "연락중", "약속대기", "예약확정", "방문완료", "등록완료", "미등록"];
+const STAGES = ["신규", "연락중", "예약", "약속전환", "방문완료", "등록완료", "미등록"];
+
+const CHANNELS = ["전화문의", "네이버톡톡", "카카오채널", "네이버플레이스예약", "문자"];
 
 const STAGE_TONE: Record<string, string> = {
   신규: "point",
   연락중: "",
-  약속대기: "warn",
-  예약확정: "warn",
+  예약: "warn",
+  약속전환: "warn",
   방문완료: "",
   등록완료: "good",
   미등록: "bad",
 };
 
+/** 문의 채널 — 시트 제목 줄이 아직 방문경로일 수도 있어 둘 다 본다 */
+const chan = (c: Row) => (c["문의채널"] || c["방문경로"] || "").trim();
+/** 약속을 잡았는가 — 약속일시가 채워졌으면 잡은 것이다 */
+const hasAppt = (c: Row) => Boolean((c["약속일시"] ?? "").trim());
+
 export default function Client(p: Props) {
-  const [stage, setStage] = useState("전체");
+  const [tab, setTab] = useState("전체");
   const [branch, setBranch] = useState("전체");
   const [q, setQ] = useState("");
   const [openNew, setOpenNew] = useState(false);
@@ -47,7 +54,13 @@ export default function Client(p: Props) {
 
   const list = useMemo(() => {
     return p.items.filter((c) => {
-      if (stage !== "전체" && c["진행상태"] !== stage) return false;
+      if (tab !== "전체") {
+        if (tab === "예약") {
+          if (c["진행상태"] !== "예약") return false;
+        } else if (tab === "약속전환") {
+          if (!hasAppt(c)) return false;
+        } else if (chan(c) !== tab) return false;
+      }
       if (branch !== "전체" && c["지점코드"] !== branch) return false;
       if (q) {
         const hay = `${c["이름"]} ${c["전화번호"]} ${c["문의내용"]}`.toLowerCase();
@@ -55,12 +68,14 @@ export default function Client(p: Props) {
       }
       return true;
     });
-  }, [p.items, stage, branch, q]);
+  }, [p.items, tab, branch, q]);
 
   const thisMonth = now.slice(0, 7);
   const inMonth = p.items.filter((c) => (c["상담날짜"] ?? "").startsWith(thisMonth));
+  const appt = inMonth.filter(hasAppt).length;
+  const apptRate = inMonth.length ? Math.round((appt / inMonth.length) * 100) : 0;
   const done = inMonth.filter((c) => c["진행상태"] === "등록완료").length;
-  const rate = inMonth.length ? Math.round((done / inMonth.length) * 100) : 0;
+  const doneRate = inMonth.length ? Math.round((done / inMonth.length) * 100) : 0;
   const overdue = p.items.filter(
     (c) =>
       !["등록완료", "미등록"].includes(c["진행상태"]) &&
@@ -90,37 +105,51 @@ export default function Client(p: Props) {
 
       <div className="stats">
         <div className="stat">
-          <div className="lb">이번 달 상담</div>
+          <div className="lb">이번 달 문의</div>
           <div className="vl num">{inMonth.length}</div>
           <div className="dt">전체 {p.items.length}건 누적</div>
         </div>
         <div className="stat">
-          <div className="lb">등록 전환</div>
+          <div className="lb">약속전환</div>
+          <div className="vl num">{appt}</div>
+          <div className="dt">연락해서 약속을 잡은 건</div>
+        </div>
+        <div className="stat hero">
+          <div className="lb">약속전환율</div>
+          <div className="vl num">{apptRate}%</div>
+          <div className="dt">문의 {inMonth.length}건 중 {appt}건</div>
+        </div>
+        <div className="stat">
+          <div className="lb">등록 완료</div>
           <div className="vl num">{done}</div>
-          <div className="dt">이번 달 기준</div>
-        </div>
-        <div className="stat">
-          <div className="lb">전환율</div>
-          <div className="vl num">{rate}%</div>
-          <div className="dt">{inMonth.length}건 중 {done}건</div>
-        </div>
-        <div className="stat">
-          <div className="lb">연락 놓친 건</div>
-          <div className="vl num" style={{ color: overdue ? "var(--bad)" : undefined }}>{overdue}</div>
-          <div className="dt">{overdue ? "예정일이 지났습니다" : "밀린 건 없습니다"}</div>
+          <div className="dt">
+            등록률 {doneRate}%
+            {overdue > 0 && <span style={{ color: "var(--bad)" }}> · 연락 놓친 건 {overdue}</span>}
+          </div>
         </div>
       </div>
 
       <div className="filters">
         <div className="chips">
-          {["전체", ...STAGES].map((s) => (
-            <button key={s} className={`chip${stage === s ? " on" : ""}`} onClick={() => setStage(s)}>
-              {s}
-              {s !== "전체" && (
-                <span className="cnt num">{p.items.filter((c) => c["진행상태"] === s).length}</span>
-              )}
+          <button className={`chip${tab === "전체" ? " on" : ""}`} onClick={() => setTab("전체")}>
+            전체<span className="cnt num">{p.items.length}</span>
+          </button>
+
+          {CHANNELS.map((ch) => (
+            <button key={ch} className={`chip${tab === ch ? " on" : ""}`} onClick={() => setTab(ch)}>
+              {ch}
+              <span className="cnt num">{p.items.filter((c) => chan(c) === ch).length}</span>
             </button>
           ))}
+
+          <span className="chip-div" aria-hidden="true" />
+
+          <button className={`chip${tab === "예약" ? " on" : ""}`} onClick={() => setTab("예약")}>
+            예약<span className="cnt num">{p.items.filter((c) => c["진행상태"] === "예약").length}</span>
+          </button>
+          <button className={`chip${tab === "약속전환" ? " on" : ""}`} onClick={() => setTab("약속전환")}>
+            약속전환<span className="cnt num">{p.items.filter(hasAppt).length}</span>
+          </button>
         </div>
         <div className="filter-right">
           {p.branches.length > 1 && (
@@ -158,7 +187,7 @@ export default function Client(p: Props) {
                 <th>이름</th>
                 <th>연락처</th>
                 <th>상담일</th>
-                <th>경로</th>
+                <th>채널</th>
                 <th>담당</th>
                 <th>지점</th>
                 <th>다음 연락</th>
@@ -176,7 +205,7 @@ export default function Client(p: Props) {
                     <td className="strong">{c["이름"]}</td>
                     <td className="num">{showPhone(c["전화번호"])}</td>
                     <td className="num dim">{(c["상담날짜"] ?? "").slice(5)}</td>
-                    <td className="dim">{c["방문경로"]}</td>
+                    <td className="dim">{chan(c) || "-"}</td>
                     <td className="dim">{p.staffNames[c["상담자사번"]] ?? "-"}</td>
                     <td className="dim">{branchName(c["지점코드"])}</td>
                     <td className={late ? "late num" : "num dim"}>
@@ -245,6 +274,7 @@ function NewForm({
   async function save() {
     if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
     if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
+    if (!f["문의채널"]) return setMsg("문의가 어디로 들어왔는지 골라주세요.");
     setBusy(true);
     const res = await fetch("/api/consultations", {
       method: "POST",
@@ -280,6 +310,12 @@ function NewForm({
           <L label="지점">
             <select className="input" value={f["지점코드"] ?? ""} onChange={(e) => set("지점코드", e.target.value)}>
               {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+            </select>
+          </L>
+          <L label="문의 채널" req>
+            <select className="input" value={f["문의채널"] ?? ""} onChange={(e) => set("문의채널", e.target.value)}>
+              <option value="">선택</option>
+              {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </L>
           <Sel label="문의유형" k="문의유형" f={f} set={set} opts={options["문의유형"]} />
@@ -350,7 +386,7 @@ function Detail({
         changes: {
           이름: f["이름"], 전화번호: f["전화번호"], 상담날짜: f["상담날짜"],
           성별: f["성별"], 나이대: f["나이대"], 문의유형: f["문의유형"],
-          방문경로: f["방문경로"], 거주동네: f["거주동네"], 직업: f["직업"],
+          문의채널: f["문의채널"] ?? f["방문경로"] ?? "",
           상담자사번: f["상담자사번"], 약속일시: f["약속일시"],
           문의내용: f["문의내용"], 메모: f["메모"],
         },
@@ -437,12 +473,16 @@ function Detail({
                   ))}
                 </select>
               </L>
-              <Sel label="방문경로" k="방문경로" f={f} set={setV} opts={options["방문경로"]} />
+              <L label="문의 채널">
+                <select className="input" value={f["문의채널"] || f["방문경로"] || ""}
+                        onChange={(e) => setV("문의채널", e.target.value)}>
+                  <option value="">선택</option>
+                  {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </L>
               <Sel label="문의유형" k="문의유형" f={f} set={setV} opts={options["문의유형"]} />
               <Sel label="성별" k="성별" f={f} set={setV} opts={options["성별"]} />
               <Sel label="나이대" k="나이대" f={f} set={setV} opts={options["나이대"]} />
-              <Sel label="거주동네" k="거주동네" f={f} set={setV} opts={options["거주동네"]} />
-              <Sel label="직업" k="직업" f={f} set={setV} opts={options["직업"]} />
               <L label="방문 약속 일시" full>
                 <input className="input" type="datetime-local" value={f["약속일시"] ?? ""}
                        onChange={(e) => setV("약속일시", e.target.value)} />
@@ -473,11 +513,9 @@ function Detail({
         <dl className="kv">
           <Kv k="상담일" v={korDate(item["상담날짜"])} />
           <Kv k="지점" v={branchName} />
-          <Kv k="방문경로" v={item["방문경로"]} />
+          <Kv k="문의 채널" v={chan(item)} />
           <Kv k="문의유형" v={item["문의유형"]} />
           <Kv k="성별 · 나이" v={[item["성별"], item["나이대"]].filter(Boolean).join(" · ")} />
-          <Kv k="거주동네" v={item["거주동네"]} />
-          <Kv k="직업" v={item["직업"]} />
           <Kv k="담당자" v={staffNames[item["상담자사번"]] ?? "-"} />
           <Kv k="접수자" v={staffNames[item["접수자사번"]] ?? "-"} />
           <Kv k="방문 약속" v={item["약속일시"]?.replace("T", " ")} />
