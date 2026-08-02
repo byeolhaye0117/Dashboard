@@ -24,18 +24,25 @@ type Props = {
   can: { create: boolean; update: boolean; remove: boolean };
 };
 
-const STAGES = ["신규", "연락중", "예약", "약속전환", "방문완료", "등록완료", "미등록"];
+const STAGES = ["예약", "약속전환", "등록", "미등록"];
 
 const CHANNELS = ["전화문의", "네이버톡톡", "카카오채널", "네이버플레이스예약", "문자"];
 
 const STAGE_TONE: Record<string, string> = {
-  신규: "point",
-  연락중: "",
-  예약: "warn",
+  예약: "point",
   약속전환: "warn",
-  방문완료: "",
-  등록완료: "good",
+  등록: "good",
   미등록: "bad",
+};
+
+/** 예전 상태값도 4단계로 맞춰서 보여준다 */
+const OLD_STAGE: Record<string, string> = {
+  신규: "예약", 연락중: "예약", 약속대기: "예약",
+  예약확정: "약속전환", 방문완료: "약속전환", 등록완료: "등록",
+};
+const stageOf = (c: Row) => {
+  const t = (c["진행상태"] ?? "").trim();
+  return STAGES.includes(t) ? t : (OLD_STAGE[t] ?? "예약");
 };
 
 /** 문의 채널 — 시트 제목 줄이 아직 방문경로일 수도 있어 둘 다 본다 */
@@ -56,9 +63,11 @@ export default function Client(p: Props) {
     return p.items.filter((c) => {
       if (tab !== "전체") {
         if (tab === "예약") {
-          if (c["진행상태"] !== "예약") return false;
+          if (stageOf(c) !== "예약") return false;
         } else if (tab === "약속전환") {
           if (!hasAppt(c)) return false;
+        } else if (tab === "등록" || tab === "미등록") {
+          if (stageOf(c) !== tab) return false;
         } else if (chan(c) !== tab) return false;
       }
       if (branch !== "전체" && c["지점코드"] !== branch) return false;
@@ -76,12 +85,12 @@ export default function Client(p: Props) {
   const pct = (n: number) => (base ? Math.round((n / base) * 100) : 0);
 
   const appt = inMonth.filter(hasAppt).length;               // 약속을 잡은 건
-  const done = inMonth.filter((c) => c["진행상태"] === "등록완료").length;
-  const fail = inMonth.filter((c) => c["진행상태"] === "미등록").length;
+  const done = inMonth.filter((c) => stageOf(c) === "등록").length;
+  const fail = inMonth.filter((c) => stageOf(c) === "미등록").length;
   const open = base - done - fail;                            // 아직 결론이 안 난 건
   const overdue = p.items.filter(
     (c) =>
-      !["등록완료", "미등록"].includes(c["진행상태"]) &&
+      !["등록", "미등록"].includes(stageOf(c)) &&
       c["다음연락예정일"] &&
       c["다음연락예정일"] < now
   ).length;
@@ -90,7 +99,7 @@ export default function Client(p: Props) {
   const failTop = (() => {
     const cnt: Record<string, number> = {};
     inMonth
-      .filter((c) => c["진행상태"] === "미등록" && c["미등록사유"])
+      .filter((c) => stageOf(c) === "미등록" && c["미등록사유"])
       .forEach((c) => (cnt[c["미등록사유"]] = (cnt[c["미등록사유"]] ?? 0) + 1));
     const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
     return top ? top[0] : "";
@@ -171,10 +180,16 @@ export default function Client(p: Props) {
           <span className="chip-div" aria-hidden="true" />
 
           <button className={`chip${tab === "예약" ? " on" : ""}`} onClick={() => setTab("예약")}>
-            예약<span className="cnt num">{p.items.filter((c) => c["진행상태"] === "예약").length}</span>
+            예약<span className="cnt num">{p.items.filter((c) => stageOf(c) === "예약").length}</span>
           </button>
           <button className={`chip${tab === "약속전환" ? " on" : ""}`} onClick={() => setTab("약속전환")}>
             약속전환<span className="cnt num">{p.items.filter(hasAppt).length}</span>
+          </button>
+          <button className={`chip${tab === "등록" ? " on" : ""}`} onClick={() => setTab("등록")}>
+            등록<span className="cnt num">{p.items.filter((c) => stageOf(c) === "등록").length}</span>
+          </button>
+          <button className={`chip${tab === "미등록" ? " on" : ""}`} onClick={() => setTab("미등록")}>
+            미등록<span className="cnt num">{p.items.filter((c) => stageOf(c) === "미등록").length}</span>
           </button>
         </div>
         <div className="filter-right">
@@ -223,7 +238,7 @@ export default function Client(p: Props) {
             <tbody>
               {list.map((c) => {
                 const late =
-                  !["등록완료", "미등록"].includes(c["진행상태"]) &&
+                  !["등록", "미등록"].includes(stageOf(c)) &&
                   c["다음연락예정일"] &&
                   c["다음연락예정일"] < now;
                 return (
@@ -238,8 +253,8 @@ export default function Client(p: Props) {
                       {c["다음연락예정일"] ? (c["다음연락예정일"] ?? "").slice(5) : "-"}
                     </td>
                     <td>
-                      <span className={`pill ${STAGE_TONE[c["진행상태"]] ?? ""}`}>
-                        {c["진행상태"] || "신규"}
+                      <span className={`pill ${STAGE_TONE[stageOf(c)] ?? ""}`}>
+                        {stageOf(c)}
                       </span>
                     </td>
                   </tr>
@@ -292,7 +307,7 @@ function NewForm({
     상담날짜: today(),
     지점코드: defaultBranch,
     상담자사번: me,
-    진행상태: "신규",
+    진행상태: "예약",
   });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -374,7 +389,7 @@ function NewForm({
               onChange={(e) => {
                 set("약속일시", e.target.value);
                 // 약속을 잡으면 상태도 같이 올려준다. 원하면 다시 바꿀 수 있다
-                if (e.target.value && (f["진행상태"] === "신규" || !f["진행상태"])) {
+                if (e.target.value && (f["진행상태"] === "예약" || !f["진행상태"])) {
                   set("진행상태", "약속전환");
                 }
               }}
@@ -412,7 +427,7 @@ function Detail({
   canRemove: boolean;
   onClose: () => void;
 }) {
-  const [stage, setStage] = useState(item["진행상태"] || "신규");
+  const [stage, setStage] = useState(stageOf(item));
   const [nextDate, setNextDate] = useState(item["다음연락예정일"] ?? "");
   const [reason, setReason] = useState(item["미등록사유"] ?? "");
   const [kind, setKind] = useState((options["상담활동종류"] ?? ["전화"])[0]);
@@ -499,7 +514,7 @@ function Detail({
             <h3 style={{ margin: 0 }}>{item["이름"]}</h3>
             <span className="dim num">{showPhone(item["전화번호"])}</span>
           </div>
-          <span className={`pill ${STAGE_TONE[item["진행상태"]] ?? ""}`}>{item["진행상태"] || "신규"}</span>
+          <span className={`pill ${STAGE_TONE[stageOf(item)] ?? ""}`}>{stageOf(item)}</span>
         </div>
 
         {editing ? (

@@ -17,16 +17,27 @@ export const SHEET_A = "상담활동";
  * 예약    : 예약이 들어온 것 (네이버 플레이스 예약 등). 아직 우리가 한 일은 없다
  * 약속전환: 우리가 연락해서 방문 약속을 잡은 것. 이게 핵심 지표다
  */
-export const STAGES = [
-  "신규",
-  "연락중",
-  "예약",
-  "약속전환",
-  "방문완료",
-  "등록완료",
-  "미등록",
-] as const;
+export const STAGES = ["예약", "약속전환", "등록", "미등록"] as const;
 export type Stage = (typeof STAGES)[number];
+
+/**
+ * 예전에 쓰던 상태값을 지금 4단계로 맞춘다.
+ * 시트에 이미 들어간 값을 고치지 않아도 화면이 제대로 나오게 하기 위해서다.
+ */
+const OLD_STAGE: Record<string, Stage> = {
+  신규: "예약",
+  연락중: "예약",
+  약속대기: "예약",
+  예약확정: "약속전환",
+  방문완료: "약속전환",
+  등록완료: "등록",
+};
+
+export function normalizeStage(v: string): Stage {
+  const t = (v ?? "").trim();
+  if ((STAGES as readonly string[]).includes(t)) return t as Stage;
+  return OLD_STAGE[t] ?? "예약";
+}
 
 /** 문의가 들어오는 통로 */
 export const CHANNELS = [
@@ -48,9 +59,9 @@ export function readChannel(r: Row): string {
 }
 
 /** 등록으로 이어진 상태 */
-export const DONE_STAGE: Stage = "등록완료";
+export const DONE_STAGE: Stage = "등록";
 /** 더 이상 진행하지 않는 상태 */
-export const CLOSED: Stage[] = ["등록완료", "미등록"];
+export const CLOSED: Stage[] = ["등록", "미등록"];
 
 export type Consultation = Row & { id: string };
 
@@ -117,11 +128,11 @@ export async function createConsultation(
   const stamp = now();
 
   const picked = (input.진행상태 ?? "").trim();
-  const stage = (STAGES as readonly string[]).includes(picked)
-    ? picked
+  const stage: Stage = (STAGES as readonly string[]).includes(picked)
+    ? (picked as Stage)
     : input.약속일시
       ? "약속전환"
-      : "신규";
+      : "예약";
 
   const row: Row = {
     상담번호: id,
