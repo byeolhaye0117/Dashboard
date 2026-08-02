@@ -50,6 +50,16 @@ const chan = (c: Row) => (c["문의채널"] || c["방문경로"] || "").trim();
 /** 약속을 잡았는가 — 약속일시가 채워졌으면 잡은 것이다 */
 const hasAppt = (c: Row) => Boolean((c["약속일시"] ?? "").trim());
 
+/**
+ * 이 상담을 몇 월 실적으로 볼 것인가 (기준일)
+ *
+ * 약속을 잡은 건은 "약속 날짜", 아직 약속이 없는 건은 "문의가 들어온 날"로 본다.
+ * 7월 말에 전화가 왔어도 방문 약속이 8월 3일이면 8월 실적으로 잡힌다.
+ * 실제로 영업이 이뤄진 달에 숫자가 붙게 하기 위해서다.
+ */
+const baseDate = (c: Row) =>
+  ((c["약속일시"] ?? "").trim() || (c["상담날짜"] ?? "")).slice(0, 10);
+
 export default function Client(p: Props) {
   const [tab, setTab] = useState("전체");
   const [branch, setBranch] = useState("전체");
@@ -80,7 +90,7 @@ export default function Client(p: Props) {
   }, [p.items, tab, branch, q]);
 
   const thisMonth = now.slice(0, 7);
-  const inMonth = p.items.filter((c) => (c["상담날짜"] ?? "").startsWith(thisMonth));
+  const inMonth = p.items.filter((c) => baseDate(c).startsWith(thisMonth));
   const base = inMonth.length;
   const pct = (n: number) => (base ? Math.round((n / base) * 100) : 0);
 
@@ -150,7 +160,7 @@ export default function Client(p: Props) {
 
       {base > 0 && (
         <p className="stat-note">
-          이번 달 문의 {base}건 가운데 <b>{open}건</b>이 아직 진행 중입니다.
+          이번 달 {base}건 가운데 <b>{open}건</b>이 아직 진행 중입니다.
           {overdue > 0 && (
             <>
               {" "}그중 <b className="warn-text">{overdue}건</b>은 연락 예정일이 지났습니다.
@@ -163,6 +173,11 @@ export default function Client(p: Props) {
           )}
         </p>
       )}
+
+      <p className="stat-note">
+        약속을 잡은 건은 <b>약속 날짜</b>, 아직 약속이 없는 건은 <b>문의가 들어온 날</b> 기준으로
+        그 달에 넣습니다.
+      </p>
 
       <div className="filters">
         <div className="chips">
