@@ -60,6 +60,32 @@ const hasAppt = (c: Row) => Boolean((c["약속일시"] ?? "").trim());
 const baseDate = (c: Row) =>
   ((c["약속일시"] ?? "").trim() || (c["상담날짜"] ?? "")).slice(0, 10);
 
+/** 이 상담이 속한 달 (2026-08) */
+const monthOf = (c: Row) => baseDate(c).slice(0, 7);
+
+/** 결론이 난 건인가 */
+const isSettled = (c: Row) => ["등록", "미등록"].includes(stageOf(c));
+
+/**
+ * 화면에 보여줄 진짜 상태 — 달 단위로 마감한다
+ *
+ * 약속 날짜가 지난 달인데 아직 등록/미등록이 안 찍혀 있으면 미등록으로 본다.
+ * 같은 달 안에서는 며칠 늦게 등록해도 등록으로 인정하고,
+ * 달이 넘어가면 그때 미등록으로 마감하는 방식이다.
+ */
+const stageNow = (c: Row) => {
+  if (isSettled(c)) return stageOf(c);
+  const m = monthOf(c);
+  return m && m < today().slice(0, 7) ? "미등록" : stageOf(c);
+};
+
+/** 사람이 찍은 게 아니라 달이 지나서 미등록이 된 건 */
+const isAutoFail = (c: Row) => !isSettled(c) && stageNow(c) === "미등록";
+
+/** 약속 날짜는 지났는데 아직 결론이 없는 건 (이번 달 안이라 마감 전) */
+const needsResult = (c: Row) =>
+  !isSettled(c) && !isAutoFail(c) && hasAppt(c) && baseDate(c) < today();
+
 export default function Client(p: Props) {
   const [tab, setTab] = useState("전체");
   const [branch, setBranch] = useState("전체");
@@ -72,12 +98,14 @@ export default function Client(p: Props) {
   const list = useMemo(() => {
     return p.items.filter((c) => {
       if (tab !== "전체") {
-        if (tab === "예약") {
-          if (stageOf(c) !== "예약") return false;
+        if (tab === "결론입력") {
+          if (!needsResult(c)) return false;
+        } else if (tab === "예약") {
+          if (stageNow(c) !== "예약") return false;
         } else if (tab === "약속전환") {
-          if (!hasAppt(c)) return false;
+          if (!hasAppt(c) || isSettled(c) || isAutoFail(c)) return false;
         } else if (tab === "등록" || tab === "미등록") {
-          if (stageOf(c) !== tab) return false;
+          if (stageNow(c) !== tab) return false;
         } else if (chan(c) !== tab) return false;
       }
       if (branch !== "전체" && c["지점코드"] !== branch) return false;
@@ -95,21 +123,19 @@ export default function Client(p: Props) {
   const pct = (n: number) => (base ? Math.round((n / base) * 100) : 0);
 
   const appt = inMonth.filter(hasAppt).length;               // 약속을 잡은 건
-  const done = inMonth.filter((c) => stageOf(c) === "등록").length;
-  const fail = inMonth.filter((c) => stageOf(c) === "미등록").length;
+  const done = inMonth.filter((c) => stageNow(c) === "등록").length;
+  const fail = inMonth.filter((c) => stageNow(c) === "미등록").length;
   const open = base - done - fail;                            // 아직 결론이 안 난 건
+  const todo = p.items.filter(needsResult).length;            // 약속일이 지났는데 결론이 없는 건
   const overdue = p.items.filter(
-    (c) =>
-      !["등록", "미등록"].includes(stageOf(c)) &&
-      c["다음연락예정일"] &&
-      c["다음연락예정일"] < now
+    (c) => !isSettled(c) && c["다음연락예정일"] && c["다음연락예정일"] < now
   ).length;
 
   // 미등록 사유 중 가장 많은 것
   const failTop = (() => {
     const cnt: Record<string, number> = {};
     inMonth
-      .filter((c) => stageOf(c) === "미등록" && c["미등록사유"])
+      .filter((c) => stageNow(c) === "미등록" && c["미등록사유"])
       .forEach((c) => (cnt[c["미등록사유"]] = (cnt[c["미등록사유"]] ?? 0) + 1));
     const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
     return top ? top[0] : "";
@@ -161,6 +187,12 @@ export default function Client(p: Props) {
       {base > 0 && (
         <p className="stat-note">
           이번 달 {base}건 가운데 <b>{open}건</b>이 아직 진행 중입니다.
+          {todo > 0 && (
+            <>
+              {" "}약속 날짜가 지났는데 결론이 없는 건이{" "}
+              <b className="warn-text">{todo}건</b> 있습니다.
+            </>
+          )}
           {overdue > 0 && (
             <>
               {" "}그중 <b className="warn-text">{overdue}건</b>은 연락 예정일이 지났습니다.
@@ -176,7 +208,8 @@ export default function Client(p: Props) {
 
       <p className="stat-note">
         약속을 잡은 건은 <b>약속 날짜</b>, 아직 약속이 없는 건은 <b>문의가 들어온 날</b> 기준으로
-        그 달에 넣습니다.
+        그 달에 넣습니다. 같은 달 안에 늦게 등록해도 <b>등록</b>으로 인정하고, 달이 넘어가도록
+        결론이 없으면 <b>미등록</b>으로 마감합니다.
       </p>
 
       <div className="filters">
@@ -195,17 +228,29 @@ export default function Client(p: Props) {
           <span className="chip-div" aria-hidden="true" />
 
           <button className={`chip${tab === "예약" ? " on" : ""}`} onClick={() => setTab("예약")}>
-            예약<span className="cnt num">{p.items.filter((c) => stageOf(c) === "예약").length}</span>
+            예약<span className="cnt num">{p.items.filter((c) => stageNow(c) === "예약").length}</span>
           </button>
           <button className={`chip${tab === "약속전환" ? " on" : ""}`} onClick={() => setTab("약속전환")}>
-            약속전환<span className="cnt num">{p.items.filter(hasAppt).length}</span>
+            약속전환
+            <span className="cnt num">
+              {p.items.filter((c) => hasAppt(c) && !isSettled(c) && !isAutoFail(c)).length}
+            </span>
           </button>
           <button className={`chip${tab === "등록" ? " on" : ""}`} onClick={() => setTab("등록")}>
-            등록<span className="cnt num">{p.items.filter((c) => stageOf(c) === "등록").length}</span>
+            등록<span className="cnt num">{p.items.filter((c) => stageNow(c) === "등록").length}</span>
           </button>
           <button className={`chip${tab === "미등록" ? " on" : ""}`} onClick={() => setTab("미등록")}>
-            미등록<span className="cnt num">{p.items.filter((c) => stageOf(c) === "미등록").length}</span>
+            미등록<span className="cnt num">{p.items.filter((c) => stageNow(c) === "미등록").length}</span>
           </button>
+
+          {todo > 0 && (
+            <button
+              className={`chip warn-chip${tab === "결론입력" ? " on" : ""}`}
+              onClick={() => setTab("결론입력")}
+            >
+              결론 입력<span className="cnt num">{todo}</span>
+            </button>
+          )}
         </div>
         <div className="filter-right">
           {p.branches.length > 1 && (
@@ -252,10 +297,8 @@ export default function Client(p: Props) {
             </thead>
             <tbody>
               {list.map((c) => {
-                const late =
-                  !["등록", "미등록"].includes(stageOf(c)) &&
-                  c["다음연락예정일"] &&
-                  c["다음연락예정일"] < now;
+                const late = !isSettled(c) && c["다음연락예정일"] && c["다음연락예정일"] < now;
+                const st = stageNow(c);
                 return (
                   <tr key={c.id} onClick={() => setDetail(c)}>
                     <td className="strong">{c["이름"]}</td>
@@ -268,9 +311,13 @@ export default function Client(p: Props) {
                       {c["다음연락예정일"] ? (c["다음연락예정일"] ?? "").slice(5) : "-"}
                     </td>
                     <td>
-                      <span className={`pill ${STAGE_TONE[stageOf(c)] ?? ""}`}>
-                        {stageOf(c)}
-                      </span>
+                      <span className={`pill ${STAGE_TONE[st] ?? ""}`}>{st}</span>
+                      {isAutoFail(c) && (
+                        <span className="auto-tag" title="달이 넘어가도록 결론이 없어 미등록으로 마감했습니다">
+                          자동
+                        </span>
+                      )}
+                      {needsResult(c) && <span className="todo-tag">결론 입력</span>}
                     </td>
                   </tr>
                 );
@@ -442,7 +489,7 @@ function Detail({
   canRemove: boolean;
   onClose: () => void;
 }) {
-  const [stage, setStage] = useState(stageOf(item));
+  const [stage, setStage] = useState(stageNow(item));
   const [nextDate, setNextDate] = useState(item["다음연락예정일"] ?? "");
   const [reason, setReason] = useState(item["미등록사유"] ?? "");
   const [kind, setKind] = useState((options["상담활동종류"] ?? ["전화"])[0]);
@@ -529,8 +576,21 @@ function Detail({
             <h3 style={{ margin: 0 }}>{item["이름"]}</h3>
             <span className="dim num">{showPhone(item["전화번호"])}</span>
           </div>
-          <span className={`pill ${STAGE_TONE[stageOf(item)] ?? ""}`}>{stageOf(item)}</span>
+          <span className={`pill ${STAGE_TONE[stageNow(item)] ?? ""}`}>{stageNow(item)}</span>
         </div>
+
+        {isAutoFail(item) && (
+          <div className="alert-soft">
+            약속 날짜가 지난 달인데 결론이 입력되지 않아 <b>미등록</b>으로 마감된 건입니다.
+            실제로 등록하셨다면 아래에서 등록으로 바꿔주세요.
+          </div>
+        )}
+        {needsResult(item) && (
+          <div className="alert-soft">
+            약속 날짜가 지났습니다. 등록 또는 미등록을 아래에서 정해주세요.
+            이번 달 안에 등록하시면 등록으로 인정됩니다.
+          </div>
+        )}
 
         {editing ? (
           <>
