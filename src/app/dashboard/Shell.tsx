@@ -68,6 +68,9 @@ export default function Shell({ session, menus, branches, active, crumb, childre
 
   const current = branches.find((b) => b.code === session.currentBranch);
 
+  // 지금 화면이 어느 배포인지 — 옛 화면을 보고 있는지 구분하려고 표시한다
+  const build = (process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7) || "로컬";
+
   return (
     <div className="app">
       <aside className={`rail${collapsed ? " is-collapsed" : ""}`}>
@@ -156,6 +159,7 @@ export default function Shell({ session, menus, branches, active, crumb, childre
                   await fetch("/api/logout", { method: "POST" });
                   location.href = "/";
                 }}>로그아웃</button>
+                <div className="build">화면 버전 {build}</div>
               </div>
             )}
           </div>
