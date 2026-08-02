@@ -573,3 +573,7 @@ table.grid .late { color: var(--bad); font-weight: 700; }
 }
 .confirm-box b { display: block; font-size: 14px; color: var(--ink); }
 .confirm-box p { margin: 5px 0 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
+
+.modal-lead {
+  margin: -8px 0 16px; font-size: 12.5px; color: var(--muted); line-height: 1.6;
+}

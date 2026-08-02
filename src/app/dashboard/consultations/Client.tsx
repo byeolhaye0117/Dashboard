@@ -261,6 +261,9 @@ function NewForm({
     <div className="modal-back" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>상담 접수</h3>
+        <p className="modal-lead">
+          이름과 연락처만 있으면 됩니다. 나머지는 나중에 알게 되면 수정에서 채우시면 됩니다.
+        </p>
 
         <div className="form-grid">
           <L label="이름" req>
@@ -279,21 +282,14 @@ function NewForm({
               {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
             </select>
           </L>
-          <Sel label="방문경로" k="방문경로" f={f} set={set} opts={options["방문경로"]} />
           <Sel label="문의유형" k="문의유형" f={f} set={set} opts={options["문의유형"]} />
-          <Sel label="성별" k="성별" f={f} set={set} opts={options["성별"]} />
-          <Sel label="나이대" k="나이대" f={f} set={set} opts={options["나이대"]} />
-          <Sel label="거주동네" k="거주동네" f={f} set={set} opts={options["거주동네"]} />
-          <Sel label="직업" k="직업" f={f} set={set} opts={options["직업"]} />
           <L label="담당자">
             <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => set("상담자사번", e.target.value)}>
               {counselors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </L>
-          <L label="다음 연락 예정일">
-            <input className="input" type="date" value={f["다음연락예정일"] ?? ""}
-                   onChange={(e) => set("다음연락예정일", e.target.value)} />
-          </L>
+          <Sel label="성별" k="성별" f={f} set={set} opts={options["성별"]} />
+          <Sel label="나이대" k="나이대" f={f} set={set} opts={options["나이대"]} />
           <L label="방문 약속 일시" full>
             <input className="input" type="datetime-local" value={f["약속일시"] ?? ""}
                    onChange={(e) => set("약속일시", e.target.value)} />
