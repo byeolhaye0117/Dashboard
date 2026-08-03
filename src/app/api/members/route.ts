@@ -57,6 +57,12 @@ export async function POST(req: Request) {
         이용권,
         결제수단: String(b.결제수단 ?? ""),
         결제금액: String(b.결제금액 ?? ""),
+        카드액: String(b.카드액 ?? ""),
+        현금액: String(b.현금액 ?? ""),
+        계좌액: String(b.계좌액 ?? ""),
+        미수금액: String(b.미수금액 ?? ""),
+        미수금결제예정일: String(b.미수금결제예정일 ?? ""),
+        매출유형: String(b.매출유형 ?? ""),
       },
       session.staffId
     );

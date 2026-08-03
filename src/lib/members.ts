@@ -65,12 +65,19 @@ const P_COLS: ColumnSpec = {
   이용권번호: { names: ["이용권 번호"] },
   지점코드: { names: ["지점", "등록지점"], required: true },
   결제일시: { names: ["결제일", "결제일자"], required: true },
-  결제금액: { names: ["금액", "결제 금액"], required: true },
+  결제금액: { names: ["총결제금액", "금액", "결제 금액"], required: true },
   결제수단: { names: ["결제유형", "결제방법"], required: true },
+  // 현금·카드·계좌를 나눠 적는 시트라면 여기에도 같이 넣는다 (카드+계좌 분납 대비)
+  현금액: { names: ["현금"] },
+  카드액: { names: ["카드"] },
+  계좌액: { names: ["계좌", "계좌이체액"] },
+  매출유형: { names: [] },
   미수금액: { names: ["미수금"] },
+  미수금결제예정일: { names: ["미수금예정일"] },
   담당직원사번: { names: ["담당직원", "처리직원사번", "등록직원사번"] },
   환불여부: { names: [] },
   환불액: { names: ["환불금액"] },
+  메모: { names: ["비고"] },
   등록일시: { names: [] },
   등록자: { names: [] },
   수정일시: { names: [] },
@@ -117,6 +124,9 @@ export type Payment = {
   결제금액: string;
   결제수단: string;
   지점코드: string;
+  미수금액: string;
+  환불여부: string;
+  환불액: string;
 };
 
 export async function listMembers(): Promise<{
@@ -191,6 +201,9 @@ export async function listPayments(): Promise<Payment[]> {
       결제금액: get(r, cols, "결제금액"),
       결제수단: get(r, cols, "결제수단"),
       지점코드: get(r, cols, "지점코드"),
+      미수금액: get(r, cols, "미수금액"),
+      환불여부: get(r, cols, "환불여부"),
+      환불액: get(r, cols, "환불액"),
     });
   });
   return out;
@@ -234,7 +247,35 @@ export type NewMember = {
   이용권: NewTicket[];
   결제수단: string;
   결제금액: string;
+  /** 카드+계좌처럼 나눠 낸 경우 각각의 금액 */
+  카드액?: string;
+  현금액?: string;
+  계좌액?: string;
+  미수금액?: string;
+  미수금결제예정일?: string;
+  매출유형?: string;
 };
+
+/** "550,000원" 같은 글자에서 숫자만 남긴다 */
+const won = (v?: string) => Number((v ?? "").replace(/[^0-9]/g, "")) || 0;
+
+/**
+ * 결제수단에 맞는 칸에 금액을 나눠 담는다
+ *
+ * 카드+계좌처럼 나눠 낸 경우 직원이 적은 금액을 그대로 쓰고,
+ * 한 가지 수단이면 총액을 그 칸에 넣는다.
+ */
+function splitAmount(input: NewMember, total: number) {
+  const card = won(input.카드액);
+  const cash = won(input.현금액);
+  const bank = won(input.계좌액);
+  if (card + cash + bank > 0) return { card, cash, bank };
+
+  const m = (input.결제수단 ?? "").trim();
+  if (m === "현금") return { card: 0, cash: total, bank: 0 };
+  if (m === "계좌") return { card: 0, cash: 0, bank: total };
+  return { card: total, cash: 0, bank: 0 };
+}
 
 /**
  * 회원 등록
@@ -283,12 +324,14 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
   );
 
   // 2) 결제 — 돈을 받은 건에 한해서만 한 줄 만든다
-  const amount = Number((input.결제금액 ?? "").replace(/[^0-9]/g, "")) || 0;
+  const amount =
+    won(input.결제금액) || won(input.카드액) + won(input.현금액) + won(input.계좌액);
   let payId = "";
   if (amount > 0) {
     const p = await readSheet(SHEET_P);
     const pCols = resolve(SHEET_P, p.headers, P_COLS);
     payId = nextId(p.rows.map((r) => get(r, pCols, "결제번호")), "PAY", 5);
+    const { card, cash, bank } = splitAmount(input, amount);
 
     await appendRow(
       SHEET_P,
@@ -302,10 +345,16 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
           결제일시: stamp,
           결제금액: String(amount),
           결제수단: input.결제수단,
-          미수금액: "0",
+          현금액: String(cash),
+          카드액: String(card),
+          계좌액: String(bank),
+          매출유형: input.매출유형 ?? "",
+          미수금액: String(won(input.미수금액)),
+          미수금결제예정일: input.미수금결제예정일 ?? "",
           담당직원사번: staffId,
           환불여부: "",
           환불액: "",
+          메모: input.메모 ?? "",
           등록일시: stamp,
           등록자: staffId,
           수정일시: stamp,

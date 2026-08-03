@@ -46,6 +46,9 @@ type Payment = {
   결제금액: string;
   결제수단: string;
   지점코드: string;
+  미수금액: string;
+  환불여부: string;
+  환불액: string;
 };
 
 type Waiting = { id: string; 이름: string; 전화번호: string; 지점코드: string };
@@ -346,6 +349,11 @@ function NewForm({
 
   const shownAmount = amountTouched ? amount : suggested ? String(suggested) : "";
 
+  /** 카드+계좌처럼 두 가지로 나눠 낸 경우 금액을 따로 받는다 */
+  const split = (f["결제수단"] ?? "").includes("+");
+  const onlyNum = (v?: string) => Number((v ?? "").replace(/[^0-9]/g, "")) || 0;
+  const splitTotal = onlyNum(f["카드액"]) + onlyNum(f["계좌액"]) + onlyNum(f["현금액"]);
+
   function addLine(code: string) {
     const pr = productOf(code);
     if (!pr) return;
@@ -386,7 +394,7 @@ function NewForm({
         ...f,
         상담번호: fromId,
         이용권: lines,
-        결제금액: shownAmount,
+        결제금액: split ? String(splitTotal) : shownAmount,
       }),
     });
     const data = await res.json();
@@ -523,20 +531,53 @@ function NewForm({
               {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </L>
-          <L label="결제 금액">
-            <input className="input" inputMode="numeric" value={shownAmount}
-                   onChange={(e) => { setAmountTouched(true); setAmount(e.target.value); }} />
+          {split ? (
+            <>
+              <L label="카드">
+                <input className="input" inputMode="numeric" value={f["카드액"] ?? ""}
+                       onChange={(e) => set("카드액", e.target.value)} />
+              </L>
+              <L label="계좌">
+                <input className="input" inputMode="numeric" value={f["계좌액"] ?? ""}
+                       onChange={(e) => set("계좌액", e.target.value)} />
+              </L>
+            </>
+          ) : (
+            <L label="결제 금액">
+              <input className="input" inputMode="numeric" value={shownAmount}
+                     onChange={(e) => { setAmountTouched(true); setAmount(e.target.value); }} />
+            </L>
+          )}
+          {(options["매출유형"] ?? []).length > 0 && (
+            <Sel label="매출 유형" k="매출유형" f={f} set={set} opts={options["매출유형"]} />
+          )}
+          <L label="미수금 (없으면 비움)">
+            <input className="input" inputMode="numeric" placeholder="0"
+                   value={f["미수금액"] ?? ""} onChange={(e) => set("미수금액", e.target.value)} />
           </L>
+          {Number((f["미수금액"] ?? "").replace(/[^0-9]/g, "")) > 0 && (
+            <L label="미수금 받기로 한 날">
+              <input className="input" type="date" value={f["미수금결제예정일"] ?? ""}
+                     onChange={(e) => set("미수금결제예정일", e.target.value)} />
+            </L>
+          )}
           <L label="메모" full>
             <textarea className="input area" rows={2} value={f["메모"] ?? ""}
                       onChange={(e) => set("메모", e.target.value)} />
           </L>
         </div>
-        {!amountTouched && suggested > 0 && (
+        {split ? (
           <p className="stat-note">
-            고른 상품의 {f["결제수단"] === "현금" || f["결제수단"] === "계좌" ? "현금가" : "카드가"}를
-            더해 <b>{money(suggested)}원</b>으로 잡았습니다. 할인하셨다면 직접 고쳐주세요.
+            나눠 내신 금액을 각각 적어주세요. 합계 <b>{money(splitTotal)}원</b>으로 저장됩니다.
+            {suggested > 0 && <> 상품값 합계는 {money(suggested)}원입니다.</>}
           </p>
+        ) : (
+          !amountTouched && suggested > 0 && (
+            <p className="stat-note">
+              고른 상품의 {f["결제수단"] === "현금" || f["결제수단"] === "계좌" ? "현금가" : "카드가"}를
+              더해 <b>{money(suggested)}원</b>으로 잡았습니다. 할인하셨다면 직접 고쳐주세요.
+            </p>
+          )
         )}
 
         {msg && <div className="alert-bad">{msg}</div>}
@@ -575,9 +616,13 @@ function Detail({
   const setV = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
   const now = today();
 
-  // 환불된 결제는 합계에서 뺀다
+  // 환불한 건은 실제로 받은 돈이 아니므로 합계에서 뺀다
   const paid = payments;
-  const totalPaid = paid.reduce((s, x) => s + (Number(x.결제금액) || 0), 0);
+  const totalPaid = paid.reduce((s, x) => {
+    if (x.환불여부?.toUpperCase() === "Y") return s;
+    return s + (Number(x.결제금액) || 0);
+  }, 0);
+  const unpaid = paid.reduce((s, x) => s + (Number(x.미수금액) || 0), 0);
 
   async function save() {
     if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
@@ -703,8 +748,15 @@ function Detail({
                           <b className="num">{money(Number(x.결제금액) || 0)}원</b>
                           <span className="dim">
                             {(x.결제일시 ?? "").slice(0, 10)} · {x.결제수단 || "-"}
+                            {Number(x.미수금액) > 0 && ` · 미수 ${money(Number(x.미수금액))}원`}
                           </span>
-                          <span className="pill">{x.id}</span>
+                          {x.환불여부?.toUpperCase() === "Y" ? (
+                            <span className="pill bad">환불</span>
+                          ) : Number(x.미수금액) > 0 ? (
+                            <span className="pill warn">미수금 있음</span>
+                          ) : (
+                            <span className="pill good">완납</span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -712,6 +764,9 @@ function Detail({
                 <p className="stat-note">
                   지금까지 결제 <b>{paid.length}건</b> · 합계{" "}
                   <b className="num">{money(totalPaid)}원</b>
+                  {unpaid > 0 && (
+                    <> · 아직 못 받은 돈 <b className="warn-text num">{money(unpaid)}원</b></>
+                  )}
                 </p>
               </>
             )}
