@@ -6,7 +6,7 @@
  */
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
-import { visibleMenus } from "@/lib/menu";
+import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffAll, getProducts, getRoles } from "@/lib/data";
 import Icon from "@/components/Icon";
 import Shell from "./Shell";
@@ -17,13 +17,15 @@ export default async function DashboardHome() {
   const session = await readSession();
   if (!session) redirect("/");
 
-  const [menus, branches, staff, products, roles] = await Promise.all([
+  const [menus, branches, staff, products, roles, ab] = await Promise.all([
     visibleMenus(session),
     getBranches(),
     getStaffAll(),
     getProducts(),
     getRoles(),
+    abilitiesFor(session.roleCode),
   ]);
+  const canChangePassword = Boolean(ab.get("직원관리")?.update);
 
   const myBranches =
     session.scope === "전체" ? branches : branches.filter((b) => session.branches.includes(b.code));
@@ -36,7 +38,8 @@ export default async function DashboardHome() {
   const greet = hour < 11 ? "좋은 아침입니다" : hour < 18 ? "안녕하세요" : "수고 많으셨습니다";
 
   return (
-    <Shell session={session} menus={menus} branches={myBranches} active="홈" crumb="홈">
+    <Shell session={session} menus={menus} branches={myBranches} active="홈" crumb="홈"
+           canChangePassword={canChangePassword}>
       {session.mustChangePassword && (
         <div className="banner">
           <span className="lead"><Icon name="warn" size={18} /></span>

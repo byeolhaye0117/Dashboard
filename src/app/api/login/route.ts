@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { getStaffAll, getStaffBranches, getRoles } from "@/lib/data";
 import { createSession } from "@/lib/session";
 import { setPassword } from "@/lib/staffAdmin";
+import { abilitiesFor } from "@/lib/menu";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,10 @@ export async function POST(req: Request) {
 
     const role = roles.find((r) => r.code === staff.roleCode);
     const scope = role?.scope ?? "담당지점";
+
+    // 스스로 못 바꾸는 사람에게 "바꾸세요" 라고 하면 할 수 있는 일이 없다
+    const canChange = Boolean((await abilitiesFor(staff.roleCode)).get("직원관리")?.update);
+    if (!canChange) mustChangePassword = false;
 
     await createSession({
       staffId: staff.id,

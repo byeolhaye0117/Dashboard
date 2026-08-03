@@ -22,7 +22,7 @@ export default async function StaffPage() {
   const mine = ab.get("직원관리");
   if (!mine?.view) redirect("/dashboard");
 
-  const [menus, branches, roles, { items, hasTempColumn }] = await Promise.all([
+  const [menus, branches, roles, { items }] = await Promise.all([
     visibleMenus(session),
     getBranches(),
     getRoles(),
@@ -42,14 +42,14 @@ export default async function StaffPage() {
         );
 
   return (
-    <Shell session={session} menus={menus} branches={myBranches} active="직원관리" crumb="직원 관리">
+    <Shell session={session} menus={menus} branches={myBranches} active="직원관리" crumb="직원 관리"
+           canChangePassword={Boolean(mine.update)}>
       <Client
         items={visible}
         roles={roles.map((r) => ({ code: r.code, name: r.name }))}
         branches={branches.map((b) => ({ code: b.code, name: b.name }))}
         me={session.staffId}
         myRole={session.roleCode}
-        hasTempColumn={hasTempColumn}
         can={{ create: mine.create, update: mine.update, remove: mine.remove }}
       />
     </Shell>

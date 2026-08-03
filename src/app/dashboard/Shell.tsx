@@ -20,10 +20,19 @@ type Props = {
   branches: { code: string; name: string }[];
   active: string;
   crumb?: string;
+  /**
+   * 본인 비밀번호를 스스로 바꿀 수 있는가
+   *
+   * 비밀번호는 대표님이 직원 관리 화면에서 발급하는 방식이라, 직원은 스스로 못 바꾼다.
+   * 넘겨주지 않으면 안 되는 쪽이 기본이다 — 새 화면을 만들다 깜빡해도 안전한 쪽으로 틀리게.
+   */
+  canChangePassword?: boolean;
   children: React.ReactNode;
 };
 
-export default function Shell({ session, menus, branches, active, crumb, children }: Props) {
+export default function Shell({
+  session, menus, branches, active, crumb, canChangePassword, children,
+}: Props) {
   const [userOpen, setUserOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [allOpen, setAllOpen] = useState(false);
@@ -154,7 +163,9 @@ export default function Shell({ session, menus, branches, active, crumb, childre
                   <b>{session.name}</b>
                   <span>{session.roleName} · {session.staffId}</span>
                 </div>
-                <button onClick={() => { setPwOpen(true); setUserOpen(false); }}>비밀번호 변경</button>
+                {canChangePassword && (
+                  <button onClick={() => { setPwOpen(true); setUserOpen(false); }}>비밀번호 변경</button>
+                )}
                 <button className="danger" onClick={async () => {
                   await fetch("/api/logout", { method: "POST" });
                   location.href = "/";

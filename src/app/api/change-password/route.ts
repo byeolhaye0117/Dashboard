@@ -4,13 +4,27 @@ import { readSheet, updateCell } from "@/lib/sheets";
 import { SHEET, getStaffAll } from "@/lib/data";
 import { readSession, createSession } from "@/lib/session";
 import { PW_COLUMN, TEMP_COLUMN } from "@/lib/staffAdmin";
+import { abilitiesFor } from "@/lib/menu";
 
 export const dynamic = "force-dynamic";
 
-/** 본인 비밀번호 변경 */
+/**
+ * 본인 비밀번호 변경
+ *
+ * 비밀번호는 대표님이 직원 관리 화면에서 발급하는 방식이므로, 직원은 스스로 바꾸지 못한다.
+ * 화면에서 단추를 숨기는 것만으로는 부족하다 — 주소를 직접 찔러도 막히게 여기서 확인한다.
+ */
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+
+  const ab = (await abilitiesFor(session.roleCode)).get("직원관리");
+  if (!ab?.update) {
+    return NextResponse.json(
+      { error: "비밀번호는 대표님이 발급합니다. 바꾸시려면 대표님께 요청해주세요." },
+      { status: 403 }
+    );
+  }
 
   try {
     const { newPassword } = await req.json();

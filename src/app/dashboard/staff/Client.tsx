@@ -28,7 +28,6 @@ type Props = {
   branches: Named[];
   me: string;
   myRole: string;
-  hasTempColumn: boolean;
   can: { create: boolean; update: boolean; remove: boolean };
 };
 
@@ -51,7 +50,6 @@ export default function Client(p: Props) {
 
   const waiting = p.items.filter(needsPassword).length;
   const active = p.items.filter(canLogin).length;
-  const tempCount = p.items.filter((s) => s.temp).length;
   const off = p.items.filter((s) => s.status !== "재직중" || !s.accountOn).length;
 
   const list = useMemo(() => {
@@ -94,15 +92,6 @@ export default function Client(p: Props) {
         )}
       </div>
 
-      {!p.hasTempColumn && (
-        <div className="alert-soft">
-          직원 시트에 <b>비밀번호임시</b> 칸이 없습니다. 지금도 비밀번호 발급은 되지만,
-          임시 비밀번호를 받은 직원이 <b>처음 로그인할 때 새 비밀번호를 정하도록 강제할 수 없습니다.</b>{" "}
-          직원 탭 제목 줄 맨 오른쪽(삭제여부 앞)에 <b>비밀번호임시</b> 라는 칸을 하나 만들어주시면
-          그때부터 자동으로 적용됩니다.
-        </div>
-      )}
-
       <div className="stats">
         <div className="stat">
           <div className="lb">전체 직원</div>
@@ -130,13 +119,13 @@ export default function Client(p: Props) {
         {waiting > 0 ? (
           <>
             <b className="warn-text">{waiting}명</b>이 아직 로그인할 수 없습니다.
-            이름을 눌러 <b>임시 비밀번호 발급</b>을 하시고, 그 자리에서 나오는 비밀번호를
+            이름을 눌러 <b>비밀번호 발급</b>을 하시고, 그 자리에서 나오는 비밀번호를
             본인에게 알려주시면 됩니다.
           </>
         ) : (
           <>재직 중인 직원 모두 계정이 준비되어 있습니다.</>
-        )}
-        {tempCount > 0 && <> 임시 비밀번호를 아직 안 바꾼 직원이 <b>{tempCount}명</b> 있습니다.</>}
+        )}{" "}
+        직원은 비밀번호를 스스로 바꿀 수 없습니다. 잊어버렸다는 연락이 오면 여기서 새로 발급해주세요.
       </p>
 
       <div className="filters">
@@ -214,8 +203,6 @@ export default function Client(p: Props) {
                       <span className="pill bad">계정 꺼짐</span>
                     ) : !s.hasPassword ? (
                       <span className="pill bad">발급 대기</span>
-                    ) : s.temp ? (
-                      <span className="pill warn">임시 비밀번호</span>
                     ) : (
                       <span className="pill good">사용 중</span>
                     )}
@@ -270,7 +257,7 @@ function IssuedBox({ name, password, onClose }: { name: string; password: string
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{name}님 임시 비밀번호</h3>
+        <h3>{name}님 비밀번호</h3>
         <p className="modal-lead">
           아래 비밀번호를 본인에게 알려주세요. <b>이 창을 닫으면 다시 볼 수 없습니다.</b>{" "}
           잊어버리셔도 괜찮습니다 — 언제든 새로 발급하시면 됩니다.
@@ -282,8 +269,9 @@ function IssuedBox({ name, password, onClose }: { name: string; password: string
         </div>
 
         <p className="modal-lead" style={{ marginTop: 12 }}>
-          이 비밀번호로 처음 들어가면 본인이 쓸 비밀번호를 새로 정하게 됩니다.
-          그 뒤로는 이 임시 비밀번호가 통하지 않습니다.
+          이 비밀번호로 바로 로그인됩니다. 직원은 스스로 바꿀 수 없으니,
+          바꿔야 할 일이 생기면 이 화면에서 새로 발급해주세요.
+          발급하는 순간 이전 비밀번호는 통하지 않습니다.
         </p>
 
         <div className="modal-actions">
@@ -439,9 +427,7 @@ function Detail({
             <span className="dim num">사번 {item.id}</span>
           </div>
           {item.hasPassword ? (
-            <span className={`pill ${item.temp ? "warn" : "good"}`}>
-              {item.temp ? "임시 비밀번호" : "사용 중"}
-            </span>
+            <span className="pill good">사용 중</span>
           ) : (
             <span className="pill bad">발급 대기</span>
           )}
@@ -456,7 +442,7 @@ function Detail({
             <h4 className="mini-title">로그인 비밀번호</h4>
             {confirmPw ? (
               <div className="confirm-box">
-                <b>{item.name}님의 임시 비밀번호를 새로 발급할까요?</b>
+                <b>{item.name}님의 비밀번호를 새로 발급할까요?</b>
                 <p>
                   지금 쓰던 비밀번호는 즉시 통하지 않게 됩니다.
                   새 비밀번호는 발급 직후 한 번만 화면에 나오니, 본인에게 바로 알려주세요.
@@ -470,11 +456,11 @@ function Detail({
               <div className="inline-form">
                 <span className="dim" style={{ fontSize: 12.5, flex: 1 }}>
                   {item.hasPassword
-                    ? "비밀번호는 암호로 저장되어 있어 대표님도 볼 수 없습니다. 잊어버렸다면 새로 발급해주세요."
+                    ? "비밀번호는 암호로 저장되어 있어 대표님도 볼 수 없습니다. 직원이 잊어버렸다면 새로 발급해주세요."
                     : "아직 비밀번호가 없어 이 직원은 로그인할 수 없습니다."}
                 </span>
                 <button className="btn-dark" onClick={() => setConfirmPw(true)}>
-                  {item.hasPassword ? "새로 발급" : "임시 비밀번호 발급"}
+                  {item.hasPassword ? "새로 발급" : "비밀번호 발급"}
                 </button>
               </div>
             )}
