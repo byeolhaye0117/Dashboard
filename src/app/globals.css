@@ -308,30 +308,74 @@ button { font-family: inherit; }
 .pick-row .mini-tab { flex: 0 0 auto; min-width: 84px; }
 
 /* ── 매출 ───────────────────────────────── */
-.sales-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 12px; margin-top: 16px; align-items: start;
+
+/* 핵심 숫자 — 값 옆에 늘 지난달 대비를 같이 둔다 */
+.kpis {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  gap: 10px; margin-top: 4px;
 }
-.sales-card {
-  padding: 15px 16px 17px; background: var(--surface);
+.kpi {
+  padding: 14px 15px 13px; background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--r);
 }
+.kpi .lb { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.kpi .row { display: flex; align-items: baseline; gap: 7px; margin-top: 5px; }
+.kpi .vl { font-size: 21px; font-weight: 800; letter-spacing: -.03em; }
+.kpi .vl.bad { color: var(--bad); }
+.kpi .dt { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
+.kpi .track { height: 5px; }
 
-.sbar { margin-bottom: 13px; }
-.sbar:last-child { margin-bottom: 0; }
-.sbar-top {
-  display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; font-size: 12.5px;
+.delta { font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.delta.up { color: var(--good); }
+.delta.down { color: var(--bad); }
+.delta.flat { color: var(--muted); }
+
+/* 12개월 추이 — 옅은 칸이 목표, 진한 막대가 실적 */
+.trend { display: flex; align-items: flex-end; gap: 4px; }
+.tcol {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 0; background: none; border: 0; cursor: pointer; font-family: inherit;
 }
-.sbar-top .nm {
-  flex: 1; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.tval { font-size: 10.5px; color: var(--muted); height: 14px; }
+.tbar {
+  position: relative; display: block; width: 100%; height: 108px;
+  background: var(--surface-2); border-radius: 4px 4px 0 0; overflow: hidden;
 }
-.sbar-top .vl { font-weight: 700; color: var(--ink); }
-.sbar-top .pc { font-size: 11px; color: var(--muted); min-width: 32px; text-align: right; }
-.sbar .track { height: 4px; background: var(--surface-3); }
-.sbar .track > i { background: var(--ink-2); }
-/* 맨 위 항목만 색으로 짚어준다 — 전부 색이면 어디를 봐야 할지 모른다 */
-.sbar:first-child .track > i { background: var(--point); }
-.sbar-note { display: block; margin-top: 5px; font-size: 11px; color: var(--muted); }
+.tbar > i { position: absolute; left: 0; right: 0; bottom: 0; display: block; }
+.tbar > i.goal { background: var(--surface-3); }
+.tbar > i.fill { background: var(--ink-2); border-radius: 4px 4px 0 0; }
+.tlb { font-size: 10.5px; color: var(--muted); }
+.tcol:hover .tbar > i.fill { background: var(--ink); }
+.tcol.on .tbar > i.fill { background: var(--point); }
+.tcol.on .tlb, .tcol.on .tval { color: var(--ink); font-weight: 700; }
+
+/* 구성 — 한 줄로 비중을 보여주고 아래에 값을 적는다 */
+.sales-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px; align-items: start;
+}
+.sales-card {
+  padding: 15px 16px 16px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r);
+}
+.card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+.card-head .dim { margin-left: auto; font-size: 11.5px; }
+
+.stack { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--surface-3); }
+.stack > i { display: block; height: 100%; }
+.s0 { background: var(--point); }
+.s1 { background: var(--ink-2); }
+.s2 { background: var(--muted); }
+.s3 { background: var(--surface-3); }
+
+.stack-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.stack-list li {
+  display: flex; align-items: center; gap: 7px; padding: 5px 0; font-size: 12.5px;
+}
+.stack-list .dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 2px; }
+.stack-list .nm { flex: 1; color: var(--ink-2); }
+.stack-list .vl { font-weight: 700; }
+.stack-list .pc { min-width: 34px; text-align: right; font-size: 11px; color: var(--muted); }
 
 /* 일별 — 그 달 전체를 그린다 */
 .day-bars {
@@ -342,17 +386,11 @@ button { font-family: inherit; }
 .day > i { display: block; width: 100%; border-radius: 2px 2px 0 0; background: var(--surface-3); }
 .day.on > i { background: var(--point); }
 .day-axis {
-  display: flex; justify-content: space-between; margin-top: 5px;
-  font-size: 10px; color: var(--muted);
+  display: flex; justify-content: space-between; margin-top: 6px;
+  font-size: 10.5px; color: var(--muted);
 }
 
 .grid th.right, .grid td.right { text-align: right; }
-
-/* 큰 숫자 뒤에 붙는 단위 */
-.stat .vl em {
-  font-style: normal; font-size: 12px; font-weight: 600;
-  color: var(--muted); margin-left: 3px;
-}
 
 /* ── 회원 상세 — 왼쪽 사람 정보 + 오른쪽 탭 ── */
 .m-detail { display: grid; grid-template-columns: 232px 1fr; gap: 18px; align-items: start; }
