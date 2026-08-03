@@ -393,7 +393,14 @@ button { font-family: inherit; }
 .prod:hover { background: var(--surface-2); }
 .prod .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prod .meta { font-size: 11.5px; color: var(--muted); }
-.prod .pr { font-weight: 700; font-size: 12.5px; }
+/* 현금가와 카드가를 같이 보여준다 — 결제수단을 정하기 전에 비교해야 한다 */
+.prod .pr { display: flex; gap: 9px; font-size: 12.5px; }
+.prod .pr em { font-style: normal; font-weight: 700; white-space: nowrap; }
+.prod .pr em i {
+  font-style: normal; font-weight: 600; margin-right: 4px;
+  font-size: 10.5px; color: var(--muted);
+}
+.prod .pr em.one { color: var(--muted); font-weight: 600; }
 
 .buy-cart {
   border: 1px solid var(--line); border-radius: var(--r-sm);
@@ -418,6 +425,7 @@ button { font-family: inherit; }
 .cart-top .x:hover { background: var(--bad-soft); color: var(--bad); }
 .cart-fields { display: flex; gap: 4px; margin-top: 6px; }
 .cart-fields .input { height: 28px; padding: 0 7px; font-size: 11.5px; min-width: 0; }
+.cart-fields .input.mon { flex: 0 0 72px; }
 .cart-note { margin: 6px 0 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
 
 .cart-sum { padding: 11px 13px; border-top: 1px solid var(--line); background: var(--surface); }

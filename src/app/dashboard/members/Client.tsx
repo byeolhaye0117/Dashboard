@@ -369,6 +369,8 @@ type Line = {
   시작일: string;
   종료일: string;
   총횟수: string;
+  /** 사물함 · 운동복처럼 개월을 골라 사는 상품에서 쓴다 */
+  개월: string;
 };
 
 type Buy = {
@@ -398,18 +400,37 @@ const isExtraKind = (pr?: ProductMeta) => {
 };
 
 /** 화면에서 고른 것을 서버가 받는 모양으로 바꾼다 */
+/** 결제수단에 맞는 정가 한 개 값 */
+function unitPrice(pr: ProductMeta | undefined, cashSide: boolean): number {
+  if (!pr) return 0;
+  return (cashSide ? pr.cash : pr.card) || pr.cash || pr.card || 0;
+}
+
+/**
+ * 이 줄의 값
+ *
+ * 사물함처럼 개월을 골라 사는 상품은 상품에 적힌 기본 개월을 한 단위로 보고
+ * 고른 개월만큼 곱한다. (1개월 11,000원짜리를 3개월 고르면 33,000원)
+ */
+function linePrice(l: Line, pr: ProductMeta | undefined, cashSide: boolean): number {
+  const unit = unitPrice(pr, cashSide);
+  if (!unit || !pr) return 0;
+  if (!canPickMonths(pr)) return unit;
+  const base = pr.months || 1;
+  const want = Number(l.개월) || base;
+  return Math.round((unit * want) / base);
+}
+
+/** 개월을 골라 살 수 있는 상품인가 — 사물함 · 운동복 같은 부가 상품 */
+const canPickMonths = (pr?: ProductMeta) => groupOf(pr) === "부가" && !usesCount(pr);
+
 function buyPayload(b: Buy, products: ProductMeta[]) {
   const pOf = (code: string) => products.find((x) => x.code === code);
   const split = b.결제수단.includes("+");
   const cashSide = b.결제수단 === "현금" || b.결제수단 === "계좌";
   // 옵션은 돈을 받는 항목이라 합계에 들어간다. 무료 서비스만 뺀다
-  const price = (pr?: ProductMeta) =>
-    pr ? (cashSide ? pr.cash : pr.card) || pr.cash || pr.card || 0 : 0;
-  const suggested = b.lines.reduce((s, l) => {
-    const pr = pOf(l.상품코드);
-    if (!pr) return s;
-    return s + price(pr);
-  }, 0);
+  const price = (pr?: ProductMeta) => unitPrice(pr, cashSide);
+  const suggested = b.lines.reduce((s, l) => s + linePrice(l, pOf(l.상품코드), cashSide), 0);
 
   return {
     이용권: b.lines.filter((l) => !isExtraKind(pOf(l.상품코드))),
@@ -484,6 +505,7 @@ function PurchaseFields({
     const pr = pOf(code);
     if (!pr) return;
     const start = baseDate || today();
+    const months = canPickMonths(pr) ? pr.months || 1 : pr.months;
     setB({
       ...b,
       lines: [
@@ -491,8 +513,9 @@ function PurchaseFields({
         {
           상품코드: code,
           시작일: start,
-          종료일: pr.months ? addMonths(start, pr.months) : "",
+          종료일: months ? addMonths(start, months) : "",
           총횟수: pr.count ? String(pr.count) : "",
+          개월: months ? String(months) : "",
         },
       ],
     });
@@ -501,7 +524,18 @@ function PurchaseFields({
   const setLine = (i: number, key: keyof Line, v: string) =>
     setB({ ...b, lines: b.lines.map((l, k) => (k === i ? { ...l, [key]: v } : l)) });
 
-  const priceOf = (pr: ProductMeta) => (cashSide ? pr.cash : pr.card) || pr.cash || pr.card || 0;
+  /** 개월을 바꾸면 종료일도 같이 옮긴다 */
+  const setMonths = (i: number, v: string) =>
+    setB({
+      ...b,
+      lines: b.lines.map((l, k) => {
+        if (k !== i) return l;
+        const n = Number(v) || 0;
+        return { ...l, 개월: v, 종료일: n > 0 ? addMonths(l.시작일, n) : "" };
+      }),
+    });
+
+  const priceOf = (pr: ProductMeta) => unitPrice(pr, cashSide);
 
   return (
     <>
@@ -529,7 +563,7 @@ function PurchaseFields({
               </p>
             ) : (
               shown.map((x) => {
-                const free = isExtraKind(x) && !priceOf(x);
+                const free = !x.cash && !x.card;
                 return (
                   <button key={x.code} type="button" className="prod" onClick={() => addLine(x.code)}>
                     <span className="nm">{x.name}</span>
@@ -538,7 +572,16 @@ function PurchaseFields({
                       {x.months > 0 && x.count > 0 && " · "}
                       {x.count > 0 && `${x.count}회`}
                     </span>
-                    <span className="pr num">{free ? "무료" : `${money(priceOf(x))}원`}</span>
+                    <span className="pr num">
+                      {free ? (
+                        <em className="one">무료</em>
+                      ) : (
+                        <>
+                          {x.cash > 0 && <em><i>현금</i>{money(x.cash)}</em>}
+                          {x.card > 0 && <em><i>카드</i>{money(x.card)}</em>}
+                        </>
+                      )}
+                    </span>
                   </button>
                 );
               })
@@ -567,7 +610,7 @@ function PurchaseFields({
                       <span className="num">
                         {!pr || (isExtraKind(pr) && !priceOf(pr))
                           ? "무료"
-                          : `${isExtraKind(pr) ? "+" : ""}${money(priceOf(pr))}원`}
+                          : `${isExtraKind(pr) ? "+" : ""}${money(linePrice(l, pr, cashSide))}원`}
                       </span>
                       <button type="button" className="x"
                               onClick={() => setB({ ...b, lines: b.lines.filter((_, k) => k !== i) })}
@@ -581,16 +624,26 @@ function PurchaseFields({
                       </span>
                     ) : (
                       <div className="cart-fields">
+                        {canPickMonths(pr) && (
+                          <select className="input mon" value={l.개월}
+                                  onChange={(e) => setMonths(i, e.target.value)}>
+                            {/* 프로틴처럼 한 번 사고 마는 것은 기간이 없다 */}
+                            <option value="">기간 없음</option>
+                            {[1, 2, 3, 6, 12].map((n) => (
+                              <option key={n} value={String(n)}>{n}개월</option>
+                            ))}
+                          </select>
+                        )}
                         <input className="input" type="date" value={l.시작일}
                                onChange={(e) => {
                                  const v = e.target.value;
                                  setB({
                                    ...b,
-                                   lines: b.lines.map((x, k) =>
-                                     k === i
-                                       ? { ...x, 시작일: v, 종료일: pr?.months ? addMonths(v, pr.months) : x.종료일 }
-                                       : x
-                                   ),
+                                   lines: b.lines.map((x, k) => {
+                                     if (k !== i) return x;
+                                     const n = Number(x.개월) || pr?.months || 0;
+                                     return { ...x, 시작일: v, 종료일: n ? addMonths(v, n) : x.종료일 };
+                                   }),
                                  });
                                }} />
                         <input className="input" type="date" value={l.종료일}
