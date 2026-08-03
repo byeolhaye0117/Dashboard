@@ -29,6 +29,7 @@ type Payment = {
   결제수단: string;
   지점코드: string;
   미수금액: string;
+  미수금결제예정일: string;
   환불여부: string;
   환불액: string;
   매출유형: string;
@@ -41,8 +42,11 @@ type Payment = {
 type Ticket = { id: string; 상품코드: string; 결제번호: string; 금액: string };
 type Named = { code: string; name: string };
 type Goal = { 지점코드: string; 연월: string; 목표금액: number };
-/** 등록실패율을 내기 위한 상담 한 줄 */
-type Lead = { 지점코드: string; 상담날짜: string; 약속일시: string; 진행상태: string };
+/** 전환율·상담왕을 내기 위한 상담 한 줄 */
+type Lead = {
+  지점코드: string; 상담날짜: string; 약속일시: string;
+  진행상태: string; 상담자사번: string;
+};
 
 type Props = {
   payments: Payment[];
@@ -52,8 +56,30 @@ type Props = {
   leads: Lead[];
   branches: Named[];
   staffNames: Record<string, string>;
+  memberNames: Record<string, string>;
   problem: string;
 };
+
+type Part = { total: number; 신규: number; 재등록: number };
+type Bucket = { 회원권: Part; PT: Part; 수업: Part; 기타: Part; 미분류: Part };
+
+/**
+ * 매출 여섯 갈래 — 상품군을 신규·재등록으로 쪼갠 것
+ *
+ * 마지막 "기타"는 총액에서 앞의 다섯을 뺀 나머지다.
+ * 그래야 여섯을 더한 값이 총매출과 어긋나지 않는다.
+ */
+function sixOf(b: Bucket, total: number) {
+  const five = [
+    { key: "회원권 · 신규", sum: b.회원권.신규 },
+    { key: "회원권 · 재등록", sum: b.회원권.재등록 },
+    { key: "PT · 신규", sum: b.PT.신규 },
+    { key: "PT · 재등록", sum: b.PT.재등록 },
+    { key: "그룹수업", sum: b.수업.total },
+  ];
+  const rest = Math.max(0, total - five.reduce((s, x) => s + x.sum, 0));
+  return [...five, { key: "기타", sum: rest }];
+}
 
 const money = (n: number) => n.toLocaleString("ko-KR");
 const num = (v?: string) => Number((v ?? "").replace(/[^0-9-]/g, "")) || 0;
@@ -174,11 +200,38 @@ export default function Client(p: Props) {
     return { day, last, left: last - day, expect: Math.round((cur.sum / day) * last) };
   }, [month, thisMonth, now, cur.sum]);
 
-  const byMethod = [
-    { key: "현금", sum: cur.live.reduce((s, x) => s + num(x.현금액), 0) },
-    { key: "카드", sum: cur.live.reduce((s, x) => s + num(x.카드액), 0) },
-    { key: "계좌", sum: cur.live.reduce((s, x) => s + num(x.계좌액), 0) },
-  ].filter((x) => x.sum > 0);
+  /**
+   * 결제수단
+   *
+   * 금액은 현금·카드·계좌 세 칸에 나뉘어 적힌다.
+   * "묶음"은 한 건을 두 가지 이상으로 나눠 낸 건이다.
+   * 그 건의 금액은 이미 위 세 칸에 들어가 있으므로 따로 더하면 겹친다.
+   * 그래서 묶음은 건수와 그 건들의 합계만 따로 센다.
+   */
+  const methodOf = useMemo(
+    () => (live: Payment[]) => {
+      const cash = live.reduce((s, x) => s + num(x.현금액), 0);
+      const card = live.reduce((s, x) => s + num(x.카드액), 0);
+      const bank = live.reduce((s, x) => s + num(x.계좌액), 0);
+      const mixed = live.filter(
+        (x) => [num(x.현금액), num(x.카드액), num(x.계좌액)].filter((v) => v > 0).length >= 2
+      );
+      const named = cash + card + bank;
+      return {
+        rows: [
+          { key: "현금", sum: cash },
+          { key: "카드", sum: card },
+          { key: "계좌", sum: bank },
+        ],
+        named,
+        /** 세 칸 어디에도 안 적힌 금액 — 시트에 나눠 적지 않은 건 */
+        unknown: Math.max(0, live.reduce((s, x) => s + num(x.결제금액), 0) - named),
+        mixed: { count: mixed.length, sum: mixed.reduce((s, x) => s + num(x.결제금액), 0) },
+      };
+    },
+    []
+  );
+  const method = methodOf(cur.live);
 
   /**
    * 결제 금액을 상품 갈래로 나눈다
@@ -234,39 +287,127 @@ export default function Client(p: Props) {
 
   const bucket = bucketOf(cur.live);
 
-  /** 상품 갈래 네 줄 — 도넛과 신규·재등록 막대가 같이 쓴다 */
-  const kinds = [
-    { key: "회원권", ...bucket.회원권 },
-    { key: "1:1 PT", ...bucket.PT },
-    { key: "그룹수업", ...bucket.수업 },
-    {
-      key: "기타",
-      total: bucket.기타.total + bucket.미분류.total,
-      신규: bucket.기타.신규 + bucket.미분류.신규,
-      재등록: bucket.기타.재등록 + bucket.미분류.재등록,
-    },
-  ];
-  const kindsLive = kinds.filter((k) => k.total > 0);
-  const 신규합 = kinds.reduce((s, k) => s + k.신규, 0);
-  const 재등록합 = kinds.reduce((s, k) => s + k.재등록, 0);
-  const 기타합 = Math.max(0, cur.sum - 신규합 - 재등록합);
+  /** 도넛 밑 소계에 쓰는 값 */
+  const parts = [bucket.회원권, bucket.PT, bucket.수업, bucket.기타, bucket.미분류];
+  const 신규합 = parts.reduce((s, k) => s + k.신규, 0);
+  const 재등록합 = parts.reduce((s, k) => s + k.재등록, 0);
+
+  /** 전 지점 여섯 갈래 */
+  const six = sixOf(bucket, cur.sum);
+
+  /** 지점별 여섯 갈래 · 결제수단 — 지점 비교 두 자리가 같이 쓴다 */
+  const branchMix = useMemo(
+    () =>
+      p.branches.map((b) => {
+        const rows = cur.live.filter((x) => x.지점코드 === b.code);
+        const sum = rows.reduce((s, x) => s + num(x.결제금액), 0);
+        return { ...b, sum, six: sixOf(bucketOf(rows), sum), method: methodOf(rows) };
+      }),
+    [p.branches, cur.live, bucketOf, methodOf]
+  );
 
   /**
-   * 등록실패율 — 상담 화면과 같은 규칙으로 센다
+   * 상담 — 상담 화면과 같은 규칙으로 센다
    *
    * 약속을 잡은 건은 약속 날짜, 아직 없는 건은 문의가 들어온 날 기준이다.
+   * 아직 결판이 안 난 건(예약·약속전환)은 진행중으로 따로 센다.
    */
-  const lead = useMemo(() => {
-    const rows = p.leads.filter(
-      (c) => baseDate(c).startsWith(month) && (branch === "전체" || c.지점코드 === branch)
-    );
+  const leadRows = useMemo(
+    () =>
+      p.leads.filter(
+        (c) => baseDate(c).startsWith(month) && (branch === "전체" || c.지점코드 === branch)
+      ),
+    [p.leads, month, branch]
+  );
+
+  const tally = (rows: Lead[]) => {
+    const done = rows.filter((c) => stageNow(c, now) === "등록").length;
     const fail = rows.filter((c) => stageNow(c, now) === "미등록").length;
+    const settled = done + fail;
     return {
       base: rows.length,
+      done,
       fail,
-      failRate: rows.length > 0 ? Math.round((fail / rows.length) * 100) : null,
+      going: rows.length - settled,
+      /** 결판난 건 중 등록 비율 — 아직 진행중인 건은 빼고 본다 */
+      winRate: settled > 0 ? Math.round((done / settled) * 100) : null,
+      failRate: settled > 0 ? Math.round((fail / settled) * 100) : null,
     };
-  }, [p.leads, month, branch, now]);
+  };
+
+  const lead = tally(leadRows);
+
+  /** 지점별 문의 → 등록 전환율 */
+  const convByBranch = useMemo(
+    () =>
+      p.branches
+        .map((b) => ({ ...b, ...tally(p.leads.filter(
+          (c) => baseDate(c).startsWith(month) && c.지점코드 === b.code
+        )) }))
+        .sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1)),
+    [p.branches, p.leads, month, now]
+  );
+
+  /**
+   * 이 달의 상담왕 — 지점 통합
+   *
+   * 상담을 몇 건 맡아 몇 건을 등록시켰고, 그래서 얼마를 만들었는지.
+   * 상담 건수는 상담 탭의 상담자, 매출은 결제 탭의 담당직원 기준이다.
+   */
+  const champions = useMemo(() => {
+    const map: Record<string, { rows: Lead[]; sum: number; count: number }> = {};
+    const put = (id: string) => (map[id] ??= { rows: [], sum: 0, count: 0 });
+    leadRows.forEach((c) => {
+      if (!c.상담자사번) return;
+      put(c.상담자사번).rows.push(c);
+    });
+    cur.live.forEach((x) => {
+      if (!x.담당직원사번) return;
+      const v = put(x.담당직원사번);
+      v.sum += num(x.결제금액);
+      v.count += 1;
+    });
+    return Object.entries(map)
+      .map(([id, v]) => ({ id, name: p.staffNames[id] ?? id, sum: v.sum, count: v.count, ...tally(v.rows) }))
+      .filter((s) => s.base > 0 || s.sum > 0)
+      .sort((a, b) => b.sum - a.sum);
+  }, [leadRows, cur.live, p.staffNames, now]);
+
+  /** 미수금 명단 — 누가, 언제, 얼마 */
+  const unpaidList = useMemo(
+    () =>
+      cur.live
+        .filter((x) => num(x.미수금액) > 0)
+        .map((x) => ({
+          id: x.id,
+          name: p.memberNames[x.회원번호] || x.회원번호 || "-",
+          branch: branchName(x.지점코드),
+          date: (x.결제일시 ?? "").slice(0, 10),
+          due: (x.미수금결제예정일 ?? "").slice(0, 10),
+          amount: num(x.미수금액),
+          total: num(x.결제금액),
+          staff: p.staffNames[x.담당직원사번] ?? "-",
+        }))
+        .sort((a, b) => b.amount - a.amount),
+    [cur.live, p.memberNames, p.staffNames]
+  );
+
+  /** 환불 목록 — 진행상태·사유 칸은 아직 시트에 없다 */
+  const refundList = useMemo(
+    () =>
+      cur.rows
+        .filter(isRefund)
+        .map((x) => ({
+          id: x.id,
+          name: p.memberNames[x.회원번호] || x.회원번호 || "-",
+          branch: branchName(x.지점코드),
+          date: (x.결제일시 ?? "").slice(0, 10),
+          amount: num(x.환불액) || num(x.결제금액),
+          staff: p.staffNames[x.담당직원사번] ?? "-",
+        }))
+        .sort((a, b) => b.amount - a.amount),
+    [cur.rows, p.memberNames, p.staffNames]
+  );
 
   const byStaff = useMemo(() => {
     const map: Record<string, { sum: number; count: number }> = {};
@@ -411,64 +552,68 @@ export default function Client(p: Props) {
         {/* 매출 구성 — 전체를 나눠 갖는 비중이라 도넛 */}
         <div className="viz">
           <h3 className="viz-title">무엇을 팔았나</h3>
-          <p className="viz-sub">이번 달 매출 구성</p>
-          {kindsLive.length === 0 ? (
+          <p className="viz-sub">회원권 · PT는 신규 · 재등록으로 갈라서 여섯 갈래</p>
+          {cur.sum <= 0 ? (
             <p className="dim mini-note">이 달에 잡힌 매출이 없습니다.</p>
           ) : (
             <div className="dwrap">
-              <Donut rows={kindsLive.map((k) => ({ key: k.key, sum: k.total }))}
-                     center={koShort(cur.sum)} />
+              <Donut rows={six} center={koShort(cur.sum)}
+                     label="상품 갈래별 매출 비중 도넛 그래프" />
               <ul className="dlist">
-                {kindsLive.map((k, i) => (
-                  <li key={k.key}>
+                {six.map((k, i) => (
+                  <li key={k.key} className={k.sum > 0 ? "" : "off"}>
                     <i className={`sw s${i + 1}`} />
                     <span className="nm">{k.key}</span>
-                    <span className="vl num">{short(k.total)}</span>
+                    <span className="vl num">{short(k.sum)}</span>
+                    <span className="pc num">{Math.round((k.sum / cur.sum) * 100)}%</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="subtot">
+            <span>회원권 <b className="num">{short(bucket.회원권.total)}</b></span>
+            <span>PT <b className="num">{short(bucket.PT.total)}</b></span>
+            <span>신규 <b className="num">{short(신규합)}</b></span>
+            <span>재등록 <b className="num">{short(재등록합)}</b></span>
+          </div>
+        </div>
+
+        {/* 결제수단 — 어떻게 받았는지 */}
+        <div className="viz">
+          <h3 className="viz-title">어떻게 받았나</h3>
+          <p className="viz-sub">현금 · 계좌 · 카드로 나눠 적힌 금액</p>
+          {method.named <= 0 ? (
+            <p className="dim mini-note">
+              현금 · 카드 · 계좌를 나눠 적은 결제가 없습니다.
+            </p>
+          ) : (
+            <div className="dwrap">
+              <Donut rows={method.rows} center={koShort(method.named)}
+                     label="결제수단별 금액 비중 도넛 그래프" />
+              <ul className="dlist">
+                {method.rows.map((r, i) => (
+                  <li key={r.key} className={r.sum > 0 ? "" : "off"}>
+                    <i className={`sw s${i + 1}`} />
+                    <span className="nm">{r.key}</span>
+                    <span className="vl num">{short(r.sum)}</span>
                     <span className="pc num">
-                      {cur.sum > 0 ? Math.round((k.total / cur.sum) * 100) : 0}%
+                      {Math.round((r.sum / method.named) * 100)}%
                     </span>
                   </li>
                 ))}
               </ul>
             </div>
           )}
-        </div>
-
-        {/* 신규 · 재등록 — 둘뿐이라 원형은 오히려 안 읽힌다 */}
-        <div className="viz">
-          <h3 className="viz-title">누가 냈나</h3>
-          <p className="viz-sub">상품마다 신규 · 재등록으로 나눠서</p>
-          {kindsLive.length === 0 ? (
-            <p className="dim mini-note">이 달에 잡힌 매출이 없습니다.</p>
-          ) : (
-            <>
-              <div className="nr">
-                {kindsLive.map((k) => {
-                  const top = Math.max(...kindsLive.map((x) => x.total));
-                  const w = (v: number) => `${(v / top) * 100}%`;
-                  const rest = Math.max(0, k.total - k.신규 - k.재등록);
-                  return (
-                    <div className="nr-row" key={k.key}>
-                      <span className="nm">{k.key}</span>
-                      <span className="bar" title={`신규 ${money(k.신규)}원 · 재등록 ${money(k.재등록)}원`}>
-                        {k.신규 > 0 && <i className="s1" style={{ width: w(k.신규) }} />}
-                        {k.재등록 > 0 && <i className="s1-lt" style={{ width: w(k.재등록) }} />}
-                        {rest > 0 && <i className="s-etc" style={{ width: w(rest) }} />}
-                      </span>
-                      <span className="tot num">{short(k.total)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="vkey">
-                <span><i className="sw s1" />신규 <b className="num">{short(신규합)}</b></span>
-                <span><i className="sw s1-lt" />재등록 <b className="num">{short(재등록합)}</b></span>
-                {기타합 > 0 && (
-                  <span><i className="sw s-etc" />기타매출 <b className="num">{short(기타합)}</b></span>
-                )}
-              </div>
-            </>
-          )}
+          <div className="subtot">
+            <span>
+              묶음 결제 <b className="num">{method.mixed.count}건</b>
+              {method.mixed.count > 0 && ` · ${short(method.mixed.sum)}원`}
+            </span>
+            {method.unknown > 0 && (
+              <span className="warn-text">수단 미기재 <b className="num">{short(method.unknown)}</b></span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -512,6 +657,161 @@ export default function Client(p: Props) {
         </>
       )}
 
+      {/* 지점 비교 — 같은 100% 띠를 나란히 놓아야 눈으로 비교된다 */}
+      {p.branches.length > 1 && branch === "전체" && (
+        <div className="viz-2">
+          <div className="viz">
+            <h3 className="viz-title">지점별 무엇을 팔았나</h3>
+            <p className="viz-sub">지점마다 매출을 100%로 놓고 갈래별 비중</p>
+            {branchMix.every((b) => b.sum <= 0) ? (
+              <p className="dim mini-note">이 달에 잡힌 매출이 없습니다.</p>
+            ) : (
+              <>
+                <div className="cmp-rows">
+                  {branchMix.map((b) => (
+                    <div className="cmp-row" key={b.code}>
+                      <span className="nm">{b.name}</span>
+                      <Ratio rows={b.six} />
+                      <span className="tot num">{b.sum > 0 ? short(b.sum) : "-"}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="vkey">
+                  {six.map((k, i) => (
+                    <span key={k.key}><i className={`sw s${i + 1}`} />{k.key}</span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="viz">
+            <h3 className="viz-title">지점별 어떻게 받았나</h3>
+            <p className="viz-sub">지점마다 현금 · 계좌 · 카드 비중</p>
+            {branchMix.every((b) => b.method.named <= 0) ? (
+              <p className="dim mini-note">나눠 적은 결제가 없습니다.</p>
+            ) : (
+              <>
+                <div className="cmp-rows">
+                  {branchMix.map((b) => (
+                    <div className="cmp-row" key={b.code}>
+                      <span className="nm">{b.name}</span>
+                      <Ratio rows={b.method.rows} />
+                      <span className="tot num">
+                        {b.method.mixed.count > 0 ? `묶음 ${b.method.mixed.count}건` : "-"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="vkey">
+                  {method.rows.map((r, i) => (
+                    <span key={r.key}><i className={`sw s${i + 1}`} />{r.key}</span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 문의 → 등록 전환율 */}
+      <h2 className="sec-title">문의 → 등록 전환율</h2>
+      <p className="sec-sub">
+        결판이 난 상담만 셉니다 · 아직 진행중인 건은 전환율에서 뺍니다
+      </p>
+      <div className="table-wrap">
+        <table className="grid">
+          <thead>
+            <tr>
+              <th>지점</th>
+              <th className="right">문의</th>
+              <th className="right">등록</th>
+              <th className="right">미등록</th>
+              <th className="right">진행중</th>
+              <th className="right">전환율</th>
+              <th style={{ width: 110 }}>　</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(branch === "전체" ? convByBranch : convByBranch.filter((b) => b.code === branch))
+              .map((b) => (
+                <tr key={b.code}>
+                  <td className="strong">{b.name}</td>
+                  <td className="num right">{b.base}</td>
+                  <td className="num right strong">{b.done}</td>
+                  <td className="num right late">{b.fail}</td>
+                  <td className="num right dim">{b.going}</td>
+                  <td className="num right strong">
+                    {b.winRate === null ? "-" : `${b.winRate}%`}
+                  </td>
+                  <td>
+                    <span className="cell-bar">
+                      <i style={{ width: `${b.winRate ?? 0}%` }} />
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            <tr className="sum-row">
+              <td className="strong">합계</td>
+              <td className="num right">{lead.base}</td>
+              <td className="num right strong">{lead.done}</td>
+              <td className="num right late">{lead.fail}</td>
+              <td className="num right dim">{lead.going}</td>
+              <td className="num right strong">
+                {lead.winRate === null ? "-" : `${lead.winRate}%`}
+              </td>
+              <td>
+                <span className="cell-bar">
+                  <i style={{ width: `${lead.winRate ?? 0}%` }} />
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* 이 달의 상담왕 */}
+      <h2 className="sec-title">이 달의 상담왕</h2>
+      <p className="sec-sub">
+        상담 건수는 상담 탭의 상담자, 매출은 결제 탭의 담당직원 기준입니다
+      </p>
+      {champions.length === 0 ? (
+        <div className="viz"><p className="dim mini-note">이 달에 쌓인 상담·결제가 없습니다.</p></div>
+      ) : (
+        <div className="table-wrap">
+          <table className="grid">
+            <thead>
+              <tr>
+                <th style={{ width: 36 }}>순위</th>
+                <th>직원</th>
+                <th className="right">상담</th>
+                <th className="right">등록</th>
+                <th className="right">실패</th>
+                <th className="right">실패율</th>
+                <th className="right">등록 매출</th>
+                <th className="right">건당</th>
+              </tr>
+            </thead>
+            <tbody>
+              {champions.map((s, i) => (
+                <tr key={s.id}>
+                  <td className={`num ${i === 0 ? "strong" : "dim"}`}>{i + 1}</td>
+                  <td className="strong">{s.name}</td>
+                  <td className="num right dim">{s.base > 0 ? s.base : "-"}</td>
+                  <td className="num right strong">{s.done > 0 ? s.done : "-"}</td>
+                  <td className="num right late">{s.fail > 0 ? s.fail : "-"}</td>
+                  <td className="num right">{s.failRate === null ? "-" : `${s.failRate}%`}</td>
+                  <td className="num right strong">{money(s.sum)}</td>
+                  <td className="num right dim">
+                    {s.count > 0 ? money(Math.round(s.sum / s.count)) : "-"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* 챙길 것 — 그래프로 만들 내용이 아니라 숫자만 */}
       <h2 className="sec-title">챙길 것</h2>
       <div className="tiles">
@@ -550,9 +850,97 @@ export default function Client(p: Props) {
         </div>
       </div>
 
+      {/* 미수금 — 누가, 언제, 얼마 */}
+      {unpaidList.length > 0 && (
+        <>
+          <h2 className="sec-title">미수금 {unpaidList.length}건</h2>
+          <p className="sec-sub">받기로 한 날이 지난 건은 붉게 표시됩니다</p>
+          <div className="table-wrap">
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th>회원</th>
+                  <th>지점</th>
+                  <th>결제일</th>
+                  <th className="right">결제금액</th>
+                  <th className="right">못 받은 돈</th>
+                  <th>받기로 한 날</th>
+                  <th>담당</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unpaidList.map((u) => (
+                  <tr key={u.id}>
+                    <td className="strong">{u.name}</td>
+                    <td className="dim">{u.branch}</td>
+                    <td className="num dim">{u.date.slice(5)}</td>
+                    <td className="num right dim">{money(u.total)}</td>
+                    <td className="num right late">{money(u.amount)}</td>
+                    <td className={`num ${u.due && u.due < now ? "late" : "dim"}`}>
+                      {u.due ? u.due.slice(5) : "미정"}
+                    </td>
+                    <td className="dim">{u.staff}</td>
+                  </tr>
+                ))}
+                <tr className="sum-row">
+                  <td className="strong">합계</td>
+                  <td colSpan={3} />
+                  <td className="num right late strong">{money(cur.unpaid)}</td>
+                  <td colSpan={2} />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* 환불 — 진행상태·사유 칸은 아직 시트에 없다 */}
+      {refundList.length > 0 && (
+        <>
+          <h2 className="sec-title">환불 {refundList.length}건</h2>
+          <p className="sec-sub">
+            진행상태와 사유는 결제 탭에 칸이 만들어지면 여기에 같이 나옵니다
+          </p>
+          <div className="table-wrap">
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th>회원</th>
+                  <th>지점</th>
+                  <th>결제일</th>
+                  <th className="right">환불액</th>
+                  <th>진행상태</th>
+                  <th>사유</th>
+                  <th>담당</th>
+                </tr>
+              </thead>
+              <tbody>
+                {refundList.map((r) => (
+                  <tr key={r.id}>
+                    <td className="strong">{r.name}</td>
+                    <td className="dim">{r.branch}</td>
+                    <td className="num dim">{r.date.slice(5)}</td>
+                    <td className="num right late">{money(r.amount)}</td>
+                    <td className="dim">-</td>
+                    <td className="dim">-</td>
+                    <td className="dim">{r.staff}</td>
+                  </tr>
+                ))}
+                <tr className="sum-row">
+                  <td className="strong">합계</td>
+                  <td colSpan={2} />
+                  <td className="num right late strong">{money(cur.refund)}</td>
+                  <td colSpan={3} />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
       {/* 자주 보지 않는 것은 접어 둔다 */}
       <details className="more">
-        <summary>자세히 보기 — 일별 · 결제수단 · 직원별 · 결제 내역</summary>
+        <summary>자세히 보기 — 일별 · 직원별 매출 · 결제 내역</summary>
 
         <h3 className="viz-title mt">일별</h3>
         <p className="viz-sub">막대가 없는 날은 결제가 없던 날입니다</p>
@@ -578,18 +966,9 @@ export default function Client(p: Props) {
           )}
         </div>
 
-        {byMethod.length > 0 && (
-          <>
-            <h3 className="viz-title mt">결제 수단</h3>
-            <div className="viz">
-              <Stack rows={byMethod} />
-            </div>
-          </>
-        )}
-
         {byStaff.length > 0 && (
           <>
-            <h3 className="viz-title mt">담당 직원별</h3>
+            <h3 className="viz-title mt">담당 직원별 매출</h3>
             <div className="table-wrap">
               <table className="grid">
                 <thead>
@@ -788,18 +1167,24 @@ function LineChart({ rows, current, onPick }: {
  * 전체를 나눠 갖는 비중이라 원형이 맞다.
  * 가운데에 합계를 넣어 도넛 자체가 총매출 덩어리로 읽히게 했다.
  */
-function Donut({ rows, center }: { rows: { key: string; sum: number }[]; center: string }) {
+function Donut({ rows, center, label }: {
+  rows: { key: string; sum: number }[];
+  center: string;
+  label: string;
+}) {
   const total = rows.reduce((s, r) => s + r.sum, 0);
   const R = 62, C = 2 * Math.PI * R, GAP = 2.5;
   let acc = 0;
 
   return (
-    <svg className="dn" viewBox="0 0 168 168" role="img" aria-label="상품별 매출 비중 도넛 그래프">
+    <svg className="dn" viewBox="0 0 168 168" role="img" aria-label={label}>
       <g transform="rotate(-90 84 84)" fill="none" strokeWidth="21">
+        {/* 값이 0인 갈래도 자리를 지나가야 색과 항목이 어긋나지 않는다 */}
         {rows.map((r, i) => {
           const len = total > 0 ? (r.sum / total) * C : 0;
           const off = acc;
           acc += len;
+          if (r.sum <= 0) return null;
           return (
             <circle key={r.key} className={`s${i + 1}`} cx="84" cy="84" r={R}
                     strokeDasharray={`${Math.max(0, len - GAP).toFixed(1)} ${C.toFixed(1)}`}
@@ -834,28 +1219,26 @@ function MiniLine({ rows }: { rows: number[] }) {
   );
 }
 
-/** 비중을 한 줄로 보여주고 아래에 항목별 값을 적는다 */
-function Stack({ rows }: { rows: { key: string; sum: number }[] }) {
+/**
+ * 100% 띠 하나
+ *
+ * 지점끼리 비중을 견주는 자리에 쓴다.
+ * 금액이 달라도 길이를 같게 맞춰야 "비중"이 눈으로 비교된다.
+ * 색 순서는 목록·범례와 같아야 하므로 값이 0인 갈래도 자리를 지킨다.
+ */
+function Ratio({ rows }: { rows: { key: string; sum: number }[] }) {
   const total = rows.reduce((s, r) => s + r.sum, 0);
-  if (total <= 0) return <p className="dim mini-note">금액이 없습니다.</p>;
+  if (total <= 0) return <span className="ratio empty" />;
 
   return (
-    <>
-      <div className="stack">
-        {rows.map((r, i) => (
-          <i key={r.key} className={`s${i + 1}`} style={{ width: `${(r.sum / total) * 100}%` }} />
-        ))}
-      </div>
-      <ul className="dlist mt">
-        {rows.map((r, i) => (
-          <li key={r.key}>
-            <i className={`sw s${i + 1}`} />
-            <span className="nm">{r.key}</span>
-            <span className="vl num">{money(r.sum)}</span>
-            <span className="pc num">{Math.round((r.sum / total) * 100)}%</span>
-          </li>
-        ))}
-      </ul>
-    </>
+    <span className="ratio">
+      {rows.map((r, i) =>
+        r.sum > 0 ? (
+          <i key={r.key} className={`s${i + 1}`}
+             style={{ width: `${(r.sum / total) * 100}%` }}
+             title={`${r.key} ${money(r.sum)}원 · ${Math.round((r.sum / total) * 100)}%`} />
+        ) : null
+      )}
+    </span>
   );
 }

@@ -28,7 +28,9 @@
   --s2: #eb6834;
   --s3: #1baf7a;
   --s4: #eda100;
-  --s1-lt: #86b6ef;   /* 재등록 — 같은 파랑의 밝은 단계 */
+  --s5: #e87ba4;
+  --s6: #008300;
+  --s1-lt: #86b6ef;   /* 같은 파랑의 밝은 단계 */
   --s-etc: #d5d4cf;   /* 갈래가 없는 나머지 */
 
   --good: #1a7f4b;
@@ -72,6 +74,8 @@
   --s2: #d95926;
   --s3: #199e70;
   --s4: #c98500;
+  --s5: #d55181;
+  --s6: #008300;
   --s1-lt: #86b6ef;
   --s-etc: #4a4a46;
 
@@ -446,16 +450,39 @@ button { font-family: inherit; }
 .dlist .vl { font-weight: 700; }
 .dlist .pc { min-width: 36px; text-align: right; font-size: 11px; color: var(--muted); }
 
-/* ── 신규 · 재등록 ────────────────────────── */
-.nr { display: flex; flex-direction: column; gap: 12px; }
-.nr-row { display: grid; grid-template-columns: 58px 1fr 60px; gap: 10px; align-items: center; }
-.nr-row .nm { font-size: 12px; color: var(--ink-2); font-weight: 700; }
-.nr-row .bar { display: flex; height: 15px; gap: 2px; }
-.nr-row .bar > i { display: block; height: 100%; }
-.nr-row .bar > i:first-child { border-radius: 4px 0 0 4px; }
-.nr-row .bar > i:last-child { border-radius: 0 4px 4px 0; }
-.nr-row .bar > i:only-child { border-radius: 4px; }
-.nr-row .tot { text-align: right; font-size: 12px; font-weight: 700; }
+/* 도넛 옆 목록에서 값이 0인 갈래 — 자리는 지키되 눈에 덜 띄게 */
+.dlist li.off { opacity: .42; }
+
+/* 도넛 밑에 붙는 소계 한 줄 */
+.subtot {
+  display: flex; flex-wrap: wrap; gap: 6px 16px;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft);
+  font-size: 11.5px; color: var(--muted);
+}
+.subtot b { color: var(--ink-2); font-weight: 700; }
+.subtot .warn-text { color: var(--bad); }
+
+/* ── 지점 비교 100% 띠 ────────────────────── */
+.cmp-rows { display: flex; flex-direction: column; gap: 11px; }
+.cmp-row { display: grid; grid-template-columns: 56px 1fr 62px; gap: 10px; align-items: center; }
+.cmp-row .nm { font-size: 12px; color: var(--ink-2); font-weight: 700; }
+.cmp-row .tot { text-align: right; font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.ratio {
+  display: flex; gap: 2px; height: 15px; border-radius: 4px; overflow: hidden;
+  background: var(--surface-3);
+}
+.ratio > i { display: block; height: 100%; }
+.ratio.empty { opacity: .5; }
+
+/* 표 칸 안에 들어가는 작은 막대 */
+.cell-bar {
+  display: block; height: 6px; border-radius: 999px;
+  background: var(--surface-3); overflow: hidden;
+}
+.cell-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--s1); }
+.grid tr.sum-row td {
+  border-top: 1px solid var(--line); background: var(--surface-2); font-weight: 700;
+}
 
 /* ── 지점 줄 ──────────────────────────────── */
 .brow {
@@ -519,10 +546,6 @@ button { font-family: inherit; }
 .more > summary:hover { border-color: var(--ink-2); color: var(--ink); }
 .more[open] > summary { margin-bottom: 4px; }
 
-.stack {
-  display: flex; gap: 2px; height: 15px; border-radius: 4px; overflow: hidden;
-}
-.stack > i { display: block; height: 100%; }
 
 /* 일별 */
 .day-bars {
@@ -545,13 +568,15 @@ i.s1 { background: var(--s1); }
 i.s2 { background: var(--s2); }
 i.s3 { background: var(--s3); }
 i.s4 { background: var(--s4); }
-i.s1-lt { background: var(--s1-lt); }
-i.s-etc { background: var(--s-etc); }
+i.s5 { background: var(--s5); }
+i.s6 { background: var(--s6); }
 
 .dn circle.s1 { stroke: var(--s1); }
 .dn circle.s2 { stroke: var(--s2); }
 .dn circle.s3 { stroke: var(--s3); }
 .dn circle.s4 { stroke: var(--s4); }
+.dn circle.s5 { stroke: var(--s5); }
+.dn circle.s6 { stroke: var(--s6); }
 
 /* 무엇을 보는 자리인지 제목 밑에 한 줄 */
 .sec-sub { margin: -4px 0 10px; font-size: 12px; color: var(--muted); }

@@ -148,6 +148,7 @@ export type Payment = {
   결제수단: string;
   지점코드: string;
   미수금액: string;
+  미수금결제예정일: string;
   환불여부: string;
   환불액: string;
   매출유형: string;
@@ -268,6 +269,7 @@ export async function listPayments(): Promise<Payment[]> {
       결제수단: get(r, cols, "결제수단"),
       지점코드: get(r, cols, "지점코드"),
       미수금액: get(r, cols, "미수금액"),
+      미수금결제예정일: get(r, cols, "미수금결제예정일"),
       환불여부: get(r, cols, "환불여부"),
       환불액: get(r, cols, "환불액"),
       매출유형: get(r, cols, "매출유형"),
