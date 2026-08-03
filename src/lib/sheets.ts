@@ -135,6 +135,22 @@ export async function appendRow(sheetName: string, headers: string[], row: Row) 
   );
 }
 
+/**
+ * 여러 줄을 한 번에 덧붙인다
+ *
+ * 줄마다 따로 부르면 100줄에 100번을 요청하게 되어 느리고 중간에 끊긴다.
+ * 한 번에 보내면 요청 한 번으로 끝난다.
+ */
+export async function appendRows(sheetName: string, headers: string[], rows: Row[]) {
+  if (rows.length === 0) return;
+  const values = rows.map((r) => headers.map((h) => r[h] ?? ""));
+  const range = encodeURIComponent(`${sheetName}!A1`);
+  await call(
+    `/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    { method: "POST", body: JSON.stringify({ values }) }
+  );
+}
+
 /** 한 줄을 통째로 다시 쓴다 */
 export async function updateRow(
   sheetName: string,
