@@ -474,6 +474,20 @@ button { font-family: inherit; }
 .ratio > i { display: block; height: 100%; }
 .ratio.empty { opacity: .5; }
 
+/* ── 지점별 전환율 — 퍼센트만 ────────────── */
+.conv {
+  display: grid; grid-template-columns: 62px 1fr 54px; gap: 12px; align-items: center;
+  padding: 11px 0; border-bottom: 1px solid var(--line-soft);
+}
+.conv:last-child { border-bottom: 0; }
+.conv .nm { font-size: 13px; font-weight: 800; }
+.conv .tr { height: 14px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+.conv .tr > i { display: block; height: 100%; border-radius: 4px; background: var(--s1); }
+.conv .pc { text-align: right; font-size: 16px; font-weight: 800; letter-spacing: -.03em; }
+.conv.all { border-top: 1px solid var(--line); margin-top: 4px; }
+.conv.all .nm, .conv.all .pc { color: var(--ink-2); }
+.conv.all .tr > i { background: var(--ink-2); }
+
 /* 표 칸 안에 들어가는 작은 막대 */
 .cell-bar {
   display: block; height: 6px; border-radius: 999px;
@@ -518,6 +532,8 @@ button { font-family: inherit; }
 .tiles {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;
 }
+/* 맨 위에 올린 것 — 지점 칩 바로 밑에 붙는다 */
+.tiles.top { margin-top: 12px; }
 .tile {
   padding: 15px 17px 14px; background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--r);
