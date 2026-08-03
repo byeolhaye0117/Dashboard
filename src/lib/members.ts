@@ -1,0 +1,408 @@
+/**
+ * 회원 · 이용권 · 결제
+ *
+ * 회원 한 명 아래에 이용권이 여러 개 달린다. (헬스 + PT + 락커)
+ * 한 번 등록할 때 낸 돈은 결제 한 줄로 묶이고, 그 결제에 이용권 여러 개가 매달린다.
+ *
+ * 시트 칸 이름이 조금 달라도 되도록 columns.ts 로 이어준다.
+ */
+import { readSheet, appendRow, updateRow, type Row } from "./sheets";
+import { resolve, toSheetRow, get, type ColumnMap, type ColumnSpec } from "./columns";
+import { now, today } from "./time";
+import { formatPhone } from "./phone";
+import { patchConsultation } from "./consultations";
+
+export const SHEET_M = "회원";
+export const SHEET_V = "이용권";
+export const SHEET_P = "결제";
+
+/* ── 칸 이름 후보 ──────────────────────────── */
+
+const M_COLS: ColumnSpec = {
+  회원번호: { names: ["회원 번호", "회원ID"], required: true },
+  이름: { names: ["회원명", "성명"], required: true },
+  전화번호: { names: ["휴대폰", "연락처", "휴대폰번호", "전화"], required: true },
+  성별: { names: [] },
+  나이대: { names: ["연령대", "나이"] },
+  거주동네: { names: ["거주지역", "거주지", "동네"] },
+  지점코드: { names: ["소속지점", "등록지점", "지점"], required: true },
+  가입일: { names: ["최초등록일", "등록일", "가입일자"], required: true },
+  담당직원사번: { names: ["담당트레이너사번", "담당직원", "담당트레이너", "담당사번"] },
+  회원상태: { names: ["상태"] },
+  상담번호: { names: ["전환상담번호", "유입상담번호"] },
+  메모: { names: ["특이사항", "비고"] },
+  등록일시: { names: [] },
+  등록자: { names: [] },
+  수정일시: { names: [] },
+  수정자: { names: [] },
+  삭제여부: { names: [] },
+};
+
+const V_COLS: ColumnSpec = {
+  이용권번호: { names: ["이용권 번호", "이용권ID"], required: true },
+  회원번호: { names: ["회원 번호"], required: true },
+  상품코드: { names: ["상품", "상품번호"], required: true },
+  지점코드: { names: ["지점", "등록지점"], required: true },
+  시작일: { names: ["이용시작일"], required: true },
+  종료일: { names: ["만료일", "이용종료일"], required: true },
+  총횟수: { names: ["총 횟수", "전체횟수"] },
+  잔여횟수: { names: ["남은횟수", "잔여 횟수"] },
+  정지일수: { names: ["홀딩일수"] },
+  담당트레이너사번: { names: ["담당트레이너", "담당직원사번", "담당직원"] },
+  등록직원사번: { names: ["등록처리직원", "등록직원", "처리직원사번"] },
+  상태: { names: ["이용권상태", "진행상태"] },
+  결제번호: { names: ["결제 번호"] },
+  등록일시: { names: [] },
+  등록자: { names: [] },
+  수정일시: { names: [] },
+  수정자: { names: [] },
+  삭제여부: { names: [] },
+};
+
+const P_COLS: ColumnSpec = {
+  결제번호: { names: ["결제 번호", "결제ID"], required: true },
+  회원번호: { names: ["회원 번호"], required: true },
+  이용권번호: { names: ["이용권 번호"] },
+  지점코드: { names: ["지점", "등록지점"], required: true },
+  결제일시: { names: ["결제일", "결제일자"], required: true },
+  결제금액: { names: ["금액", "결제 금액"], required: true },
+  결제수단: { names: ["결제유형", "결제방법"], required: true },
+  미수금액: { names: ["미수금"] },
+  담당직원사번: { names: ["담당직원", "처리직원사번", "등록직원사번"] },
+  환불여부: { names: [] },
+  환불액: { names: ["환불금액"] },
+  등록일시: { names: [] },
+  등록자: { names: [] },
+  수정일시: { names: [] },
+  수정자: { names: [] },
+  삭제여부: { names: [] },
+};
+
+/* ── 읽기 ──────────────────────────────────── */
+
+export type Member = {
+  id: string;
+  이름: string;
+  전화번호: string;
+  성별: string;
+  나이대: string;
+  거주동네: string;
+  지점코드: string;
+  가입일: string;
+  담당직원사번: string;
+  회원상태: string;
+  상담번호: string;
+  메모: string;
+  rowNumber: number;
+};
+
+export type Ticket = {
+  id: string;
+  회원번호: string;
+  상품코드: string;
+  지점코드: string;
+  시작일: string;
+  종료일: string;
+  총횟수: string;
+  잔여횟수: string;
+  담당트레이너사번: string;
+  상태: string;
+  결제번호: string;
+};
+
+export type Payment = {
+  id: string;
+  회원번호: string;
+  결제일시: string;
+  결제금액: string;
+  결제수단: string;
+  지점코드: string;
+};
+
+export async function listMembers(): Promise<{
+  cols: ColumnMap;
+  headers: string[];
+  items: Member[];
+}> {
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_M);
+  const cols = resolve(SHEET_M, headers, M_COLS);
+  const items: Member[] = [];
+  rows.forEach((r, i) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    const id = get(r, cols, "회원번호");
+    if (!id) return;
+    items.push({
+      id,
+      이름: get(r, cols, "이름"),
+      전화번호: get(r, cols, "전화번호"),
+      성별: get(r, cols, "성별"),
+      나이대: get(r, cols, "나이대"),
+      거주동네: get(r, cols, "거주동네"),
+      지점코드: get(r, cols, "지점코드"),
+      가입일: get(r, cols, "가입일"),
+      담당직원사번: get(r, cols, "담당직원사번"),
+      회원상태: get(r, cols, "회원상태") || "유효",
+      상담번호: get(r, cols, "상담번호"),
+      메모: get(r, cols, "메모"),
+      rowNumber: rowNumbers[i],
+    });
+  });
+  items.sort((a, b) => (b.가입일 ?? "").localeCompare(a.가입일 ?? ""));
+  return { cols, headers, items };
+}
+
+export async function listTickets(): Promise<Ticket[]> {
+  const { headers, rows } = await readSheet(SHEET_V);
+  const cols = resolve(SHEET_V, headers, V_COLS);
+  const out: Ticket[] = [];
+  rows.forEach((r) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    const id = get(r, cols, "이용권번호");
+    if (!id) return;
+    out.push({
+      id,
+      회원번호: get(r, cols, "회원번호"),
+      상품코드: get(r, cols, "상품코드"),
+      지점코드: get(r, cols, "지점코드"),
+      시작일: get(r, cols, "시작일"),
+      종료일: get(r, cols, "종료일"),
+      총횟수: get(r, cols, "총횟수"),
+      잔여횟수: get(r, cols, "잔여횟수"),
+      담당트레이너사번: get(r, cols, "담당트레이너사번"),
+      상태: get(r, cols, "상태") || "진행중",
+      결제번호: get(r, cols, "결제번호"),
+    });
+  });
+  return out;
+}
+
+export async function listPayments(): Promise<Payment[]> {
+  const { headers, rows } = await readSheet(SHEET_P);
+  const cols = resolve(SHEET_P, headers, P_COLS);
+  const out: Payment[] = [];
+  rows.forEach((r) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    const id = get(r, cols, "결제번호");
+    if (!id) return;
+    out.push({
+      id,
+      회원번호: get(r, cols, "회원번호"),
+      결제일시: get(r, cols, "결제일시"),
+      결제금액: get(r, cols, "결제금액"),
+      결제수단: get(r, cols, "결제수단"),
+      지점코드: get(r, cols, "지점코드"),
+    });
+  });
+  return out;
+}
+
+/* ── 번호 만들기 ──────────────────────────── */
+
+function nextId(existing: string[], prefix: string, width: number): string {
+  let max = 0;
+  existing.forEach((v) => {
+    const m = (v ?? "").match(new RegExp(`^${prefix}(\\d+)$`));
+    if (!m) return;
+    const n = Number(m[1]);
+    if (n > max) max = n;
+  });
+  return prefix + String(max + 1).padStart(width, "0");
+}
+
+/* ── 등록 ──────────────────────────────────── */
+
+export type NewTicket = {
+  상품코드: string;
+  시작일: string;
+  종료일: string;
+  총횟수?: string;
+  담당트레이너사번?: string;
+};
+
+export type NewMember = {
+  이름: string;
+  전화번호: string;
+  성별?: string;
+  나이대?: string;
+  거주동네?: string;
+  지점코드: string;
+  가입일: string;
+  담당직원사번?: string;
+  메모?: string;
+  /** 상담에서 넘어온 경우 그 상담번호 */
+  상담번호?: string;
+  이용권: NewTicket[];
+  결제수단: string;
+  결제금액: string;
+};
+
+/**
+ * 회원 등록
+ *
+ * 회원 한 줄 + 결제 한 줄 + 이용권 여러 줄을 함께 만든다.
+ * 상담에서 넘어온 경우 그 상담을 "등록"으로 바꾼다. 직원이 상담 화면에
+ * 다시 들어가 상태를 고칠 필요가 없게 하기 위해서다.
+ */
+export async function createMember(input: NewMember, staffId: string): Promise<string> {
+  const stamp = now();
+
+  // 1) 회원
+  const m = await readSheet(SHEET_M);
+  const mCols = resolve(SHEET_M, m.headers, M_COLS);
+  const memberId = nextId(
+    m.rows.map((r) => get(r, mCols, "회원번호")),
+    "M",
+    5
+  );
+
+  await appendRow(
+    SHEET_M,
+    m.headers,
+    toSheetRow(
+      {
+        회원번호: memberId,
+        이름: input.이름.trim(),
+        전화번호: formatPhone(input.전화번호),
+        성별: input.성별 ?? "",
+        나이대: input.나이대 ?? "",
+        거주동네: input.거주동네 ?? "",
+        지점코드: input.지점코드,
+        가입일: input.가입일 || today(),
+        담당직원사번: input.담당직원사번 ?? "",
+        회원상태: "유효",
+        상담번호: input.상담번호 ?? "",
+        메모: input.메모 ?? "",
+        등록일시: stamp,
+        등록자: staffId,
+        수정일시: stamp,
+        수정자: staffId,
+        삭제여부: "",
+      },
+      mCols
+    )
+  );
+
+  // 2) 결제 — 돈을 받은 건에 한해서만 한 줄 만든다
+  const amount = Number((input.결제금액 ?? "").replace(/[^0-9]/g, "")) || 0;
+  let payId = "";
+  if (amount > 0) {
+    const p = await readSheet(SHEET_P);
+    const pCols = resolve(SHEET_P, p.headers, P_COLS);
+    payId = nextId(p.rows.map((r) => get(r, pCols, "결제번호")), "PAY", 5);
+
+    await appendRow(
+      SHEET_P,
+      p.headers,
+      toSheetRow(
+        {
+          결제번호: payId,
+          회원번호: memberId,
+          이용권번호: "",
+          지점코드: input.지점코드,
+          결제일시: stamp,
+          결제금액: String(amount),
+          결제수단: input.결제수단,
+          미수금액: "0",
+          담당직원사번: staffId,
+          환불여부: "",
+          환불액: "",
+          등록일시: stamp,
+          등록자: staffId,
+          수정일시: stamp,
+          수정자: staffId,
+          삭제여부: "",
+        },
+        pCols
+      )
+    );
+  }
+
+  // 3) 이용권 — 회원권 · 서비스 · 기타를 각각 한 줄로
+  if (input.이용권.length > 0) {
+    const v = await readSheet(SHEET_V);
+    const vCols = resolve(SHEET_V, v.headers, V_COLS);
+    let seq = 0;
+    const used = v.rows.map((r) => get(r, vCols, "이용권번호"));
+
+    for (const t of input.이용권) {
+      seq += 1;
+      const ticketId = nextId(used, "V", 5);
+      used.push(ticketId);
+
+      await appendRow(
+        SHEET_V,
+        v.headers,
+        toSheetRow(
+          {
+            이용권번호: ticketId,
+            회원번호: memberId,
+            상품코드: t.상품코드,
+            지점코드: input.지점코드,
+            시작일: t.시작일,
+            종료일: t.종료일,
+            총횟수: t.총횟수 ?? "",
+            잔여횟수: t.총횟수 ?? "",
+            정지일수: "0",
+            담당트레이너사번: t.담당트레이너사번 ?? input.담당직원사번 ?? "",
+            등록직원사번: staffId,
+            상태: "진행중",
+            결제번호: payId,
+            등록일시: stamp,
+            등록자: staffId,
+            수정일시: stamp,
+            수정자: staffId,
+            삭제여부: "",
+          },
+          vCols
+        )
+      );
+    }
+  }
+
+  // 4) 상담에서 넘어온 사람이면 그 상담을 등록으로 바꾼다
+  if (input.상담번호) {
+    try {
+      await patchConsultation(
+        input.상담번호,
+        { 진행상태: "등록", 등록여부: "Y", 전환회원번호: memberId, 미등록사유: "" },
+        staffId
+      );
+    } catch {
+      // 상담을 못 고쳐도 회원 등록 자체는 이미 끝났다. 여기서 실패로 되돌리지 않는다.
+    }
+  }
+
+  return memberId;
+}
+
+/** 회원 정보 고치기 */
+export async function patchMember(
+  id: string,
+  changes: Partial<Record<string, string>>,
+  staffId: string
+): Promise<void> {
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_M);
+  const cols = resolve(SHEET_M, headers, M_COLS);
+  const i = rows.findIndex((r) => get(r, cols, "회원번호") === id);
+  if (i < 0) throw new Error("해당 회원을 찾지 못했습니다.");
+
+  const patch: Record<string, string> = { ...changes, 수정일시: now(), 수정자: staffId };
+  if (patch["전화번호"]) patch["전화번호"] = formatPhone(patch["전화번호"]);
+
+  const merged: Row = { ...rows[i], ...toSheetRow(patch, cols) };
+  await updateRow(SHEET_M, rowNumbers[i], headers, merged);
+}
+
+/** 회원 삭제 — 줄을 지우지 않고 표시만 남긴다 */
+export async function softDeleteMember(id: string, staffId: string): Promise<void> {
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_M);
+  const cols = resolve(SHEET_M, headers, M_COLS);
+  const i = rows.findIndex((r) => get(r, cols, "회원번호") === id);
+  if (i < 0) throw new Error("해당 회원을 찾지 못했습니다.");
+
+  await updateRow(SHEET_M, rowNumbers[i], headers, {
+    ...rows[i],
+    삭제여부: "Y",
+    ...toSheetRow({ 수정일시: now(), 수정자: staffId }, cols),
+  });
+}

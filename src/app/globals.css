@@ -307,6 +307,23 @@ button { font-family: inherit; }
 .pick-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .pick-row .mini-tab { flex: 0 0 auto; min-width: 84px; }
 
+/* 등록 상품·이용권처럼 여러 줄로 쌓이는 목록 */
+.line-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.line-item {
+  padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.line-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 13px; }
+.line-head b { font-weight: 700; }
+.line-head .dim { font-size: 12px; }
+.line-head > .btn-ghost { margin-left: auto; height: 26px; padding: 0 10px; font-size: 12px; }
+.line-head > .pill { margin-left: auto; }
+.line-fields { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+.line-fields label {
+  display: flex; flex-direction: column; gap: 4px; flex: 1 1 120px;
+  font-size: 11.5px; color: var(--muted);
+}
+
 /* 발급된 임시 비밀번호 — 한 번만 보이는 값이라 크게 띄운다 */
 .pw-show {
   display: flex; align-items: center; gap: 10px;
