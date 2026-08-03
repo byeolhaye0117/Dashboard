@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffNames, getProducts } from "@/lib/data";
-import { listPayments, listTickets } from "@/lib/members";
+import { listPayments, listTickets, listMembers } from "@/lib/members";
 import { getGoals } from "@/lib/sales";
 import { listConsultations } from "@/lib/consultations";
 import { readProduct } from "@/lib/productMeta";
@@ -48,6 +48,16 @@ export default async function SalesPage() {
     problem = String(e?.message ?? e);
   }
 
+  // 미수금 명단에 "누가"를 적으려면 회원 이름이 있어야 한다.
+  // 이름을 못 읽어도 금액은 보여야 하므로 실패해도 넘어간다.
+  let memberNames: Record<string, string> = {};
+  try {
+    const { items } = await listMembers();
+    items.forEach((m) => (memberNames[m.id] = m.이름));
+  } catch {
+    memberNames = {};
+  }
+
   // 등록실패율은 상담 자료에서 나온다. 못 읽어도 매출 화면은 그대로 보이게 한다
   let leads: any[] = [];
   try {
@@ -59,6 +69,7 @@ export default async function SalesPage() {
         상담날짜: c["상담날짜"] ?? "",
         약속일시: c["약속일시"] ?? "",
         진행상태: c["진행상태"] ?? "",
+        상담자사번: c["상담자사번"] ?? "",
       }));
   } catch {
     leads = [];
@@ -75,6 +86,7 @@ export default async function SalesPage() {
         leads={leads}
         branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
         staffNames={staffNames}
+        memberNames={memberNames}
         problem={problem}
       />
     </Shell>
