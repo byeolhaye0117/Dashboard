@@ -309,34 +309,50 @@ button { font-family: inherit; }
 
 /* ── 매출 ───────────────────────────────── */
 .sales-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px; margin-top: 16px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px; margin-top: 16px; align-items: start;
 }
 .sales-card {
-  padding: 14px 16px 16px; background: var(--surface);
+  padding: 15px 16px 17px; background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--r);
 }
 
-.sbar { margin-bottom: 12px; }
+.sbar { margin-bottom: 13px; }
 .sbar:last-child { margin-bottom: 0; }
 .sbar-top {
-  display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; font-size: 12.5px;
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; font-size: 12.5px;
 }
-.sbar-top .nm { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sbar-top .vl { font-weight: 700; }
-.sbar-top .pc { font-size: 11px; color: var(--muted); min-width: 30px; text-align: right; }
-.sbar-note { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
+.sbar-top .nm {
+  flex: 1; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sbar-top .vl { font-weight: 700; color: var(--ink); }
+.sbar-top .pc { font-size: 11px; color: var(--muted); min-width: 32px; text-align: right; }
+.sbar .track { height: 4px; background: var(--surface-3); }
+.sbar .track > i { background: var(--ink-2); }
+/* 맨 위 항목만 색으로 짚어준다 — 전부 색이면 어디를 봐야 할지 모른다 */
+.sbar:first-child .track > i { background: var(--point); }
+.sbar-note { display: block; margin-top: 5px; font-size: 11px; color: var(--muted); }
 
-/* 일별 막대 */
-.day-bars { display: flex; align-items: flex-end; gap: 3px; height: 96px; }
-.day { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; }
-.day > i {
-  display: block; width: 100%; margin-top: auto;
-  background: var(--point); border-radius: 2px 2px 0 0;
+/* 일별 — 그 달 전체를 그린다 */
+.day-bars {
+  display: flex; align-items: flex-end; gap: 2px; height: 84px;
+  padding-bottom: 1px; border-bottom: 1px solid var(--line);
 }
-.day > span { margin-top: 4px; font-size: 9.5px; color: var(--muted); }
+.day { flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end; }
+.day > i { display: block; width: 100%; border-radius: 2px 2px 0 0; background: var(--surface-3); }
+.day.on > i { background: var(--point); }
+.day-axis {
+  display: flex; justify-content: space-between; margin-top: 5px;
+  font-size: 10px; color: var(--muted);
+}
 
 .grid th.right, .grid td.right { text-align: right; }
+
+/* 큰 숫자 뒤에 붙는 단위 */
+.stat .vl em {
+  font-style: normal; font-size: 12px; font-weight: 600;
+  color: var(--muted); margin-left: 3px;
+}
 
 /* ── 회원 상세 — 왼쪽 사람 정보 + 오른쪽 탭 ── */
 .m-detail { display: grid; grid-template-columns: 232px 1fr; gap: 18px; align-items: start; }

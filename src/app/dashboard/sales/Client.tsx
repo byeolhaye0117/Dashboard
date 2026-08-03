@@ -154,17 +154,27 @@ export default function Client(p: Props) {
     return { list: list.sort((a, b) => b.sum - a.sum), covered: mine.length > 0 };
   }, [live, p.tickets, p.products]);
 
-  /** 일별 매출 */
+  /**
+   * 일별 매출 — 그 달의 모든 날을 다 그린다
+   *
+   * 결제가 있는 날만 그리면 한두 건일 때 막대 하나가 화면을 가득 채워
+   * 무슨 그림인지 알 수 없게 된다.
+   */
   const byDay = useMemo(() => {
+    const [y, m] = month.split("-").map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
     const map: Record<string, number> = {};
     live.forEach((x) => {
       const d = (x.결제일시 ?? "").slice(0, 10);
       if (d) map[d] = (map[d] ?? 0) + num(x.결제금액);
     });
-    const list = Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
-    const top = Math.max(1, ...list.map(([, v]) => v));
-    return { list, top };
-  }, [live]);
+    const list = Array.from({ length: last }, (_, i) => {
+      const day = i + 1;
+      const key = `${month}-${String(day).padStart(2, "0")}`;
+      return { day, key, sum: map[key] ?? 0 };
+    });
+    return { list, top: Math.max(1, ...list.map((d) => d.sum)) };
+  }, [live, month]);
 
   if (p.problem) {
     return (
@@ -209,7 +219,7 @@ export default function Client(p: Props) {
       <div className="stats">
         <div className="stat">
           <div className="lb">매출</div>
-          <div className="vl num">{money(total)}</div>
+          <div className="vl num">{money(total)}<em>원</em></div>
           <div className="dt">결제 {live.length}건</div>
         </div>
         <div className="stat">
@@ -219,12 +229,12 @@ export default function Client(p: Props) {
         </div>
         <div className="stat">
           <div className="lb">실제 들어온 돈</div>
-          <div className="vl num">{money(cashIn)}</div>
+          <div className="vl num">{money(cashIn)}<em>원</em></div>
           <div className="dt">미수금 {money(unpaid)}원 제외</div>
         </div>
         <div className="stat">
           <div className="lb">환불</div>
-          <div className="vl num">{money(refund)}</div>
+          <div className="vl num">{money(refund)}<em>원</em></div>
           <div className="dt">{rows.filter(isRefund).length}건</div>
         </div>
       </div>
@@ -278,12 +288,16 @@ export default function Client(p: Props) {
 
             <Panel title="일별">
               <div className="day-bars">
-                {byDay.list.map(([d, v]) => (
-                  <div className="day" key={d} title={`${d} · ${money(v)}원`}>
-                    <i style={{ height: `${Math.max(4, (v / byDay.top) * 100)}%` }} />
-                    <span>{Number(d.slice(8, 10))}</span>
+                {byDay.list.map((d) => (
+                  <div className={`day${d.sum > 0 ? " on" : ""}`} key={d.key}
+                       title={`${d.key} · ${money(d.sum)}원`}>
+                    <i style={{ height: d.sum > 0 ? `${Math.max(6, (d.sum / byDay.top) * 100)}%` : "2px" }} />
                   </div>
                 ))}
+              </div>
+              <div className="day-axis">
+                <span>1</span><span>{Math.round(byDay.list.length / 2)}</span>
+                <span>{byDay.list.length}</span>
               </div>
             </Panel>
           </div>
