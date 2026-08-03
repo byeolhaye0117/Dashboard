@@ -474,6 +474,81 @@ button { font-family: inherit; }
 .ratio > i { display: block; height: 100%; }
 .ratio.empty { opacity: .5; }
 
+/* ── 견주는 표 ────────────────────────────
+   직원끼리 실적을 견주는 자리. 숫자가 세로로 줄맞춰 보여야 한다.
+   회색 머리띠와 굵은 줄을 걷어내고, 이름과 중요한 숫자만 진하게 둔다. */
+.t2wrap {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 4px 6px 6px; overflow-x: auto;
+}
+table.t2 { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 640px; }
+.t2 th {
+  padding: 12px 12px 10px; text-align: left; white-space: nowrap;
+  font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .02em;
+  border-bottom: 1px solid var(--line);
+}
+.t2 th.r, .t2 td.r { text-align: right; }
+.t2 td { padding: 13px 12px; white-space: nowrap; border-bottom: 1px solid var(--line-soft); }
+.t2 tbody tr:last-child td { border-bottom: 0; }
+.t2 tbody tr:hover td { background: var(--surface-2); }
+.t2 .nm { font-weight: 700; font-size: 14px; }
+.t2 .big { font-weight: 800; font-size: 14.5px; letter-spacing: -.02em; }
+.t2 .dim { color: var(--muted); }
+.t2 .bad { color: var(--bad); font-weight: 800; }
+
+/* 순위 딱지 — 1등만 진하게 */
+.rk {
+  display: inline-grid; place-items: center; width: 22px; height: 22px;
+  border-radius: 7px; background: var(--surface-3); color: var(--ink-2);
+  font-size: 11.5px; font-weight: 800; font-style: normal;
+}
+.rk.one { background: var(--ink); color: var(--ink-on); }
+
+/* 알약 — 날짜·비율처럼 짧은 값 */
+.chip {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-3); color: var(--ink-2); font-size: 11.5px; font-weight: 700;
+}
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.good { background: var(--good-soft); color: var(--good); }
+
+/* 표 칸 안에서 비율을 길이로 같이 보여주는 막대 */
+.wbar { display: inline-flex; align-items: center; gap: 8px; }
+.wbar > span {
+  display: block; width: 58px; height: 6px; border-radius: 999px;
+  background: var(--surface-3); overflow: hidden;
+}
+.wbar > span > i { display: block; height: 100%; border-radius: 999px; background: var(--s1); }
+
+/* ── 한 건씩 처리하는 목록 ─────────────────
+   미수금·환불처럼 "누가 얼마"가 먼저 보여야 하는 자리. */
+.lwrap {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 6px 16px;
+}
+.lrow {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 0; border-bottom: 1px solid var(--line-soft);
+}
+.lrow:last-child { border-bottom: 0; }
+.lrow .who { flex: 1; min-width: 0; }
+.lrow .who b { display: block; font-size: 14.5px; font-weight: 800; letter-spacing: -.02em; }
+.lrow .who span {
+  display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis;
+}
+.lrow .mid { display: flex; gap: 6px; flex-wrap: wrap; }
+.lrow .amt { text-align: right; min-width: 112px; }
+.lrow .amt b { display: block; font-size: 16px; font-weight: 800; letter-spacing: -.03em; }
+.lrow .amt b.bad { color: var(--bad); }
+.lrow .amt span { display: block; font-size: 11px; color: var(--muted); }
+.lfoot {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 13px 0 4px; border-top: 1px solid var(--line);
+  font-size: 12.5px; color: var(--muted); font-weight: 700;
+}
+.lfoot b { color: var(--ink); font-size: 15px; letter-spacing: -.02em; }
+
 /* ── 시트에 칸이 없을 때 안내 ─────────────── */
 .setup {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;

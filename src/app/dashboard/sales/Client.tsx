@@ -807,32 +807,41 @@ export default function Client(p: Props) {
       {champions.length === 0 ? (
         <div className="viz"><p className="dim mini-note">이 달에 쌓인 상담·결제가 없습니다.</p></div>
       ) : (
-        <div className="table-wrap">
-          <table className="grid">
+        <div className="t2wrap">
+          <table className="t2">
             <thead>
               <tr>
-                <th style={{ width: 36 }}>순위</th>
+                <th style={{ width: 40 }}>순위</th>
                 <th>직원</th>
-                <th className="right">상담</th>
-                <th className="right">등록</th>
-                <th className="right">실패</th>
-                <th className="right">실패율</th>
-                <th className="right">등록 매출</th>
-                <th className="right">건당</th>
+                <th className="r">상담</th>
+                <th className="r">등록</th>
+                <th className="r">실패</th>
+                <th>성공률</th>
+                <th className="r">등록 매출</th>
+                <th className="r">건당</th>
               </tr>
             </thead>
             <tbody>
               {champions.map((s, i) => (
                 <tr key={s.id}>
-                  <td className={`num ${i === 0 ? "strong" : "dim"}`}>{i + 1}</td>
-                  <td className="strong">{s.name}</td>
-                  <td className="num right dim">{s.base > 0 ? s.base : "-"}</td>
-                  <td className="num right strong">{s.done > 0 ? s.done : "-"}</td>
-                  <td className="num right late">{s.fail > 0 ? s.fail : "-"}</td>
-                  <td className="num right">{s.failRate === null ? "-" : `${s.failRate}%`}</td>
-                  <td className="num right strong">{money(s.sum)}</td>
-                  <td className="num right dim">
-                    {s.count > 0 ? money(Math.round(s.sum / s.count)) : "-"}
+                  <td><i className={`rk${i === 0 ? " one" : ""}`}>{i + 1}</i></td>
+                  <td><span className="nm">{s.name}</span></td>
+                  <td className="r dim num">{s.base > 0 ? s.base : "-"}</td>
+                  <td className="r big num">{s.done > 0 ? s.done : "-"}</td>
+                  <td className="r bad num">{s.fail > 0 ? s.fail : "-"}</td>
+                  <td>
+                    {s.winRate === null ? (
+                      <span className="dim">-</span>
+                    ) : (
+                      <span className="wbar">
+                        <span><i style={{ width: `${s.winRate}%` }} /></span>
+                        <b className="num">{s.winRate}%</b>
+                      </span>
+                    )}
+                  </td>
+                  <td className="r big num">{money(s.sum)}</td>
+                  <td className="r dim num">
+                    {s.count > 0 ? short(Math.round(s.sum / s.count)) : "-"}
                   </td>
                 </tr>
               ))}
@@ -846,41 +855,34 @@ export default function Client(p: Props) {
         <>
           <h2 className="sec-title">미수금 {unpaidList.length}건</h2>
           <p className="sec-sub">받기로 한 날이 지난 건은 붉게 표시됩니다</p>
-          <div className="table-wrap">
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th>회원</th>
-                  <th>지점</th>
-                  <th>결제일</th>
-                  <th className="right">결제금액</th>
-                  <th className="right">못 받은 돈</th>
-                  <th>받기로 한 날</th>
-                  <th>담당</th>
-                </tr>
-              </thead>
-              <tbody>
-                {unpaidList.map((u) => (
-                  <tr key={u.id}>
-                    <td className="strong">{u.name}</td>
-                    <td className="dim">{u.branch}</td>
-                    <td className="num dim">{u.date.slice(5)}</td>
-                    <td className="num right dim">{money(u.total)}</td>
-                    <td className="num right late">{money(u.amount)}</td>
-                    <td className={`num ${u.due && u.due < now ? "late" : "dim"}`}>
-                      {u.due ? u.due.slice(5) : "미정"}
-                    </td>
-                    <td className="dim">{u.staff}</td>
-                  </tr>
-                ))}
-                <tr className="sum-row">
-                  <td className="strong">합계</td>
-                  <td colSpan={3} />
-                  <td className="num right late strong">{money(cur.unpaid)}</td>
-                  <td colSpan={2} />
-                </tr>
-              </tbody>
-            </table>
+          <div className="lwrap">
+            {unpaidList.map((u) => (
+              <div className="lrow" key={u.id}>
+                <div className="who">
+                  <b>{u.name}</b>
+                  <span>
+                    {u.branch} · {u.date.slice(5)} 결제 {money(u.total)}원 · 담당 {u.staff}
+                  </span>
+                </div>
+                <div className="mid">
+                  {u.due ? (
+                    <span className={`chip${u.due < now ? " bad" : ""}`}>
+                      {u.due.slice(5)} {u.due < now ? "지남" : "받기로"}
+                    </span>
+                  ) : (
+                    <span className="chip">날짜 미정</span>
+                  )}
+                </div>
+                <div className="amt">
+                  <b className="bad num">{money(u.amount)}원</b>
+                  <span>못 받은 돈</span>
+                </div>
+              </div>
+            ))}
+            <div className="lfoot">
+              <span>합계 {unpaidList.length}건</span>
+              <b className="num">{money(cur.unpaid)}원</b>
+            </div>
           </div>
         </>
       )}
@@ -894,50 +896,37 @@ export default function Client(p: Props) {
           {p.missingRefund.length > 0 && <SetupRefund missing={p.missingRefund} can={p.canSetup} />}
 
           {refundList.length > 0 && (
-            <div className="table-wrap">
-              <table className="grid">
-                <thead>
-                  <tr>
-                    <th>회원</th>
-                    <th>지점</th>
-                    <th>결제일</th>
-                    <th className="right">환불액</th>
-                    <th>진행상태</th>
-                    <th>사유</th>
-                    <th>신청 → 완료</th>
-                    <th>담당</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {refundList.map((r) => (
-                    <tr key={r.id}>
-                      <td className="strong">{r.name}</td>
-                      <td className="dim">{r.branch}</td>
-                      <td className="num dim">{r.date.slice(5)}</td>
-                      <td className="num right late">{money(r.amount)}</td>
-                      <td>
-                        {r.stage ? (
-                          <span className={`pill${r.stage === "반려" ? " bad" : ""}`}>{r.stage}</span>
-                        ) : (
-                          <span className="dim">-</span>
-                        )}
-                      </td>
-                      <td className="dim">{r.reason || "-"}</td>
-                      <td className="num dim">
-                        {r.asked ? r.asked.slice(5) : "-"}
-                        {r.done ? ` → ${r.done.slice(5)}` : ""}
-                      </td>
-                      <td className="dim">{r.staff}</td>
-                    </tr>
-                  ))}
-                  <tr className="sum-row">
-                    <td className="strong">합계</td>
-                    <td colSpan={2} />
-                    <td className="num right late strong">{money(cur.refund)}</td>
-                    <td colSpan={4} />
-                  </tr>
-                </tbody>
-              </table>
+            <div className="lwrap">
+              {refundList.map((r) => (
+                <div className="lrow" key={r.id}>
+                  <div className="who">
+                    <b>{r.name}</b>
+                    <span>
+                      {r.branch} · {r.date.slice(5)} 결제 · 담당 {r.staff}
+                      {r.reason && ` · ${r.reason}`}
+                      {r.asked && ` · ${r.asked.slice(5)} 신청`}
+                      {r.done && ` → ${r.done.slice(5)} 완료`}
+                    </span>
+                  </div>
+                  <div className="mid">
+                    {r.stage ? (
+                      <span className={`chip${r.stage === "반려" ? " bad" : r.stage === "환불완료" ? " good" : ""}`}>
+                        {r.stage}
+                      </span>
+                    ) : (
+                      <span className="chip">상태 미입력</span>
+                    )}
+                  </div>
+                  <div className="amt">
+                    <b className="bad num">{money(r.amount)}원</b>
+                    <span>환불액</span>
+                  </div>
+                </div>
+              ))}
+              <div className="lfoot">
+                <span>합계 {refundList.length}건</span>
+                <b className="num">{money(cur.refund)}원</b>
+              </div>
             </div>
           )}
         </>
@@ -974,29 +963,36 @@ export default function Client(p: Props) {
         {byStaff.length > 0 && (
           <>
             <h3 className="viz-title mt">담당 직원별 매출</h3>
-            <div className="table-wrap">
-              <table className="grid">
+            <div className="t2wrap">
+              <table className="t2">
                 <thead>
                   <tr>
-                    <th style={{ width: 36 }}>순위</th>
+                    <th style={{ width: 40 }}>순위</th>
                     <th>직원</th>
-                    <th className="right">매출</th>
-                    <th className="right">비중</th>
-                    <th className="right">건수</th>
-                    <th className="right">건당 평균</th>
+                    <th className="r">매출</th>
+                    <th>비중</th>
+                    <th className="r">건수</th>
+                    <th className="r">건당 평균</th>
                   </tr>
                 </thead>
                 <tbody>
                   {byStaff.map((s, i) => (
                     <tr key={s.id}>
-                      <td className="num dim">{i + 1}</td>
-                      <td className="strong">{s.name}</td>
-                      <td className="num right strong">{money(s.sum)}</td>
-                      <td className="num right dim">
-                        {cur.sum > 0 ? `${Math.round((s.sum / cur.sum) * 100)}%` : "-"}
+                      <td><i className={`rk${i === 0 ? " one" : ""}`}>{i + 1}</i></td>
+                      <td><span className="nm">{s.name}</span></td>
+                      <td className="r big num">{money(s.sum)}</td>
+                      <td>
+                        <span className="wbar">
+                          <span>
+                            <i style={{ width: `${cur.sum > 0 ? (s.sum / cur.sum) * 100 : 0}%` }} />
+                          </span>
+                          <b className="num">
+                            {cur.sum > 0 ? `${Math.round((s.sum / cur.sum) * 100)}%` : "-"}
+                          </b>
+                        </span>
                       </td>
-                      <td className="num right dim">{s.count}</td>
-                      <td className="num right dim">{money(Math.round(s.sum / s.count))}</td>
+                      <td className="r dim num">{s.count}</td>
+                      <td className="r dim num">{short(Math.round(s.sum / s.count))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1013,8 +1009,8 @@ export default function Client(p: Props) {
             <p>회원 등록이나 상품 추가로 결제가 쌓이면 여기에 나옵니다.</p>
           </div>
         ) : (
-          <div className="table-wrap">
-            <table className="grid">
+          <div className="t2wrap">
+            <table className="t2">
               <thead>
                 <tr>
                   <th>결제일</th>
@@ -1022,8 +1018,8 @@ export default function Client(p: Props) {
                   <th>유형</th>
                   <th>수단</th>
                   <th>담당</th>
-                  <th className="right">금액</th>
-                  <th className="right">미수금</th>
+                  <th className="r">금액</th>
+                  <th className="r">미수금</th>
                 </tr>
               </thead>
               <tbody>
@@ -1035,16 +1031,14 @@ export default function Client(p: Props) {
                       <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
                       <td className="dim">{branchName(x.지점코드)}</td>
                       <td>
-                        {isRefund(x) ? (
-                          <span className="pill bad">환불</span>
-                        ) : (
-                          <span className="pill">{typeOf(x.매출유형)}</span>
-                        )}
+                        <span className={`chip${isRefund(x) ? " bad" : ""}`}>
+                          {isRefund(x) ? "환불" : typeOf(x.매출유형)}
+                        </span>
                       </td>
                       <td className="dim">{x.결제수단 || "-"}</td>
                       <td className="dim">{p.staffNames[x.담당직원사번] ?? "-"}</td>
-                      <td className="num right strong">{money(num(x.결제금액))}</td>
-                      <td className={`num right ${num(x.미수금액) > 0 ? "late" : "dim"}`}>
+                      <td className="r big num">{money(num(x.결제금액))}</td>
+                      <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
                         {num(x.미수금액) > 0 ? money(num(x.미수금액)) : "-"}
                       </td>
                     </tr>
