@@ -243,9 +243,7 @@ export default function Client(p: Props) {
 
       {p.waiting.length > 0 && p.can.create && (
         <p className="stat-note">
-          상담에서 약속까지 잡혔는데 아직 등록 처리가 안 된 분이 <b>{p.waiting.length}명</b> 있습니다.
-          회원 등록 창에서 <b>상담에서 가져오기</b>로 고르시면 이름 · 연락처가 채워지고,
-          저장하는 순간 그 상담이 <b>등록</b>으로 바뀝니다.
+          상담에서 넘어올 대기 <b>{p.waiting.length}명</b>
         </p>
       )}
 
@@ -781,25 +779,13 @@ function PurchaseFields({
                                  value={l.미수금}
                                  onChange={(e) => setLine(i, "미수금", e.target.value)} />
                         </label>
-                        {onlyNum(l.할인) > 0 && (
+                        {onlyNum(l.할인) > 0 && listPrice(l, pr) > 0 && (
                           <p className="cart-note">
-                            {listPrice(l, pr) > 0 ? (
-                              <>
-                                정가 {money(listPrice(l, pr))}원에서 {money(onlyNum(l.할인))}원을 깎아
-                                <b> {money(linePrice(l, pr))}원</b>으로 받습니다.
-                              </>
-                            ) : (
-                              <>이 상품은 원래 값이 없어 할인이 반영되지 않습니다.</>
-                            )}
+                            {money(listPrice(l, pr))} − {money(onlyNum(l.할인))} =
+                            <b> {money(linePrice(l, pr))}원</b>
                           </p>
                         )}
-                        {extra && (
-                          <p className="cart-note">
-                            {priceOf(pr!) > 0
-                              ? "회원권에 붙는 추가 요금입니다. 이용 기간은 얹은 회원권을 따라갑니다."
-                              : "무료로 얹어드리는 항목입니다. 기간은 얹은 회원권을 따라갑니다."}
-                          </p>
-                        )}
+
                       </div>
                     )}
                   </div>
@@ -892,28 +878,16 @@ function PurchaseFields({
             </div>
 
             {unpaidTotal > 0 && (
-              <p className="cart-note">
-                이 중 <b>{money(unpaidTotal)}원</b>은 아직 못 받은 돈입니다.
-                오늘 실제로 받는 금액은{" "}
-                <b>
+              <div className="row total">
+                <span>오늘 받는 금액</span>
+                <b className="num">
                   {money(
                     Math.max(0, (split ? splitTotal : b.직접입력 ? onlyNum(b.금액) : suggested) - unpaidTotal)
-                  )}
-                  원
+                  )}원
                 </b>
-                입니다.
-              </p>
+              </div>
             )}
-            {!split && !b.직접입력 && suggested > 0 && (
-              <p className="cart-note">
-                상품마다 고른 값에서 할인을 뺀 금액입니다. 더 조정하시려면 금액을 직접 고쳐주세요.
-              </p>
-            )}
-            {split && (
-              <p className="cart-note">
-                나눠 내신 금액을 각각 적어주세요. 합계가 받을 금액이 됩니다.
-              </p>
-            )}
+
           </div>
         </div>
       </div>
@@ -959,10 +933,6 @@ function AddPurchase({
     <div className="modal-back top" onClick={onClose}>
       <div className="modal xl" onClick={(e) => e.stopPropagation()}>
         <h3>{member.이름}님 상품 추가</h3>
-        <p className="modal-lead">
-          재등록 · PT 추가 · 사물함 · 운동복 모두 여기서 더합니다.
-          회원 정보는 그대로 두고 이용권과 결제만 새로 만듭니다.
-        </p>
 
         <PurchaseFields products={products} options={options}
                         baseDate={today()} b={b} setB={setB} />
@@ -1033,9 +1003,6 @@ function NewForm({
     <div className="modal-back" onClick={onClose}>
       <div className="modal xl" onClick={(e) => e.stopPropagation()}>
         <h3>회원 등록</h3>
-        <p className="modal-lead">
-          상품을 고르면 만료일과 금액이 자동으로 채워집니다. 다르면 그 자리에서 고치시면 됩니다.
-        </p>
 
         {waiting.length > 0 && (
           <>
@@ -1048,11 +1015,6 @@ function NewForm({
                 </option>
               ))}
             </select>
-            {fromId && (
-              <p className="stat-note">
-                저장하면 이 상담이 <b>등록</b>으로 바뀝니다. 상담 화면에서 따로 고치실 필요 없습니다.
-              </p>
-            )}
           </>
         )}
 
@@ -1110,14 +1072,6 @@ function NewForm({
 
 /* ── 상세 ─────────────────────────────────── */
 const TABS = ["요약", "이용권", "결제", "기록"] as const;
-
-/** 지금 어느 탭을 보고 있는지 한 줄로 알려준다 */
-const TAB_LEAD: Record<(typeof TABS)[number], string> = {
-  요약: "지금 이 회원이 어떤 상태인지 한눈에 봅니다.",
-  이용권: "끊은 상품 전부입니다. 회원권 · 부가 · 서비스로 나눠 보여드립니다.",
-  결제: "지금까지 받은 돈과 아직 못 받은 돈입니다.",
-  기록: "언제 어떻게 등록됐는지, 누가 고쳤는지입니다.",
-};
 
 /**
  * 이용권 한 줄 + 얼마나 지났는지 막대
@@ -1358,7 +1312,7 @@ function Detail({
                 </div>
 
                 <div className="tab-bar">
-                  <p className="tab-lead">{TAB_LEAD[view]}</p>
+                  <span className="tab-lead" />
                   {can.update && (view === "요약" || view === "이용권") && (
                     <button className="btn-dark" onClick={() => setAdding(true)}>
                       <Icon name="plus" size={15} strokeWidth={2} />
@@ -1438,7 +1392,7 @@ function Detail({
                   <>
                     {paid.length === 0 ? (
                       <p className="dim" style={{ fontSize: 13, margin: "8px 0 12px" }}>
-                        결제 기록이 없습니다. (무료 · 서비스로만 등록된 회원)
+                        결제 기록이 없습니다.
                       </p>
                     ) : (
                       <>
@@ -1474,14 +1428,8 @@ function Detail({
                     {item.메모 ? (
                       <div className="quote">{item.메모}</div>
                     ) : (
-                      <p className="dim" style={{ fontSize: 13 }}>
-                        적어둔 메모가 없습니다. 수정에서 넣을 수 있습니다.
-                      </p>
+                      <p className="dim" style={{ fontSize: 13 }}>없습니다.</p>
                     )}
-                    <p className="stat-note">
-                      출석 · 예약 기록은 이 대시보드에서 다루지 않기로 하셨습니다.
-                      필요해지면 그때 붙일 수 있습니다.
-                    </p>
                   </>
                 )}
               </div>
@@ -1791,9 +1739,7 @@ function TicketEdit({
     <div className="modal-back top" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{pr?.name ?? t.상품코드}</h3>
-        <p className="modal-lead">
-          {t.id} · 상품 자체는 바꿀 수 없습니다. 다른 상품이면 이 줄을 지우고 새로 등록해주세요.
-        </p>
+        <p className="modal-lead">{t.id}</p>
 
         <div className="form-grid">
           <L label="시작일">
@@ -1838,10 +1784,7 @@ function TicketEdit({
             종료일 미루기
           </button>
         </div>
-        <p className="stat-note">
-          지금까지 미룬 날수 <b>{Number(f.정지일수) || 0}일</b>. 단추를 누르면 위 종료일이 바로 바뀌고,
-          아래 저장을 눌러야 실제로 반영됩니다.
-        </p>
+        <p className="stat-note">지금까지 미룬 날수 <b>{Number(f.정지일수) || 0}일</b></p>
 
         {msg && <div className="alert-bad">{msg}</div>}
 
@@ -1923,7 +1866,7 @@ function PaymentEdit({
     <div className="modal-back top" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>결제 고치기</h3>
-        <p className="modal-lead">{x.id} · 금액을 고치면 현금 · 카드 · 계좌 칸도 같이 맞춰집니다.</p>
+        <p className="modal-lead">{x.id}</p>
 
         <div className="form-grid">
           <L label="결제일">
@@ -1979,16 +1922,10 @@ function PaymentEdit({
 
         {split && (
           <p className="stat-note">
-            나눠 내신 금액을 각각 적어주세요. 합계{" "}
-            <b>{money(onlyNum(f.카드액) + onlyNum(f.계좌액))}원</b>으로 저장됩니다.
+            합계 <b>{money(onlyNum(f.카드액) + onlyNum(f.계좌액))}원</b>
           </p>
         )}
-        {refunded && (
-          <p className="stat-note">
-            환불로 표시한 건은 <b>받은 돈 합계에서 빠집니다.</b> 이용권도 같이 환불 처리하시려면
-            이용권 줄을 눌러 상태를 환불로 바꿔주세요.
-          </p>
-        )}
+
 
         {msg && <div className="alert-bad">{msg}</div>}
 
