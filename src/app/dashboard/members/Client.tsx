@@ -56,6 +56,14 @@ type Payment = {
   환불액: string;
 };
 
+/** 이용권에 얹어준 서비스·옵션 */
+type Extra = {
+  id: string;
+  이용권번호: string;
+  상품코드: string;
+  추가금액: string;
+};
+
 type Waiting = { id: string; 이름: string; 전화번호: string; 지점코드: string };
 type Named = { code: string; name: string };
 
@@ -63,6 +71,7 @@ type Props = {
   items: Member[];
   tickets: Ticket[];
   payments: Payment[];
+  extras: Extra[];
   products: ProductMeta[];
   waiting: Waiting[];
   options: Record<string, string[]>;
@@ -329,6 +338,10 @@ export default function Client(p: Props) {
           item={detail}
           tickets={p.tickets.filter((t) => t.회원번호 === detail.id)}
           payments={p.payments.filter((x) => x.회원번호 === detail.id)}
+          extras={(() => {
+            const mine = new Set(p.tickets.filter((t) => t.회원번호 === detail.id).map((t) => t.id));
+            return p.extras.filter((s) => mine.has(s.이용권번호));
+          })()}
           productOf={productOf}
           options={p.options}
           trainers={p.trainers}
@@ -384,6 +397,12 @@ function NewForm({
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
   const productOf = (code: string) => products.find((x) => x.code === code);
 
+  /** 서비스·옵션인가 — 이용권이 아니라 회원권에 얹는 항목이다 */
+  const isExtra = (code: string) => {
+    const g = groupOf(productOf(code));
+    return g === "서비스" || g === "옵션";
+  };
+
   /** 고른 상품값을 합쳐 결제금액을 미리 채운다 */
   const suggested = useMemo(() => {
     return lines.reduce((sum, l) => {
@@ -432,6 +451,9 @@ function NewForm({
     if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
     if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
     if (lines.length === 0) return setMsg("등록할 상품을 하나 이상 골라주세요.");
+    if (lines.every((l) => isExtra(l.상품코드))) {
+      return setMsg("서비스·옵션만으로는 등록할 수 없습니다. 회원권이나 PT를 같이 골라주세요.");
+    }
 
     setBusy(true);
     const res = await fetch("/api/members", {
@@ -440,7 +462,11 @@ function NewForm({
       body: JSON.stringify({
         ...f,
         상담번호: fromId,
-        이용권: lines,
+        // 서비스·옵션은 이용권이 아니라 "얹어준 것"으로 따로 보낸다
+        이용권: lines.filter((l) => !isExtra(l.상품코드)),
+        부가서비스: lines
+          .filter((l) => isExtra(l.상품코드))
+          .map((l) => ({ 상품코드: l.상품코드, 추가금액: String(productOf(l.상품코드)?.card ?? 0) })),
         결제금액: split ? String(splitTotal) : shownAmount,
       }),
     });
@@ -545,6 +571,11 @@ function NewForm({
                       빼기
                     </button>
                   </div>
+                  {isExtra(l.상품코드) ? (
+                    <p className="stat-note" style={{ margin: "6px 0 0" }}>
+                      회원권에 얹어드리는 항목입니다. 기간을 따로 세지 않고 무엇을 드렸는지만 남깁니다.
+                    </p>
+                  ) : (
                   <div className="line-fields">
                     <label>
                       시작일
@@ -565,6 +596,7 @@ function NewForm({
                              value={l.총횟수} onChange={(e) => setLine(i, "총횟수", e.target.value)} />
                     </label>
                   </div>
+                  )}
                 </div>
               );
             })}
@@ -687,11 +719,12 @@ function ProgressLine({ t, pr, now, onEdit }: {
 }
 
 function Detail({
-  item, tickets, payments, productOf, options, trainers, staffNames, branchName, can, onClose,
+  item, tickets, payments, extras, productOf, options, trainers, staffNames, branchName, can, onClose,
 }: {
   item: Member;
   tickets: Ticket[];
   payments: Payment[];
+  extras: Extra[];
   productOf: (code: string) => ProductMeta | undefined;
   options: Record<string, string[]>;
   trainers: { id: string; name: string }[];
@@ -937,17 +970,8 @@ function Detail({
                       </>
                     )}
 
-                    {live.serviceRows.length > 0 && (
-                      <>
-                        <h4 className="mini-title">받은 서비스 ({live.serviceRows.length})</h4>
-                        <div className="line-list">
-                          {live.serviceRows.map((t) => (
-                            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} tag="무료"
-                                        onEdit={can.update ? () => setEditTicket(t) : undefined} />
-                          ))}
-                        </div>
-                      </>
-                    )}
+                    <ServiceList rows={live.serviceRows} extras={extras} productOf={productOf}
+                                 now={now} onEdit={can.update ? setEditTicket : undefined} />
 
                     {paid.length > 0 && (
                       <>
@@ -971,7 +995,7 @@ function Detail({
                 )}
 
                 {view === "이용권" && (
-                  <TicketGroups tickets={tickets} productOf={productOf} now={now}
+                  <TicketGroups tickets={tickets} extras={extras} productOf={productOf} now={now}
                                 onEdit={can.update ? setEditTicket : undefined} />
                 )}
 
@@ -1083,10 +1107,58 @@ function Detail({
  * 이용 중 / 지난 것 / 받은 서비스.
  * 서비스는 돈을 안 낸 항목이라 이용권과 같이 세면 개수가 부풀려진다.
  */
+/**
+ * 받아간 서비스·옵션을 한 곳에 모아 보여준다
+ *
+ * 두 군데에서 온다. 회원권을 팔 때 얹어준 것은 이용권서비스 탭에,
+ * 따로 등록한 서비스 상품은 이용권 탭에 들어 있다.
+ */
+function ServiceList({ rows, extras, productOf, now, onEdit }: {
+  rows: Ticket[];
+  extras: Extra[];
+  productOf: (code: string) => ProductMeta | undefined;
+  now: string;
+  onEdit?: (t: Ticket) => void;
+}) {
+  const total = rows.length + extras.length;
+  if (total === 0) return null;
+
+  return (
+    <>
+      <h4 className="mini-title">받은 서비스 · 옵션 ({total})</h4>
+      <div className="line-list">
+        {extras.map((s) => {
+          const pr = productOf(s.상품코드);
+          const add = Number(s.추가금액) || 0;
+          return (
+            <div className="line-item" key={s.id}>
+              <div className="line-head">
+                <b>{pr?.name ?? s.상품코드}</b>
+                <span className="dim">회원권에 얹어드림</span>
+                <span className={`pill ${add > 0 ? "warn" : ""}`}>
+                  {add > 0 ? `+${money(add)}원` : "무료"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+        {rows.map((t) => (
+          <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} tag="무료"
+                      onEdit={onEdit && (() => onEdit(t))} />
+        ))}
+      </div>
+      <p className="stat-note">
+        서비스로 드린 항목은 횟수를 차감하지 않고 기록만 남깁니다.
+      </p>
+    </>
+  );
+}
+
 function TicketGroups({
-  tickets, productOf, now, onEdit,
+  tickets, extras, productOf, now, onEdit,
 }: {
   tickets: Ticket[];
+  extras: Extra[];
   productOf: (code: string) => ProductMeta | undefined;
   now: string;
   onEdit?: (t: Ticket) => void;
@@ -1147,12 +1219,7 @@ function TicketGroups({
         "운동복 · 사물함 같은 항목입니다. 이게 남아 있어도 회원권이 살아 있는 것으로는 세지 않습니다."
       )}
       {section("붙은 옵션", opts, "회원권에 얹은 추가 요금입니다.")}
-      {section(
-        "받은 서비스",
-        services,
-        "서비스로 드린 항목은 횟수를 차감하지 않고 기록만 남깁니다.",
-        "무료"
-      )}
+      <ServiceList rows={services} extras={extras} productOf={productOf} now={now} onEdit={onEdit} />
     </>
   );
 }

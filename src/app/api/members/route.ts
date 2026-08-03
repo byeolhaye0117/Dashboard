@@ -42,6 +42,12 @@ export async function POST(req: Request) {
           }))
       : [];
 
+    const 부가서비스 = Array.isArray(b.부가서비스)
+      ? b.부가서비스
+          .filter((s: any) => s && s.상품코드)
+          .map((s: any) => ({ 상품코드: String(s.상품코드), 추가금액: String(s.추가금액 ?? "") }))
+      : [];
+
     const id = await createMember(
       {
         이름,
@@ -55,6 +61,7 @@ export async function POST(req: Request) {
         메모: String(b.메모 ?? ""),
         상담번호: String(b.상담번호 ?? ""),
         이용권,
+        부가서비스,
         결제수단: String(b.결제수단 ?? ""),
         결제금액: String(b.결제금액 ?? ""),
         카드액: String(b.카드액 ?? ""),

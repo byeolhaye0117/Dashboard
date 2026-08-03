@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getAllOptions, getStaffNames, getStaffAll, getProducts } from "@/lib/data";
-import { listMembers, listTickets, listPayments } from "@/lib/members";
+import { listMembers, listTickets, listPayments, listTicketServices } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
 import { listConsultations } from "@/lib/consultations";
 import Shell from "../Shell";
@@ -53,6 +53,15 @@ export default async function MembersPage() {
     problem = String(e?.message ?? e);
   }
 
+  // 이용권에 얹어준 서비스·옵션 — 탭이 없어도 나머지 화면은 그대로 보이게 한다
+  let extras: any[] = [];
+  try {
+    const tids = new Set(tickets.map((t) => t.id));
+    extras = (await listTicketServices()).filter((s) => tids.has(s.이용권번호));
+  } catch {
+    extras = [];
+  }
+
   // 상담에서 약속까지 잡혔는데 아직 등록 처리가 안 된 사람 — 바로 회원으로 만들 수 있게
   try {
     const { items } = await listConsultations();
@@ -85,6 +94,7 @@ export default async function MembersPage() {
         items={members}
         tickets={tickets}
         payments={payments}
+        extras={extras}
         products={products.map(readProduct)}
         waiting={waiting}
         options={options}

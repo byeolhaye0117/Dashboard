@@ -14,6 +14,8 @@ import { patchConsultation } from "./consultations";
 
 export const SHEET_M = "회원";
 export const SHEET_V = "이용권";
+/** 이용권에 얹어준 서비스·옵션 (회원권을 팔 때 같이 준 것) */
+export const SHEET_VS = "이용권서비스";
 export const SHEET_P = "결제";
 
 /* ── 칸 이름 후보 ──────────────────────────── */
@@ -52,6 +54,18 @@ const V_COLS: ColumnSpec = {
   등록직원사번: { names: ["등록처리직원", "등록직원", "처리직원사번"] },
   상태: { names: ["이용권상태", "진행상태"] },
   결제번호: { names: ["결제 번호"] },
+  등록일시: { names: [] },
+  등록자: { names: [] },
+  수정일시: { names: [] },
+  수정자: { names: [] },
+  삭제여부: { names: [] },
+};
+
+const VS_COLS: ColumnSpec = {
+  번호: { names: ["이용권서비스번호", "서비스번호", "순번"] },
+  이용권번호: { names: ["이용권 번호"], required: true },
+  상품코드: { names: ["상품", "상품번호"], required: true },
+  추가금액: { names: ["금액", "옵션금액"] },
   등록일시: { names: [] },
   등록자: { names: [] },
   수정일시: { names: [] },
@@ -196,6 +210,38 @@ export async function listTickets(): Promise<Ticket[]> {
   return out;
 }
 
+export type TicketService = {
+  id: string;
+  이용권번호: string;
+  상품코드: string;
+  추가금액: string;
+};
+
+/**
+ * 이용권에 얹어준 서비스·옵션
+ *
+ * 회원권을 팔 때 직원이 무료 서비스나 옵션을 골라 얹어준 기록이다.
+ * 기간이나 횟수를 따로 세지 않고 "무엇을 줬는지"만 남긴다.
+ */
+export async function listTicketServices(): Promise<TicketService[]> {
+  const { headers, rows } = await readSheet(SHEET_VS);
+  const cols = resolve(SHEET_VS, headers, VS_COLS);
+  const out: TicketService[] = [];
+  rows.forEach((r, i) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    const ticket = get(r, cols, "이용권번호");
+    const code = get(r, cols, "상품코드");
+    if (!ticket || !code) return;
+    out.push({
+      id: get(r, cols, "번호") || `${ticket}-${i}`,
+      이용권번호: ticket,
+      상품코드: code,
+      추가금액: get(r, cols, "추가금액"),
+    });
+  });
+  return out;
+}
+
 export async function listPayments(): Promise<Payment[]> {
   const { headers, rows } = await readSheet(SHEET_P);
   const cols = resolve(SHEET_P, headers, P_COLS);
@@ -255,6 +301,8 @@ export type NewMember = {
   /** 상담에서 넘어온 경우 그 상담번호 */
   상담번호?: string;
   이용권: NewTicket[];
+  /** 회원권에 얹어준 서비스·옵션 */
+  부가서비스?: { 상품코드: string; 추가금액?: string }[];
   결제수단: string;
   결제금액: string;
   /** 카드+계좌처럼 나눠 낸 경우 각각의 금액 */
@@ -376,17 +424,17 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
     );
   }
 
-  // 3) 이용권 — 회원권 · 서비스 · 기타를 각각 한 줄로
+  // 3) 이용권 — 회원권 · PT · 부가 상품을 각각 한 줄로
+  let firstTicket = "";
   if (input.이용권.length > 0) {
     const v = await readSheet(SHEET_V);
     const vCols = resolve(SHEET_V, v.headers, V_COLS);
-    let seq = 0;
     const used = v.rows.map((r) => get(r, vCols, "이용권번호"));
 
     for (const t of input.이용권) {
-      seq += 1;
       const ticketId = nextId(used, "V", 5);
       used.push(ticketId);
+      if (!firstTicket) firstTicket = ticketId;
 
       await appendRow(
         SHEET_V,
@@ -418,7 +466,46 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
     }
   }
 
-  // 4) 상담에서 넘어온 사람이면 그 상담을 등록으로 바꾼다
+  // 4) 얹어준 서비스·옵션 — 이용권에 매달아 둔다
+  const extras = input.부가서비스 ?? [];
+  if (extras.length > 0 && firstTicket) {
+    try {
+      const vs = await readSheet(SHEET_VS);
+      const vsCols = resolve(SHEET_VS, vs.headers, VS_COLS);
+      const used = vs.rows.map((r) => get(r, vsCols, "번호"));
+
+      for (const s of extras) {
+        const id = nextId(used, "VS", 5);
+        used.push(id);
+        await appendRow(
+          SHEET_VS,
+          vs.headers,
+          toSheetRow(
+            {
+              번호: id,
+              이용권번호: firstTicket,
+              상품코드: s.상품코드,
+              추가금액: String(won(s.추가금액)),
+              등록일시: stamp,
+              등록자: staffId,
+              수정일시: stamp,
+              수정자: staffId,
+              삭제여부: "",
+            },
+            vsCols
+          )
+        );
+      }
+    } catch (e: any) {
+      // 서비스 기록에 실패해도 회원·이용권·결제는 이미 들어갔다.
+      // 여기서 되돌리면 오히려 더 꼬이므로 알리기만 한다.
+      throw new Error(
+        `회원 등록은 됐지만 서비스 항목을 남기지 못했습니다: ${e?.message ?? e}`
+      );
+    }
+  }
+
+  // 5) 상담에서 넘어온 사람이면 그 상담을 등록으로 바꾼다
   if (input.상담번호) {
     try {
       await patchConsultation(
