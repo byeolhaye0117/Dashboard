@@ -492,6 +492,45 @@ export default function Client(p: Props) {
         </div>
       )}
 
+      {/* 챙길 것 — 매출보다 먼저 눈에 들어와야 하는 세 가지 */}
+      <div className="tiles top">
+        <div className="tile">
+          <span className="lb">아직 못 받은 돈</span>
+          <b className={`vl num${cur.unpaid > 0 ? " bad" : ""}`}>{money(cur.unpaid)}원</b>
+          <span className="sub">
+            {cur.unpaid > 0
+              ? `${unpaidList.length}건 · 실입금 ${money(cur.sum - cur.unpaid)}원`
+              : "전액 입금"}
+          </span>
+          <div className="mini">
+            <i className={cur.unpaid > 0 ? "bad" : ""}
+               style={{ width: `${cur.sum > 0 ? Math.min(100, (cur.unpaid / cur.sum) * 100) : 0}%` }} />
+          </div>
+        </div>
+        <div className="tile">
+          <span className="lb">환불</span>
+          <b className="vl num">{money(cur.refund)}원</b>
+          <span className="sub">
+            {cur.rows.filter(isRefund).length}건
+            {cur.sum > 0 && ` · 매출의 ${((cur.refund / cur.sum) * 100).toFixed(1)}%`}
+          </span>
+          <div className="mini">
+            <i style={{ width: `${cur.sum > 0 ? Math.min(100, (cur.refund / cur.sum) * 100) : 0}%` }} />
+          </div>
+        </div>
+        <div className="tile">
+          <span className="lb">등록실패율</span>
+          <b className="vl num">{lead.failRate === null ? "-" : `${lead.failRate}%`}</b>
+          <span className="sub">
+            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.fail}건 미등록` : "이 달 상담 없음"}
+          </span>
+          <div className="mini">
+            <i className={lead.failRate !== null && lead.failRate >= 50 ? "bad" : "warn"}
+               style={{ width: `${lead.failRate ?? 0}%` }} />
+          </div>
+        </div>
+      </div>
+
       {/* 이번 달 — 숫자 하나가 주인공이라 그래프를 쓰지 않는다 */}
       <div className="hero">
         <div className="hero-main">
@@ -719,55 +758,23 @@ export default function Client(p: Props) {
       <p className="sec-sub">
         결판이 난 상담만 셉니다 · 아직 진행중인 건은 전환율에서 뺍니다
       </p>
-      <div className="table-wrap">
-        <table className="grid">
-          <thead>
-            <tr>
-              <th>지점</th>
-              <th className="right">문의</th>
-              <th className="right">등록</th>
-              <th className="right">미등록</th>
-              <th className="right">진행중</th>
-              <th className="right">전환율</th>
-              <th style={{ width: 110 }}>　</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(branch === "전체" ? convByBranch : convByBranch.filter((b) => b.code === branch))
-              .map((b) => (
-                <tr key={b.code}>
-                  <td className="strong">{b.name}</td>
-                  <td className="num right">{b.base}</td>
-                  <td className="num right strong">{b.done}</td>
-                  <td className="num right late">{b.fail}</td>
-                  <td className="num right dim">{b.going}</td>
-                  <td className="num right strong">
-                    {b.winRate === null ? "-" : `${b.winRate}%`}
-                  </td>
-                  <td>
-                    <span className="cell-bar">
-                      <i style={{ width: `${b.winRate ?? 0}%` }} />
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            <tr className="sum-row">
-              <td className="strong">합계</td>
-              <td className="num right">{lead.base}</td>
-              <td className="num right strong">{lead.done}</td>
-              <td className="num right late">{lead.fail}</td>
-              <td className="num right dim">{lead.going}</td>
-              <td className="num right strong">
-                {lead.winRate === null ? "-" : `${lead.winRate}%`}
-              </td>
-              <td>
-                <span className="cell-bar">
-                  <i style={{ width: `${lead.winRate ?? 0}%` }} />
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div className="viz">
+        {(branch === "전체" ? convByBranch : convByBranch.filter((b) => b.code === branch))
+          .map((b) => (
+            <div className="conv" key={b.code}
+                 title={`문의 ${b.base}건 · 등록 ${b.done} · 미등록 ${b.fail} · 진행중 ${b.going}`}>
+              <span className="nm">{b.name}</span>
+              <span className="tr"><i style={{ width: `${b.winRate ?? 0}%` }} /></span>
+              <span className="pc num">{b.winRate === null ? "-" : `${b.winRate}%`}</span>
+            </div>
+          ))}
+        {branch === "전체" && (
+          <div className="conv all" title={`문의 ${lead.base}건 · 등록 ${lead.done} · 미등록 ${lead.fail}`}>
+            <span className="nm">전 지점</span>
+            <span className="tr"><i style={{ width: `${lead.winRate ?? 0}%` }} /></span>
+            <span className="pc num">{lead.winRate === null ? "-" : `${lead.winRate}%`}</span>
+          </div>
+        )}
       </div>
 
       {/* 이 달의 상담왕 */}
@@ -811,44 +818,6 @@ export default function Client(p: Props) {
           </table>
         </div>
       )}
-
-      {/* 챙길 것 — 그래프로 만들 내용이 아니라 숫자만 */}
-      <h2 className="sec-title">챙길 것</h2>
-      <div className="tiles">
-        <div className="tile">
-          <span className="lb">아직 못 받은 돈</span>
-          <b className={`vl num${cur.unpaid > 0 ? " bad" : ""}`}>{money(cur.unpaid)}원</b>
-          <span className="sub">
-            {cur.unpaid > 0 ? `실입금 ${money(cur.sum - cur.unpaid)}원` : "전액 입금"}
-          </span>
-          <div className="mini">
-            <i className={cur.unpaid > 0 ? "bad" : ""}
-               style={{ width: `${cur.sum > 0 ? Math.min(100, (cur.unpaid / cur.sum) * 100) : 0}%` }} />
-          </div>
-        </div>
-        <div className="tile">
-          <span className="lb">환불</span>
-          <b className="vl num">{money(cur.refund)}원</b>
-          <span className="sub">
-            {cur.rows.filter(isRefund).length}건
-            {cur.sum > 0 && ` · 매출의 ${((cur.refund / cur.sum) * 100).toFixed(1)}%`}
-          </span>
-          <div className="mini">
-            <i style={{ width: `${cur.sum > 0 ? Math.min(100, (cur.refund / cur.sum) * 100) : 0}%` }} />
-          </div>
-        </div>
-        <div className="tile">
-          <span className="lb">등록실패율</span>
-          <b className="vl num">{lead.failRate === null ? "-" : `${lead.failRate}%`}</b>
-          <span className="sub">
-            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.fail}건 미등록` : "이 달 상담 없음"}
-          </span>
-          <div className="mini">
-            <i className={lead.failRate !== null && lead.failRate >= 50 ? "bad" : "warn"}
-               style={{ width: `${lead.failRate ?? 0}%` }} />
-          </div>
-        </div>
-      </div>
 
       {/* 미수금 — 누가, 언제, 얼마 */}
       {unpaidList.length > 0 && (
