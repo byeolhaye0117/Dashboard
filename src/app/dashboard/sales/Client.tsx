@@ -203,11 +203,22 @@ export default function Client(p: Props) {
       return "기타" as const;
     };
 
+    const zero = () => ({ total: 0, 신규: 0, 재등록: 0 });
+
     return (live: Payment[]) => {
-      const out = { 회원권: 0, PT: 0, 수업: 0, 기타: 0, 미분류: 0 };
+      const out = {
+        회원권: zero(), PT: zero(), 수업: zero(), 기타: zero(), 미분류: zero(),
+      };
+      const put = (k: keyof typeof out, amt: number, type: string) => {
+        out[k].total += amt;
+        if (type === "신규") out[k].신규 += amt;
+        else if (type === "재등록") out[k].재등록 += amt;
+      };
+
       live.forEach((pay) => {
         const amt = num(pay.결제금액);
         if (amt <= 0) return;
+        const type = typeOf(pay.매출유형);
         const ts = byPay[pay.id] ?? [];
         const w = ts.map((t) => {
           const pr = productOf(t.상품코드);
@@ -215,11 +226,11 @@ export default function Client(p: Props) {
         });
         const wsum = w.reduce((a, b) => a + b, 0);
         if (ts.length === 0 || wsum <= 0) {
-          out.미분류 += amt;
+          put("미분류", amt, type);
           return;
         }
         ts.forEach((t, i) => {
-          out[where(productOf(t.상품코드)?.kind)] += Math.round((amt * w[i]) / wsum);
+          put(where(productOf(t.상품코드)?.kind), Math.round((amt * w[i]) / wsum), type);
         });
       });
       return out;
@@ -229,11 +240,16 @@ export default function Client(p: Props) {
   const bucket = bucketOf(cur.live);
   const bPrev = bucketOf(prev.live);
   const bYoy = bucketOf(yoy.live);
-  const etc = (b: ReturnType<typeof bucketOf>) => b.수업 + b.기타 + b.미분류;
+  /** 그룹수업 · 기타 · 갈래를 못 가린 것을 한 덩어리로 */
+  const etc = (b: ReturnType<typeof bucketOf>) => ({
+    total: b.수업.total + b.기타.total + b.미분류.total,
+    신규: b.수업.신규 + b.기타.신규 + b.미분류.신규,
+    재등록: b.수업.재등록 + b.기타.재등록 + b.미분류.재등록,
+  });
 
-  /** 매출 유형별 합계 — 신규와 재등록을 나눠 보기 위한 것 */
-  const typeSum = (live: Payment[], key: string) =>
-    live.filter((x) => typeOf(x.매출유형) === key).reduce((s, x) => s + num(x.결제금액), 0);
+  /** 신규 · 재등록을 한 줄로 적는다 */
+  const split = (b: { 신규: number; 재등록: number }) =>
+    `신규 ${short(b.신규)} · 재등록 ${short(b.재등록)}`;
 
   /**
    * 등록실패율 — 상담 화면과 같은 규칙으로 센다
@@ -341,22 +357,23 @@ export default function Client(p: Props) {
 
       <div className="kpis">
         <Kpi label="총 매출" value={`${money(cur.sum)}원`}
-             mom={delta(cur.sum, prev.sum)} yoy={delta(cur.sum, yoy.sum)} />
-        <Kpi label="회원권 매출" value={`${money(bucket.회원권)}원`}
-             mom={delta(bucket.회원권, bPrev.회원권)} yoy={delta(bucket.회원권, bYoy.회원권)} />
-        <Kpi label="PT 매출" value={`${money(bucket.PT)}원`}
-             mom={delta(bucket.PT, bPrev.PT)} yoy={delta(bucket.PT, bYoy.PT)} />
-        <Kpi label="기타 매출" value={`${money(etc(bucket))}원`}
-             mom={delta(etc(bucket), etc(bPrev))} yoy={delta(etc(bucket), etc(bYoy))}
-             sub={bucket.수업 > 0 ? `그룹수업 ${short(bucket.수업)}원 포함` : undefined} />
-
-        <Kpi label="신규 매출" value={`${money(typeSum(cur.live, "신규"))}원`}
-             mom={delta(typeSum(cur.live, "신규"), typeSum(prev.live, "신규"))}
-             yoy={delta(typeSum(cur.live, "신규"), typeSum(yoy.live, "신규"))} />
-        <Kpi label="재등록 매출" value={`${money(typeSum(cur.live, "재등록"))}원`}
-             mom={delta(typeSum(cur.live, "재등록"), typeSum(prev.live, "재등록"))}
-             yoy={delta(typeSum(cur.live, "재등록"), typeSum(yoy.live, "재등록"))}
-             sub={rejoin === null ? undefined : `재등록률 ${rejoin}%`} />
+             mom={delta(cur.sum, prev.sum)} yoy={delta(cur.sum, yoy.sum)}
+             sub={split({
+               신규: bucket.회원권.신규 + bucket.PT.신규 + etc(bucket).신규,
+               재등록: bucket.회원권.재등록 + bucket.PT.재등록 + etc(bucket).재등록,
+             })} />
+        <Kpi label="회원권 매출" value={`${money(bucket.회원권.total)}원`}
+             mom={delta(bucket.회원권.total, bPrev.회원권.total)}
+             yoy={delta(bucket.회원권.total, bYoy.회원권.total)}
+             sub={split(bucket.회원권)} />
+        <Kpi label="PT 매출" value={`${money(bucket.PT.total)}원`}
+             mom={delta(bucket.PT.total, bPrev.PT.total)}
+             yoy={delta(bucket.PT.total, bYoy.PT.total)}
+             sub={split(bucket.PT)} />
+        <Kpi label="기타 매출" value={`${money(etc(bucket).total)}원`}
+             mom={delta(etc(bucket).total, etc(bPrev).total)}
+             yoy={delta(etc(bucket).total, etc(bYoy).total)}
+             sub={split(etc(bucket))} />
 
         <Kpi label="목표 달성률"
              value={rate === null ? "-" : `${rate}%`}
@@ -374,7 +391,7 @@ export default function Client(p: Props) {
              sub={cur.unpaid > 0 ? `실입금 ${money(cur.sum - cur.unpaid)}원` : "전액 입금"}
              tone={cur.unpaid > 0 ? "bad" : undefined} />
         <Kpi label="환불" value={`${money(cur.refund)}원`}
-             sub={`${cur.rows.filter(isRefund).length}건`}
+             sub={`${cur.rows.filter(isRefund).length}건 · 재등록률 ${rejoin === null ? "-" : `${rejoin}%`}`}
              tone={cur.refund > 0 ? "bad" : undefined} />
       </div>
 
@@ -465,10 +482,10 @@ export default function Client(p: Props) {
         </Panel>
         <Panel title="상품 분류">
           <Stack rows={[
-            { key: "회원권", sum: bucket.회원권 },
-            { key: "1:1PT", sum: bucket.PT },
-            { key: "그룹수업", sum: bucket.수업 },
-            { key: "기타", sum: bucket.기타 + bucket.미분류 },
+            { key: "회원권", sum: bucket.회원권.total },
+            { key: "1:1PT", sum: bucket.PT.total },
+            { key: "그룹수업", sum: bucket.수업.total },
+            { key: "기타", sum: bucket.기타.total + bucket.미분류.total },
           ].filter((x) => x.sum > 0)} />
         </Panel>
       </div>
