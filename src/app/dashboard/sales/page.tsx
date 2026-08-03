@@ -9,6 +9,7 @@ import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffNames, getProducts } from "@/lib/data";
 import { listPayments, listTickets } from "@/lib/members";
 import { getGoals } from "@/lib/sales";
+import { listConsultations } from "@/lib/consultations";
 import { readProduct } from "@/lib/productMeta";
 import Shell from "../Shell";
 import Client from "./Client";
@@ -47,6 +48,22 @@ export default async function SalesPage() {
     problem = String(e?.message ?? e);
   }
 
+  // 등록실패율은 상담 자료에서 나온다. 못 읽어도 매출 화면은 그대로 보이게 한다
+  let leads: any[] = [];
+  try {
+    const { items } = await listConsultations();
+    leads = items
+      .filter((c) => allowed.has(c["지점코드"]))
+      .map((c) => ({
+        지점코드: c["지점코드"] ?? "",
+        상담날짜: c["상담날짜"] ?? "",
+        약속일시: c["약속일시"] ?? "",
+        진행상태: c["진행상태"] ?? "",
+      }));
+  } catch {
+    leads = [];
+  }
+
   return (
     <Shell session={session} menus={menus} branches={myBranches} active="매출" crumb="매출"
            canChangePassword={Boolean(ab.get("직원관리")?.update)}>
@@ -55,6 +72,7 @@ export default async function SalesPage() {
         tickets={tickets}
         products={products.map(readProduct)}
         goals={goals.filter((g) => allowed.has(g.지점코드))}
+        leads={leads}
         branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
         staffNames={staffNames}
         problem={problem}

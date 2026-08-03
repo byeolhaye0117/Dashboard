@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
+import { stageOf, baseDate, monthOf, isSettled, stageNow as stageAt } from "@/lib/stage";
 
 type Row = Record<string, string>;
 type Item = Row & { id: string };
@@ -62,49 +63,13 @@ const STAGE_TONE: Record<string, string> = {
   미등록: "bad",
 };
 
-/** 예전 상태값도 4단계로 맞춰서 보여준다 */
-const OLD_STAGE: Record<string, string> = {
-  신규: "예약", 연락중: "예약", 약속대기: "예약",
-  예약확정: "약속전환", 방문완료: "약속전환", 등록완료: "등록",
-};
-const stageOf = (c: Row) => {
-  const t = (c["진행상태"] ?? "").trim();
-  return STAGES.includes(t) ? t : (OLD_STAGE[t] ?? "예약");
-};
-
 /** 문의 채널 — 시트 제목 줄이 아직 방문경로일 수도 있어 둘 다 본다 */
 const chan = (c: Row) => (c["문의채널"] || c["방문경로"] || "").trim();
 /** 약속을 잡았는가 — 약속일시가 채워졌으면 잡은 것이다 */
 const hasAppt = (c: Row) => Boolean((c["약속일시"] ?? "").trim());
 
-/**
- * 이 상담을 몇 월 실적으로 볼 것인가 (기준일)
- *
- * 약속을 잡은 건은 "약속 날짜", 아직 약속이 없는 건은 "문의가 들어온 날"로 본다.
- * 7월 말에 전화가 왔어도 방문 약속이 8월 3일이면 8월 실적으로 잡힌다.
- * 실제로 영업이 이뤄진 달에 숫자가 붙게 하기 위해서다.
- */
-const baseDate = (c: Row) =>
-  ((c["약속일시"] ?? "").trim() || (c["상담날짜"] ?? "")).slice(0, 10);
-
-/** 이 상담이 속한 달 (2026-08) */
-const monthOf = (c: Row) => baseDate(c).slice(0, 7);
-
-/** 결론이 난 건인가 */
-const isSettled = (c: Row) => ["등록", "미등록"].includes(stageOf(c));
-
-/**
- * 화면에 보여줄 진짜 상태 — 달 단위로 마감한다
- *
- * 약속 날짜가 지난 달인데 아직 등록/미등록이 안 찍혀 있으면 미등록으로 본다.
- * 같은 달 안에서는 며칠 늦게 등록해도 등록으로 인정하고,
- * 달이 넘어가면 그때 미등록으로 마감하는 방식이다.
- */
-const stageNow = (c: Row) => {
-  if (isSettled(c)) return stageOf(c);
-  const m = monthOf(c);
-  return m && m < today().slice(0, 7) ? "미등록" : stageOf(c);
-};
+/** 화면에 보여줄 진짜 상태 — 규칙은 stage.ts 하나에만 둔다 */
+const stageNow = (c: Row): string => stageAt(c, today());
 
 /** 사람이 찍은 게 아니라 달이 지나서 미등록이 된 건 */
 const isAutoFail = (c: Row) => !isSettled(c) && stageNow(c) === "미등록";
