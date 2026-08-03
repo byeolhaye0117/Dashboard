@@ -901,13 +901,28 @@ export default function Client(p: Props) {
         </>
       )}
 
-      {/* 환불 */}
-      {(refundList.length > 0 || p.missingRefund.length > 0) && (
-        <>
+      {/*
+        환불
+
+        환불이 0건이어도 자리를 없애지 않는다.
+        칸을 만들었는데 화면에서 통째로 사라지면, 잘된 건지 안 된 건지 알 수 없다.
+      */}
+      <>
           <h2 className="sec-title">환불 {refundList.length}건</h2>
           <p className="sec-sub">신청일부터 완료일까지 어디까지 왔는지</p>
 
-          {p.missingRefund.length > 0 && <SetupRefund missing={p.missingRefund} can={p.canSetup} />}
+          {p.missingRefund.length > 0 ? (
+            <SetupRefund missing={p.missingRefund} can={p.canSetup} />
+          ) : (
+            refundList.length === 0 && (
+              <div className="viz">
+                <p className="dim mini-note">
+                  이 달 환불이 없습니다 · 기록할 칸(진행상태 · 사유 · 신청일 · 완료일)은
+                  준비돼 있습니다.
+                </p>
+              </div>
+            )
+          )}
 
           {refundList.length > 0 && (
             <div className="lwrap">
@@ -943,8 +958,7 @@ export default function Client(p: Props) {
               </div>
             </div>
           )}
-        </>
-      )}
+      </>
 
       {/* 자주 보지 않는 것은 접어 둔다 */}
       <details className="more">
