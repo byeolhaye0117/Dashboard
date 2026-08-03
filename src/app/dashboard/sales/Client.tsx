@@ -698,12 +698,16 @@ export default function Client(p: Props) {
                   <button key={b.code} type="button" className="brow"
                           onClick={() => setBranch(b.code)}>
                     <span className="nm">{b.name}</span>
-                    <span className="bt">
-                      <i style={{ width: `${(b.sum / top) * 100}%` }} />
-                      {b.goal > 0 && <u style={{ left: `${(b.goal / top) * 100}%` }} />}
-                    </span>
+                    {b.sum > 0 || b.goal > 0 ? (
+                      <span className="bt">
+                        <i style={{ width: `${(b.sum / top) * 100}%` }} />
+                        {b.goal > 0 && <u style={{ left: `${(b.goal / top) * 100}%` }} />}
+                      </span>
+                    ) : (
+                      <span className="norow">이 달 매출 없음</span>
+                    )}
                     <span className="am num">
-                      {short(b.sum)}
+                      {b.sum > 0 ? short(b.sum) : "-"}
                       <small>{b.goal > 0 ? `목표 ${short(b.goal)}` : "목표 없음"}</small>
                     </span>
                     <span className="pc num">
@@ -786,14 +790,24 @@ export default function Client(p: Props) {
             <div className="conv" key={b.code}
                  title={`문의 ${b.base}건 · 등록 ${b.done} · 미등록 ${b.fail} · 진행중 ${b.going}`}>
               <span className="nm">{b.name}</span>
-              <span className="tr"><i style={{ width: `${b.winRate ?? 0}%` }} /></span>
+              {b.winRate === null ? (
+                <span className="norow">
+                  {b.base > 0 ? `상담 ${b.base}건 모두 진행중` : "이 달 상담 없음"}
+                </span>
+              ) : (
+                <span className="tr"><i style={{ width: `${b.winRate}%` }} /></span>
+              )}
               <span className="pc num">{b.winRate === null ? "-" : `${b.winRate}%`}</span>
             </div>
           ))}
         {branch === "전체" && (
           <div className="conv all" title={`문의 ${lead.base}건 · 등록 ${lead.done} · 미등록 ${lead.fail}`}>
             <span className="nm">전 지점</span>
-            <span className="tr"><i style={{ width: `${lead.winRate ?? 0}%` }} /></span>
+            {lead.winRate === null ? (
+              <span className="norow">결판난 상담이 아직 없습니다</span>
+            ) : (
+              <span className="tr"><i style={{ width: `${lead.winRate}%` }} /></span>
+            )}
             <span className="pc num">{lead.winRate === null ? "-" : `${lead.winRate}%`}</span>
           </div>
         )}
@@ -1294,7 +1308,8 @@ function MiniLine({ rows }: { rows: number[] }) {
  */
 function Ratio({ rows }: { rows: { key: string; sum: number }[] }) {
   const total = rows.reduce((s, r) => s + r.sum, 0);
-  if (total <= 0) return <span className="ratio empty" />;
+  // 빈 막대를 그리면 "0원"인지 "고장난 것"인지 알 수 없다. 글자로 말한다
+  if (total <= 0) return <span className="norow">이 달 자료 없음</span>;
 
   return (
     <span className="ratio">
