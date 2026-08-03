@@ -421,8 +421,31 @@ function linePrice(l: Line, pr: ProductMeta | undefined, cashSide: boolean): num
   return Math.round((unit * want) / base);
 }
 
-/** 개월을 골라 살 수 있는 상품인가 — 사물함 · 운동복 같은 부가 상품 */
-const canPickMonths = (pr?: ProductMeta) => groupOf(pr) === "부가" && !usesCount(pr);
+/**
+ * 개월을 골라 사는 상품인가
+ *
+ * 사물함 · 운동복 같은 부가 상품과 24시 · 여성전용 같은 옵션이다.
+ * 달마다 값이 붙는 것들이라 몇 달치를 받을지 그때그때 정한다.
+ */
+const canPickMonths = (pr?: ProductMeta) => {
+  const g = groupOf(pr);
+  return (g === "부가" || g === "옵션") && !usesCount(pr);
+};
+
+/** 고를 수 있는 개월 — 1개월부터 12개월까지 */
+const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
+
+function MonthPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <select className="input mon" value={value} onChange={(e) => onChange(e.target.value)}>
+      {/* 프로틴처럼 한 번 사고 마는 것은 기간이 없다 */}
+      <option value="">기간 없음</option>
+      {MONTHS.map((n) => (
+        <option key={n} value={String(n)}>{n}개월</option>
+      ))}
+    </select>
+  );
+}
 
 function buyPayload(b: Buy, products: ProductMeta[]) {
   const pOf = (code: string) => products.find((x) => x.code === code);
@@ -436,7 +459,11 @@ function buyPayload(b: Buy, products: ProductMeta[]) {
     이용권: b.lines.filter((l) => !isExtraKind(pOf(l.상품코드))),
     부가서비스: b.lines
       .filter((l) => isExtraKind(pOf(l.상품코드)))
-      .map((l) => ({ 상품코드: l.상품코드, 추가금액: String(price(pOf(l.상품코드))) })),
+      .map((l) => ({
+        상품코드: l.상품코드,
+        // 옵션은 달마다 붙는 값이라 고른 개월만큼 곱해서 남긴다
+        추가금액: String(linePrice(l, pOf(l.상품코드), cashSide)),
+      })),
     결제수단: b.결제수단,
     결제금액: split
       ? String(onlyNum(b.카드액) + onlyNum(b.계좌액))
@@ -617,22 +644,22 @@ function PurchaseFields({
                               aria-label="빼기">×</button>
                     </div>
                     {isExtraKind(pr) ? (
-                      <span className="cart-note">
-                        {priceOf(pr!) > 0
-                          ? "회원권에 붙는 추가 요금 · 기간은 회원권을 따라감"
-                          : "회원권에 얹어드림 · 기간은 회원권을 따라감"}
-                      </span>
+                      <>
+                        {canPickMonths(pr) && (
+                          <div className="cart-fields">
+                            <MonthPick value={l.개월} onChange={(v) => setMonths(i, v)} />
+                          </div>
+                        )}
+                        <span className="cart-note">
+                          {priceOf(pr!) > 0
+                            ? "회원권에 붙는 추가 요금 · 이용 기간은 회원권을 따라감"
+                            : "회원권에 얹어드림 · 기간은 회원권을 따라감"}
+                        </span>
+                      </>
                     ) : (
                       <div className="cart-fields">
                         {canPickMonths(pr) && (
-                          <select className="input mon" value={l.개월}
-                                  onChange={(e) => setMonths(i, e.target.value)}>
-                            {/* 프로틴처럼 한 번 사고 마는 것은 기간이 없다 */}
-                            <option value="">기간 없음</option>
-                            {[1, 2, 3, 6, 12].map((n) => (
-                              <option key={n} value={String(n)}>{n}개월</option>
-                            ))}
-                          </select>
+                          <MonthPick value={l.개월} onChange={(v) => setMonths(i, v)} />
                         )}
                         <input className="input" type="date" value={l.시작일}
                                onChange={(e) => {
