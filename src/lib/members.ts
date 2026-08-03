@@ -116,6 +116,7 @@ export type Ticket = {
   종료일: string;
   총횟수: string;
   잔여횟수: string;
+  정지일수: string;
   담당트레이너사번: string;
   상태: string;
   결제번호: string;
@@ -186,6 +187,7 @@ export async function listTickets(): Promise<Ticket[]> {
       종료일: get(r, cols, "종료일"),
       총횟수: get(r, cols, "총횟수"),
       잔여횟수: get(r, cols, "잔여횟수"),
+      정지일수: get(r, cols, "정지일수"),
       담당트레이너사번: get(r, cols, "담당트레이너사번"),
       상태: get(r, cols, "상태") || "진행중",
       결제번호: get(r, cols, "결제번호"),
@@ -448,6 +450,79 @@ export async function patchMember(
 
   const merged: Row = { ...rows[i], ...toSheetRow(patch, cols) };
   await updateRow(SHEET_M, rowNumbers[i], headers, merged);
+}
+
+/* ── 이용권 · 결제 고치기 ─────────────────── */
+
+/**
+ * 한 줄만 골라 고친다
+ *
+ * 시트에서 못 보던 칸까지 지우지 않도록 원래 줄 위에 덮어쓴다.
+ */
+async function patchOne(
+  sheet: string,
+  spec: ColumnSpec,
+  idKey: string,
+  id: string,
+  changes: Record<string, string>,
+  staffId: string
+): Promise<void> {
+  const { headers, rows, rowNumbers } = await readSheet(sheet);
+  const cols = resolve(sheet, headers, spec);
+  const i = rows.findIndex((r) => get(r, cols, idKey) === id);
+  if (i < 0) throw new Error(`${sheet}에서 ${id} 을(를) 찾지 못했습니다.`);
+
+  const patch = { ...changes, 수정일시: now(), 수정자: staffId };
+  await updateRow(sheet, rowNumbers[i], headers, { ...rows[i], ...toSheetRow(patch, cols) });
+}
+
+/** 이용권 고치기 (기간 · 횟수 · 홀딩 · 환불) */
+export async function patchTicket(
+  id: string,
+  changes: Record<string, string>,
+  staffId: string
+): Promise<void> {
+  await patchOne(SHEET_V, V_COLS, "이용권번호", id, changes, staffId);
+}
+
+/** 이용권 지우기 — 잘못 넣은 줄을 되돌릴 때 */
+export async function softDeleteTicket(id: string, staffId: string): Promise<void> {
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_V);
+  const cols = resolve(SHEET_V, headers, V_COLS);
+  const i = rows.findIndex((r) => get(r, cols, "이용권번호") === id);
+  if (i < 0) throw new Error("해당 이용권을 찾지 못했습니다.");
+  await updateRow(SHEET_V, rowNumbers[i], headers, {
+    ...rows[i],
+    삭제여부: "Y",
+    ...toSheetRow({ 수정일시: now(), 수정자: staffId }, cols),
+  });
+}
+
+/**
+ * 결제 고치기
+ *
+ * 금액을 고치면 현금·카드·계좌 칸도 같이 맞춘다.
+ * 총액만 바꾸고 나머지를 두면 시트 안에서 숫자가 서로 안 맞게 된다.
+ */
+export async function patchPayment(
+  id: string,
+  changes: Record<string, string>,
+  staffId: string
+): Promise<void> {
+  const next = { ...changes };
+  const total = won(next["결제금액"]);
+  const split = won(next["카드액"]) + won(next["현금액"]) + won(next["계좌액"]);
+
+  if (split > 0) {
+    next["결제금액"] = String(split);
+  } else if (total > 0 && next["결제수단"]) {
+    const m = next["결제수단"].trim();
+    next["현금액"] = String(m === "현금" ? total : 0);
+    next["계좌액"] = String(m === "계좌" ? total : 0);
+    next["카드액"] = String(m !== "현금" && m !== "계좌" ? total : 0);
+  }
+
+  await patchOne(SHEET_P, P_COLS, "결제번호", id, next, staffId);
 }
 
 /** 회원 삭제 — 줄을 지우지 않고 표시만 남긴다 */

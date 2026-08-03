@@ -21,6 +21,17 @@ export function addMonths(startDate: string, months: number): string {
   return base.toISOString().slice(0, 10);
 }
 
+/** 날짜에 며칠을 더한다 (홀딩한 만큼 종료일을 미룰 때 쓴다) */
+export function addDays(date: string, days: number): string {
+  const s = (date ?? "").slice(0, 10);
+  if (!s || !days) return s;
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return s;
+  const base = new Date(Date.UTC(y, m - 1, d));
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
 /** 오늘부터 며칠 남았는가 (지났으면 음수) */
 export function daysLeft(endDate: string, todayStr: string): number {
   const a = (endDate ?? "").slice(0, 10);

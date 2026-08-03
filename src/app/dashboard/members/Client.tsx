@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
-import { addMonths, daysLeft } from "@/lib/dateCalc";
+import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
 import type { ProductMeta } from "@/lib/productMeta";
 
 type Member = {
@@ -38,6 +38,7 @@ type Ticket = {
   종료일: string;
   총횟수: string;
   잔여횟수: string;
+  정지일수: string;
   담당트레이너사번: string;
   상태: string;
   결제번호: string;
@@ -656,13 +657,15 @@ const TAB_LEAD: Record<(typeof TABS)[number], string> = {
  * 남은 날짜만 숫자로 보면 "많이 남았나" 감이 안 온다.
  * 6개월짜리의 60일과 1개월짜리의 20일은 뜻이 다르기 때문이다.
  */
-function ProgressLine({ t, pr, now }: { t: Ticket; pr?: ProductMeta; now: string }) {
+function ProgressLine({ t, pr, now, onEdit }: {
+  t: Ticket; pr?: ProductMeta; now: string; onEdit?: () => void;
+}) {
   const left = t.종료일 ? daysLeft(t.종료일, now) : null;
   const total = t.시작일 && t.종료일 ? daysLeft(t.종료일, t.시작일) : 0;
   const used = total > 0 && left !== null ? Math.min(100, Math.max(0, ((total - left) / total) * 100)) : 0;
 
   return (
-    <div className="line-item">
+    <div className={`line-item${onEdit ? " clickable" : ""}`} onClick={onEdit}>
       <div className="line-head">
         <b>{pr?.name ?? t.상품코드}</b>
         <span className="dim">
@@ -703,6 +706,8 @@ function Detail({
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [view, setView] = useState<(typeof TABS)[number]>("요약");
+  const [editTicket, setEditTicket] = useState<Ticket | null>(null);
+  const [editPay, setEditPay] = useState<Payment | null>(null);
   const setV = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
   const now = today();
 
@@ -726,15 +731,28 @@ function Detail({
         : rows.some((t) => t.종료일 && daysLeft(t.종료일, now) <= SOON)
           ? "만료임박"
           : "이용중";
+    const extraRows = tickets.filter((t) => {
+      const g = groupOf(productOf(t.상품코드));
+      return g === "부가" || g === "옵션";
+    });
+    const serviceRows = tickets.filter((t) => groupOf(productOf(t.상품코드)) === "서비스");
     return {
       rows: rows.slice().sort((a, b) => (a.종료일 ?? "").localeCompare(b.종료일 ?? "")),
       count: rows.length,
       past: main.length - rows.length,
-      extra: tickets.filter((t) => groupOf(productOf(t.상품코드)) === "부가").length,
-      service: tickets.filter((t) => groupOf(productOf(t.상품코드)) === "서비스").length,
+      extraRows,
+      serviceRows,
+      extra: extraRows.length,
+      service: serviceRows.length,
       state,
     };
   }, [tickets, now]);
+
+  /** 요약에는 최근 결제 두 건만 */
+  const recent = paid
+    .slice()
+    .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
+    .slice(0, 2);
 
   /** 회원권을 두 번 이상 끊었으면 재등록 회원으로 본다 (사물함은 세지 않는다) */
   const isReturning =
@@ -897,14 +915,50 @@ function Detail({
                     {live.rows.length === 0 ? (
                       <p className="dim" style={{ fontSize: 13 }}>
                         지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
-                        {live.extra > 0 && " (사물함 · 운동복 같은 부가 상품은 이용권 탭에 있습니다)"}
                       </p>
                     ) : (
                       <div className="line-list">
                         {live.rows.map((t) => (
-                          <ProgressLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} />
+                          <ProgressLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                                        onEdit={can.update ? () => setEditTicket(t) : undefined} />
                         ))}
                       </div>
+                    )}
+
+                    {live.extraRows.length > 0 && (
+                      <>
+                        <h4 className="mini-title">부가 상품 ({live.extraRows.length})</h4>
+                        <div className="line-list">
+                          {live.extraRows.map((t) => (
+                            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                                        onEdit={can.update ? () => setEditTicket(t) : undefined} />
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    {live.serviceRows.length > 0 && (
+                      <>
+                        <h4 className="mini-title">받은 서비스 ({live.serviceRows.length})</h4>
+                        <div className="line-list">
+                          {live.serviceRows.map((t) => (
+                            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} tag="무료"
+                                        onEdit={can.update ? () => setEditTicket(t) : undefined} />
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    {paid.length > 0 && (
+                      <>
+                        <h4 className="mini-title">최근 결제</h4>
+                        <div className="line-list">
+                          {recent.map((x) => (
+                            <PaymentLine key={x.id} x={x}
+                                         onEdit={can.update ? () => setEditPay(x) : undefined} />
+                          ))}
+                        </div>
+                      </>
                     )}
 
                     {item.메모 && (
@@ -917,7 +971,8 @@ function Detail({
                 )}
 
                 {view === "이용권" && (
-                  <TicketGroups tickets={tickets} productOf={productOf} now={now} />
+                  <TicketGroups tickets={tickets} productOf={productOf} now={now}
+                                onEdit={can.update ? setEditTicket : undefined} />
                 )}
 
                 {view === "결제" && (
@@ -933,22 +988,8 @@ function Detail({
                             .slice()
                             .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
                             .map((x) => (
-                              <div className="line-item" key={x.id}>
-                                <div className="line-head">
-                                  <b className="num">{money(Number(x.결제금액) || 0)}원</b>
-                                  <span className="dim">
-                                    {(x.결제일시 ?? "").slice(0, 10)} · {x.결제수단 || "-"}
-                                    {Number(x.미수금액) > 0 && ` · 미수 ${money(Number(x.미수금액))}원`}
-                                  </span>
-                                  {x.환불여부?.toUpperCase() === "Y" ? (
-                                    <span className="pill bad">환불</span>
-                                  ) : Number(x.미수금액) > 0 ? (
-                                    <span className="pill warn">미수금 있음</span>
-                                  ) : (
-                                    <span className="pill good">완납</span>
-                                  )}
-                                </div>
-                              </div>
+                              <PaymentLine key={x.id} x={x}
+                                           onEdit={can.update ? () => setEditPay(x) : undefined} />
                             ))}
                         </div>
                         <p className="stat-note">
@@ -986,6 +1027,19 @@ function Detail({
                 )}
               </div>
             </div>
+
+            {editTicket && (
+              <TicketEdit
+                t={editTicket}
+                pr={productOf(editTicket.상품코드)}
+                trainers={trainers}
+                canRemove={can.remove}
+                onClose={() => setEditTicket(null)}
+              />
+            )}
+            {editPay && (
+              <PaymentEdit x={editPay} options={options} onClose={() => setEditPay(null)} />
+            )}
 
             {msg && <div className="alert-bad">{msg}</div>}
 
@@ -1030,11 +1084,12 @@ function Detail({
  * 서비스는 돈을 안 낸 항목이라 이용권과 같이 세면 개수가 부풀려진다.
  */
 function TicketGroups({
-  tickets, productOf, now,
+  tickets, productOf, now, onEdit,
 }: {
   tickets: Ticket[];
   productOf: (code: string) => ProductMeta | undefined;
   now: string;
+  onEdit?: (t: Ticket) => void;
 }) {
   const grp = (t: Ticket) => groupOf(productOf(t.상품코드));
   const byEnd = (a: Ticket, b: Ticket) => (b.종료일 ?? "").localeCompare(a.종료일 ?? "");
@@ -1061,7 +1116,8 @@ function TicketGroups({
         <h4 className="mini-title">{title} ({rows.length})</h4>
         <div className="line-list">
           {rows.slice().sort(byEnd).map((t) => (
-            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} tag={tag} />
+            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} tag={tag}
+                        onEdit={onEdit && (() => onEdit(t))} />
           ))}
         </div>
         {note && <p className="stat-note">{note}</p>}
@@ -1078,7 +1134,8 @@ function TicketGroups({
       ) : (
         <div className="line-list">
           {live.slice().sort(byEnd).map((t) => (
-            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} />
+            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                        onEdit={onEdit && (() => onEdit(t))} />
           ))}
         </div>
       )}
@@ -1103,15 +1160,15 @@ function TicketGroups({
 /** 횟수제 상품인가 — 0 이나 빈칸은 기간제로 본다 */
 const hasCount = (t: Ticket) => Number(t.총횟수) > 0;
 
-function TicketLine({ t, pr, now, tag }: {
-  t: Ticket; pr?: ProductMeta; now: string; tag?: string;
+function TicketLine({ t, pr, now, tag, onEdit }: {
+  t: Ticket; pr?: ProductMeta; now: string; tag?: string; onEdit?: () => void;
 }) {
   const left = t.종료일 ? daysLeft(t.종료일, now) : null;
   const refunded = t.상태 === "환불";
   const usedUp = Number(t.총횟수) > 0 && Number(t.잔여횟수 || t.총횟수) <= 0;
 
   return (
-    <div className="line-item">
+    <div className={`line-item${onEdit ? " clickable" : ""}`} onClick={onEdit}>
       <div className="line-head">
         <b>{pr?.name ?? t.상품코드}</b>
         <span className="dim">
@@ -1132,6 +1189,289 @@ function TicketLine({ t, pr, now, tag }: {
             {left < 0 ? `${-left}일 지남` : `${left}일 남음`}
           </span>
         )}
+      </div>
+    </div>
+  );
+}
+
+function PaymentLine({ x, onEdit }: { x: Payment; onEdit?: () => void }) {
+  const refunded = x.환불여부?.toUpperCase() === "Y";
+  const owe = Number(x.미수금액) || 0;
+
+  return (
+    <div className={`line-item${onEdit ? " clickable" : ""}`} onClick={onEdit}>
+      <div className="line-head">
+        <b className="num">{money(Number(x.결제금액) || 0)}원</b>
+        <span className="dim">
+          {(x.결제일시 ?? "").slice(0, 10)} · {x.결제수단 || "-"}
+          {owe > 0 && ` · 미수 ${money(owe)}원`}
+        </span>
+        {refunded ? (
+          <span className="pill bad">환불</span>
+        ) : owe > 0 ? (
+          <span className="pill warn">미수금 있음</span>
+        ) : (
+          <span className="pill good">완납</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── 이용권 고치기 ─────────────────────────── */
+function TicketEdit({
+  t, pr, trainers, canRemove, onClose,
+}: {
+  t: Ticket;
+  pr?: ProductMeta;
+  trainers: { id: string; name: string }[];
+  canRemove: boolean;
+  onClose: () => void;
+}) {
+  const [f, setF] = useState({
+    시작일: (t.시작일 ?? "").slice(0, 10),
+    종료일: (t.종료일 ?? "").slice(0, 10),
+    총횟수: t.총횟수 ?? "",
+    잔여횟수: t.잔여횟수 ?? "",
+    정지일수: t.정지일수 ?? "",
+    담당트레이너사번: t.담당트레이너사번 ?? "",
+    상태: t.상태 || "진행중",
+  });
+  const [hold, setHold] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
+
+  /** 홀딩한 날수만큼 종료일을 미룬다 */
+  function applyHold() {
+    const days = Number(hold) || 0;
+    if (!days || !f.종료일) return;
+    set("종료일", addDays(f.종료일, days));
+    set("정지일수", String((Number(f.정지일수) || 0) + days));
+    setHold("");
+  }
+
+  async function send(body: any) {
+    setBusy(true);
+    const res = await fetch("/api/members/ticket", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
+    location.reload();
+  }
+
+  return (
+    <div className="modal-back top" onClick={onClose}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{pr?.name ?? t.상품코드}</h3>
+        <p className="modal-lead">
+          {t.id} · 상품 자체는 바꿀 수 없습니다. 다른 상품이면 이 줄을 지우고 새로 등록해주세요.
+        </p>
+
+        <div className="form-grid">
+          <L label="시작일">
+            <input className="input" type="date" value={f.시작일}
+                   onChange={(e) => set("시작일", e.target.value)} />
+          </L>
+          <L label="종료일">
+            <input className="input" type="date" value={f.종료일}
+                   onChange={(e) => set("종료일", e.target.value)} />
+          </L>
+          <L label="총 횟수">
+            <input className="input" inputMode="numeric" placeholder="기간제면 비움"
+                   value={f.총횟수} onChange={(e) => set("총횟수", e.target.value)} />
+          </L>
+          <L label="남은 횟수">
+            <input className="input" inputMode="numeric" placeholder="기간제면 비움"
+                   value={f.잔여횟수} onChange={(e) => set("잔여횟수", e.target.value)} />
+          </L>
+          <L label="담당 트레이너">
+            <select className="input" value={f.담당트레이너사번}
+                    onChange={(e) => set("담당트레이너사번", e.target.value)}>
+              <option value="">지정 안 함</option>
+              {trainers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+          </L>
+          <L label="상태">
+            <select className="input" value={f.상태} onChange={(e) => set("상태", e.target.value)}>
+              {["진행중", "정지", "만료", "환불"].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </L>
+        </div>
+
+        <h4 className="mini-title">홀딩 (기간 미루기)</h4>
+        <div className="inline-form">
+          <input className="input" inputMode="numeric" placeholder="미룰 날수"
+                 style={{ maxWidth: 120 }} value={hold} onChange={(e) => setHold(e.target.value)} />
+          <button className="btn-ghost" onClick={applyHold} disabled={!hold || !f.종료일}>
+            종료일 미루기
+          </button>
+        </div>
+        <p className="stat-note">
+          지금까지 미룬 날수 <b>{Number(f.정지일수) || 0}일</b>. 단추를 누르면 위 종료일이 바로 바뀌고,
+          아래 저장을 눌러야 실제로 반영됩니다.
+        </p>
+
+        {msg && <div className="alert-bad">{msg}</div>}
+
+        {confirmDel ? (
+          <div className="confirm-box">
+            <b>이 이용권을 지울까요?</b>
+            <p>
+              잘못 넣은 줄을 되돌릴 때 쓰세요. 환불은 지우지 말고 <b>상태를 환불</b>로 바꾸셔야
+              나중에 환불 건수를 셀 수 있습니다.
+            </p>
+            <div className="modal-actions" style={{ marginTop: 12 }}>
+              <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
+              <button className="btn-danger" onClick={() => send({ id: t.id, remove: true })} disabled={busy}>
+                {busy ? "처리 중…" : "지우기"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="modal-actions">
+            {canRemove && (
+              <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>지우기</button>
+            )}
+            <button className="btn-ghost" onClick={onClose}>닫기</button>
+            <button className="btn-primary" style={{ marginTop: 0 }}
+                    onClick={() => send({ id: t.id, changes: f })} disabled={busy}>
+              {busy ? "저장 중…" : "저장"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── 결제 고치기 ───────────────────────────── */
+function PaymentEdit({
+  x, options, onClose,
+}: {
+  x: Payment;
+  options: Record<string, string[]>;
+  onClose: () => void;
+}) {
+  const [f, setF] = useState({
+    결제일시: (x.결제일시 ?? "").slice(0, 10),
+    결제수단: x.결제수단 || "카드",
+    결제금액: x.결제금액 ?? "",
+    카드액: "",
+    계좌액: "",
+    미수금액: x.미수금액 ?? "",
+    미수금결제예정일: "",
+    환불여부: x.환불여부 ?? "",
+    환불액: x.환불액 ?? "",
+  });
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
+
+  const split = (f.결제수단 ?? "").includes("+");
+  const onlyNum = (v?: string) => Number((v ?? "").replace(/[^0-9]/g, "")) || 0;
+  const refunded = f.환불여부?.toUpperCase() === "Y";
+
+  async function save() {
+    if (!split && onlyNum(f.결제금액) <= 0) return setMsg("결제 금액을 적어주세요.");
+    if (split && onlyNum(f.카드액) + onlyNum(f.계좌액) <= 0) return setMsg("나눠 낸 금액을 적어주세요.");
+
+    setBusy(true);
+    const res = await fetch("/api/members/payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: x.id, changes: f }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
+    location.reload();
+  }
+
+  return (
+    <div className="modal-back top" onClick={onClose}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <h3>결제 고치기</h3>
+        <p className="modal-lead">{x.id} · 금액을 고치면 현금 · 카드 · 계좌 칸도 같이 맞춰집니다.</p>
+
+        <div className="form-grid">
+          <L label="결제일">
+            <input className="input" type="date" value={f.결제일시}
+                   onChange={(e) => set("결제일시", e.target.value)} />
+          </L>
+          <L label="결제 수단">
+            <select className="input" value={f.결제수단} onChange={(e) => set("결제수단", e.target.value)}>
+              {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </L>
+          {split ? (
+            <>
+              <L label="카드">
+                <input className="input" inputMode="numeric" value={f.카드액}
+                       onChange={(e) => set("카드액", e.target.value)} />
+              </L>
+              <L label="계좌">
+                <input className="input" inputMode="numeric" value={f.계좌액}
+                       onChange={(e) => set("계좌액", e.target.value)} />
+              </L>
+            </>
+          ) : (
+            <L label="결제 금액">
+              <input className="input" inputMode="numeric" value={f.결제금액}
+                     onChange={(e) => set("결제금액", e.target.value)} />
+            </L>
+          )}
+          <L label="미수금">
+            <input className="input" inputMode="numeric" placeholder="0"
+                   value={f.미수금액} onChange={(e) => set("미수금액", e.target.value)} />
+          </L>
+          {onlyNum(f.미수금액) > 0 && (
+            <L label="미수금 받기로 한 날">
+              <input className="input" type="date" value={f.미수금결제예정일}
+                     onChange={(e) => set("미수금결제예정일", e.target.value)} />
+            </L>
+          )}
+          <L label="환불">
+            <select className="input" value={refunded ? "Y" : ""}
+                    onChange={(e) => set("환불여부", e.target.value)}>
+              <option value="">환불 안 함</option>
+              <option value="Y">환불함</option>
+            </select>
+          </L>
+          {refunded && (
+            <L label="환불 금액">
+              <input className="input" inputMode="numeric" value={f.환불액}
+                     onChange={(e) => set("환불액", e.target.value)} />
+            </L>
+          )}
+        </div>
+
+        {split && (
+          <p className="stat-note">
+            나눠 내신 금액을 각각 적어주세요. 합계{" "}
+            <b>{money(onlyNum(f.카드액) + onlyNum(f.계좌액))}원</b>으로 저장됩니다.
+          </p>
+        )}
+        {refunded && (
+          <p className="stat-note">
+            환불로 표시한 건은 <b>받은 돈 합계에서 빠집니다.</b> 이용권도 같이 환불 처리하시려면
+            이용권 줄을 눌러 상태를 환불로 바꿔주세요.
+          </p>
+        )}
+
+        {msg && <div className="alert-bad">{msg}</div>}
+
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onClose}>닫기</button>
+          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+            {busy ? "저장 중…" : "저장"}
+          </button>
+        </div>
       </div>
     </div>
   );
