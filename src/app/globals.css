@@ -307,6 +307,37 @@ button { font-family: inherit; }
 .pick-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .pick-row .mini-tab { flex: 0 0 auto; min-width: 84px; }
 
+/* ── 매출 ───────────────────────────────── */
+.sales-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px; margin-top: 16px;
+}
+.sales-card {
+  padding: 14px 16px 16px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r);
+}
+
+.sbar { margin-bottom: 12px; }
+.sbar:last-child { margin-bottom: 0; }
+.sbar-top {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; font-size: 12.5px;
+}
+.sbar-top .nm { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbar-top .vl { font-weight: 700; }
+.sbar-top .pc { font-size: 11px; color: var(--muted); min-width: 30px; text-align: right; }
+.sbar-note { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
+
+/* 일별 막대 */
+.day-bars { display: flex; align-items: flex-end; gap: 3px; height: 96px; }
+.day { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; }
+.day > i {
+  display: block; width: 100%; margin-top: auto;
+  background: var(--point); border-radius: 2px 2px 0 0;
+}
+.day > span { margin-top: 4px; font-size: 9.5px; color: var(--muted); }
+
+.grid th.right, .grid td.right { text-align: right; }
+
 /* ── 회원 상세 — 왼쪽 사람 정보 + 오른쪽 탭 ── */
 .m-detail { display: grid; grid-template-columns: 232px 1fr; gap: 18px; align-items: start; }
 

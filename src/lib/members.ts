@@ -50,6 +50,7 @@ const V_COLS: ColumnSpec = {
   총횟수: { names: ["총 횟수", "전체횟수"] },
   잔여횟수: { names: ["남은횟수", "잔여 횟수"] },
   정지일수: { names: ["홀딩일수"] },
+  금액: { names: ["결제금액", "판매금액", "가격"] },
   담당트레이너사번: { names: ["담당트레이너", "담당직원사번", "담당직원"] },
   등록직원사번: { names: ["등록처리직원", "등록직원", "처리직원사번"] },
   상태: { names: ["이용권상태", "진행상태"] },
@@ -134,6 +135,7 @@ export type Ticket = {
   담당트레이너사번: string;
   상태: string;
   결제번호: string;
+  금액: string;
 };
 
 export type Payment = {
@@ -147,6 +149,10 @@ export type Payment = {
   환불여부: string;
   환불액: string;
   매출유형: string;
+  현금액: string;
+  카드액: string;
+  계좌액: string;
+  담당직원사번: string;
 };
 
 export async function listMembers(): Promise<{
@@ -203,6 +209,7 @@ export async function listTickets(): Promise<Ticket[]> {
       총횟수: get(r, cols, "총횟수"),
       잔여횟수: get(r, cols, "잔여횟수"),
       정지일수: get(r, cols, "정지일수"),
+      금액: get(r, cols, "금액"),
       담당트레이너사번: get(r, cols, "담당트레이너사번"),
       상태: get(r, cols, "상태") || "진행중",
       결제번호: get(r, cols, "결제번호"),
@@ -262,6 +269,10 @@ export async function listPayments(): Promise<Payment[]> {
       환불여부: get(r, cols, "환불여부"),
       환불액: get(r, cols, "환불액"),
       매출유형: get(r, cols, "매출유형"),
+      현금액: get(r, cols, "현금액"),
+      카드액: get(r, cols, "카드액"),
+      계좌액: get(r, cols, "계좌액"),
+      담당직원사번: get(r, cols, "담당직원사번"),
     });
   });
   return out;
@@ -288,6 +299,8 @@ export type NewTicket = {
   종료일: string;
   총횟수?: string;
   담당트레이너사번?: string;
+  /** 이 상품으로 실제 받은 금액 — 상품별 매출을 보려면 있어야 한다 */
+  금액?: string;
 };
 
 export type NewMember = {
@@ -438,6 +451,7 @@ async function writePurchase(
             총횟수: t.총횟수 ?? "",
             잔여횟수: t.총횟수 ?? "",
             정지일수: "0",
+            금액: String(won(t.금액)),
             담당트레이너사번: t.담당트레이너사번 ?? input.담당직원사번 ?? "",
             등록직원사번: staffId,
             상태: "진행중",

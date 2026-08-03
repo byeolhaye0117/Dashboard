@@ -42,6 +42,7 @@ type Ticket = {
   담당트레이너사번: string;
   상태: string;
   결제번호: string;
+  금액: string;
 };
 
 type Payment = {
@@ -55,6 +56,10 @@ type Payment = {
   환불여부: string;
   환불액: string;
   매출유형: string;
+  현금액: string;
+  카드액: string;
+  계좌액: string;
+  담당직원사번: string;
 };
 
 /** 이용권에 얹어준 서비스·옵션 */
@@ -553,7 +558,9 @@ function buyPayload(
   const suggested = b.lines.reduce((s, l) => s + linePrice(l, pOf(l.상품코드)), 0);
 
   return {
-    이용권: b.lines.filter((l) => !isExtraKind(pOf(l.상품코드))),
+    이용권: b.lines
+      .filter((l) => !isExtraKind(pOf(l.상품코드)))
+      .map((l) => ({ ...l, 금액: String(linePrice(l, pOf(l.상품코드))) })),
     부가서비스: b.lines
       .filter((l) => isExtraKind(pOf(l.상품코드)))
       .map((l) => ({

@@ -118,7 +118,7 @@ export default async function DashboardHome() {
 }
 
 /** 지금 실제로 쓸 수 있는 메뉴 */
-const READY = new Set(["상담", "직원관리", "회원"]);
+const READY = new Set(["상담", "직원관리", "회원", "매출"]);
 
 /** 카드에 붙는 한 줄 설명 */
 const MENU_NOTE: Record<string, string> = {

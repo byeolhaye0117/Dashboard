@@ -34,6 +34,7 @@ export async function POST(req: Request) {
             종료일: String(t.종료일 ?? ""),
             총횟수: t.총횟수 ? String(t.총횟수) : "",
             담당트레이너사번: t.담당트레이너사번 ? String(t.담당트레이너사번) : "",
+            금액: t.금액 ? String(t.금액) : "",
           }))
       : [];
 
