@@ -20,6 +20,7 @@ export const SHEET_V = "이용권";
 export const SHEET_VS = "이용권서비스";
 export const SHEET_P = "결제";
 
+
 /* ── 칸 이름 후보 ──────────────────────────── */
 
 const M_COLS: ColumnSpec = {
@@ -94,6 +95,11 @@ const P_COLS: ColumnSpec = {
   담당직원사번: { names: ["담당직원", "처리직원사번", "등록직원사번"] },
   환불여부: { names: [] },
   환불액: { names: ["환불금액"] },
+  // 아래 넷은 시트에 없어도 화면이 돌아가야 한다. 없으면 빈 값으로 읽힌다
+  환불진행상태: { names: ["환불상태"] },
+  환불사유: { names: ["환불사유내용"] },
+  환불신청일: { names: ["환불접수일"] },
+  환불완료일: { names: ["환불지급일"] },
   메모: { names: ["비고"] },
   등록일시: { names: [] },
   등록자: { names: [] },
@@ -151,6 +157,10 @@ export type Payment = {
   미수금결제예정일: string;
   환불여부: string;
   환불액: string;
+  환불진행상태: string;
+  환불사유: string;
+  환불신청일: string;
+  환불완료일: string;
   매출유형: string;
   현금액: string;
   카드액: string;
@@ -272,6 +282,10 @@ export async function listPayments(): Promise<Payment[]> {
       미수금결제예정일: get(r, cols, "미수금결제예정일"),
       환불여부: get(r, cols, "환불여부"),
       환불액: get(r, cols, "환불액"),
+      환불진행상태: get(r, cols, "환불진행상태"),
+      환불사유: get(r, cols, "환불사유"),
+      환불신청일: get(r, cols, "환불신청일"),
+      환불완료일: get(r, cols, "환불완료일"),
       매출유형: get(r, cols, "매출유형"),
       현금액: get(r, cols, "현금액"),
       카드액: get(r, cols, "카드액"),

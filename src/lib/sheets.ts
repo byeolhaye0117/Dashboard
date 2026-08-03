@@ -192,6 +192,32 @@ function columnLetter(index: number): string {
   return s;
 }
 
+/**
+ * 제목 줄 오른쪽 끝에 칸을 덧붙인다
+ *
+ * 이미 있는 이름은 건너뛴다. 두 번 눌러도 칸이 겹쳐 생기지 않는다.
+ * 자료가 든 칸은 건드리지 않고 제목 줄만 고치므로, 기존 줄들은 그대로다.
+ * 만든 칸 이름을 돌려준다. (아무것도 안 만들었으면 빈 배열)
+ */
+export async function addColumns(sheetName: string, names: string[]): Promise<string[]> {
+  const { headers, headerRow } = await readSheet(sheetName);
+  if (headers.length === 0) {
+    throw new Error(`${sheetName} 탭에 제목 줄이 없습니다. 먼저 제목 줄을 만들어주세요.`);
+  }
+  const have = new Set(headers.map((h) => h.replace(/\s/g, "")));
+  const add = names.filter((n) => !have.has(n.replace(/\s/g, "")));
+  if (add.length === 0) return [];
+
+  const from = columnLetter(headers.length);
+  const to = columnLetter(headers.length + add.length - 1);
+  const range = encodeURIComponent(`${sheetName}!${from}${headerRow}:${to}${headerRow}`);
+  await call(`/values/${range}?valueInputOption=USER_ENTERED`, {
+    method: "PUT",
+    body: JSON.stringify({ values: [add] }),
+  });
+  return add;
+}
+
 /** 시트 탭 이름 목록 */
 export async function listSheetNames(): Promise<string[]> {
   const data = await call(`?fields=sheets.properties.title`);

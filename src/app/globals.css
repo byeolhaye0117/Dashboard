@@ -474,6 +474,20 @@ button { font-family: inherit; }
 .ratio > i { display: block; height: 100%; }
 .ratio.empty { opacity: .5; }
 
+/* ── 시트에 칸이 없을 때 안내 ─────────────── */
+.setup {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 14px 16px;
+  background: var(--warn-soft); border: 1px solid var(--warn);
+  border-radius: var(--r); color: var(--warn);
+}
+.setup > div { flex: 1; min-width: 220px; }
+.setup b { display: block; font-size: 13px; font-weight: 800; }
+.setup p { margin: 3px 0 0; font-size: 12px; line-height: 1.6; }
+.setup .err { margin-top: 6px; color: var(--bad); font-weight: 700; }
+.setup.done { background: var(--good-soft); border-color: var(--good); color: var(--good); }
+.setup.done b { display: inline; }
+
 /* ── 지점별 전환율 — 퍼센트만 ────────────── */
 .conv {
   display: grid; grid-template-columns: 62px 1fr 54px; gap: 12px; align-items: center;
