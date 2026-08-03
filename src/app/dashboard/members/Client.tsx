@@ -590,11 +590,13 @@ function NewForm({
                       <input className="input" type="date" value={l.종료일}
                              onChange={(e) => setLine(i, "종료일", e.target.value)} />
                     </label>
-                    <label>
-                      총 횟수
-                      <input className="input" inputMode="numeric" placeholder="기간제면 비움"
-                             value={l.총횟수} onChange={(e) => setLine(i, "총횟수", e.target.value)} />
-                    </label>
+                    {usesCount(pr) && (
+                      <label>
+                        총 횟수
+                        <input className="input" inputMode="numeric"
+                               value={l.총횟수} onChange={(e) => setLine(i, "총횟수", e.target.value)} />
+                      </label>
+                    )}
                   </div>
                   )}
                 </div>
@@ -780,6 +782,8 @@ function Detail({
       state,
     };
   }, [tickets, now]);
+
+  const ticketOf = (id: string) => tickets.find((t) => t.id === id);
 
   /** 요약에는 최근 결제 두 건만 */
   const recent = paid
@@ -971,7 +975,8 @@ function Detail({
                     )}
 
                     <ServiceList rows={live.serviceRows} extras={extras} productOf={productOf}
-                                 now={now} onEdit={can.update ? setEditTicket : undefined} />
+                                 ticketOf={ticketOf} now={now}
+                                 onEdit={can.update ? setEditTicket : undefined} />
 
                     {paid.length > 0 && (
                       <>
@@ -1113,10 +1118,12 @@ function Detail({
  * 두 군데에서 온다. 회원권을 팔 때 얹어준 것은 이용권서비스 탭에,
  * 따로 등록한 서비스 상품은 이용권 탭에 들어 있다.
  */
-function ServiceList({ rows, extras, productOf, now, onEdit }: {
+function ServiceList({ rows, extras, productOf, ticketOf, now, onEdit }: {
   rows: Ticket[];
   extras: Extra[];
   productOf: (code: string) => ProductMeta | undefined;
+  /** 이 서비스가 어느 이용권에 얹혔는지 — 기간은 그 이용권을 따라간다 */
+  ticketOf: (id: string) => Ticket | undefined;
   now: string;
   onEdit?: (t: Ticket) => void;
 }) {
@@ -1130,11 +1137,18 @@ function ServiceList({ rows, extras, productOf, now, onEdit }: {
         {extras.map((s) => {
           const pr = productOf(s.상품코드);
           const add = Number(s.추가금액) || 0;
+          const host = ticketOf(s.이용권번호);
+          const left = host?.종료일 ? daysLeft(host.종료일, now) : null;
           return (
             <div className="line-item" key={s.id}>
               <div className="line-head">
                 <b>{pr?.name ?? s.상품코드}</b>
-                <span className="dim">회원권에 얹어드림</span>
+                <span className="dim">
+                  {host?.시작일?.slice(2)}
+                  {host?.종료일 && ` ~ ${host.종료일.slice(2)}`}
+                  {(pr?.count ?? 0) > 0 && ` · ${pr!.count}회`}
+                  {left !== null && ` · ${left < 0 ? `${-left}일 지남` : `${left}일 남음`}`}
+                </span>
                 <span className={`pill ${add > 0 ? "warn" : ""}`}>
                   {add > 0 ? `+${money(add)}원` : "무료"}
                 </span>
@@ -1164,6 +1178,7 @@ function TicketGroups({
   onEdit?: (t: Ticket) => void;
 }) {
   const grp = (t: Ticket) => groupOf(productOf(t.상품코드));
+  const ticketOf = (id: string) => tickets.find((t) => t.id === id);
   const byEnd = (a: Ticket, b: Ticket) => (b.종료일 ?? "").localeCompare(a.종료일 ?? "");
 
   const main = tickets.filter((t) => grp(t) === "이용권");
@@ -1219,13 +1234,23 @@ function TicketGroups({
         "운동복 · 사물함 같은 항목입니다. 이게 남아 있어도 회원권이 살아 있는 것으로는 세지 않습니다."
       )}
       {section("붙은 옵션", opts, "회원권에 얹은 추가 요금입니다.")}
-      <ServiceList rows={services} extras={extras} productOf={productOf} now={now} onEdit={onEdit} />
+      <ServiceList rows={services} extras={extras} productOf={productOf} ticketOf={ticketOf}
+                   now={now} onEdit={onEdit} />
     </>
   );
 }
 
 /** 횟수제 상품인가 — 0 이나 빈칸은 기간제로 본다 */
 const hasCount = (t: Ticket) => Number(t.총횟수) > 0;
+
+/**
+ * 횟수를 세는 상품인가
+ *
+ * 1:1PT · 그룹수업처럼 회차로 파는 것만 횟수가 있다.
+ * 개월로 파는 회원권에 횟수 칸을 보여주면 0 만 남아 헷갈린다.
+ */
+const usesCount = (pr?: ProductMeta, t?: Ticket) =>
+  (pr?.count ?? 0) > 0 || /PT|수업|회/.test(pr?.kind ?? "") || Number(t?.총횟수) > 0;
 
 function TicketLine({ t, pr, now, tag, onEdit }: {
   t: Ticket; pr?: ProductMeta; now: string; tag?: string; onEdit?: () => void;
@@ -1310,6 +1335,9 @@ function TicketEdit({
   const [confirmDel, setConfirmDel] = useState(false);
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
 
+  /** 개월로 파는 회원권에는 횟수 칸을 보여주지 않는다 */
+  const byCount = usesCount(pr, t);
+
   /** 홀딩한 날수만큼 종료일을 미룬다 */
   function applyHold() {
     const days = Number(hold) || 0;
@@ -1349,14 +1377,18 @@ function TicketEdit({
             <input className="input" type="date" value={f.종료일}
                    onChange={(e) => set("종료일", e.target.value)} />
           </L>
-          <L label="총 횟수">
-            <input className="input" inputMode="numeric" placeholder="기간제면 비움"
-                   value={f.총횟수} onChange={(e) => set("총횟수", e.target.value)} />
-          </L>
-          <L label="남은 횟수">
-            <input className="input" inputMode="numeric" placeholder="기간제면 비움"
-                   value={f.잔여횟수} onChange={(e) => set("잔여횟수", e.target.value)} />
-          </L>
+          {byCount && (
+            <>
+              <L label="총 횟수">
+                <input className="input" inputMode="numeric"
+                       value={f.총횟수} onChange={(e) => set("총횟수", e.target.value)} />
+              </L>
+              <L label="남은 횟수">
+                <input className="input" inputMode="numeric"
+                       value={f.잔여횟수} onChange={(e) => set("잔여횟수", e.target.value)} />
+              </L>
+            </>
+          )}
           <L label="담당 트레이너">
             <select className="input" value={f.담당트레이너사번}
                     onChange={(e) => set("담당트레이너사번", e.target.value)}>
