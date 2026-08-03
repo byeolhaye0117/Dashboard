@@ -20,6 +20,12 @@
   --point: #d9502f;        /* 포인트는 하나만 */
   --point-soft: #fbeae5;
 
+  /* 지점을 구분하는 색 — 4개 지점을 한 화면에서 비교하기 위한 것 */
+  --c0: #d9502f;
+  --c1: #2f6f8f;
+  --c2: #a86412;
+  --c3: #5f7a63;
+
   --good: #1a7f4b;
   --good-soft: #e7f4ec;
   --warn: #a86412;
@@ -56,6 +62,11 @@
 
   --point: #ff6a48;
   --point-soft: #33190f;
+
+  --c0: #ff6a48;
+  --c1: #5aa8c9;
+  --c2: #e0a13c;
+  --c3: #7fb08a;
 
   --good: #4ec27f;
   --good-soft: #16301f;
@@ -309,18 +320,42 @@ button { font-family: inherit; }
 
 /* ── 매출 ───────────────────────────────── */
 
-/* 핵심 숫자 — 값 옆에 늘 지난달 대비를 같이 둔다 */
+/* 지점 색 */
+.c0 { background: var(--c0); }
+.c1 { background: var(--c1); }
+.c2 { background: var(--c2); }
+.c3 { background: var(--c3); }
+
+/* 지점 고르기 — 네 곳을 한 줄에 놓고 금액까지 같이 본다 */
+.bchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 2px; }
+.bchip {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 38px; padding: 0 13px;
+  background: var(--surface); color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  cursor: pointer; font-family: inherit;
+}
+.bchip > i { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 8px; }
+.bchip .nm { font-size: 13px; font-weight: 600; }
+.bchip .am { font-size: 12px; color: var(--muted); font-weight: 700; }
+.bchip:hover { border-color: var(--ink-2); color: var(--ink); }
+.bchip.on {
+  background: var(--ink); color: var(--ink-on); border-color: var(--ink);
+}
+.bchip.on .am { color: var(--ink-on); opacity: .75; }
+
+/* 핵심 숫자 */
 .kpis {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
-  gap: 10px; margin-top: 4px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(172px, 1fr));
+  gap: 10px; margin-top: 12px;
 }
 .kpi {
-  padding: 14px 15px 13px; background: var(--surface);
+  padding: 13px 15px 12px; background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--r);
 }
 .kpi .lb { font-size: 11.5px; color: var(--muted); font-weight: 600; }
-.kpi .row { display: flex; align-items: baseline; gap: 7px; margin-top: 5px; }
-.kpi .vl { font-size: 21px; font-weight: 800; letter-spacing: -.03em; }
+.kpi .row { display: flex; align-items: baseline; gap: 7px; margin-top: 4px; }
+.kpi .vl { font-size: 20px; font-weight: 800; letter-spacing: -.03em; }
 .kpi .vl.bad { color: var(--bad); }
 .kpi .dt { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
 .kpi .track { height: 5px; }
@@ -330,7 +365,35 @@ button { font-family: inherit; }
 .delta.down { color: var(--bad); }
 .delta.flat { color: var(--muted); }
 
-/* 12개월 추이 — 옅은 칸이 목표, 진한 막대가 실적 */
+/* 지점 비교 카드 — 같은 틀을 나란히 놓아야 눈으로 비교된다 */
+.bcards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(206px, 1fr)); gap: 10px;
+}
+.bcard {
+  display: block; width: 100%; text-align: left; cursor: pointer; font-family: inherit;
+  padding: 14px 15px 13px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r); color: var(--ink);
+}
+.bcard:hover { border-color: var(--ink-2); }
+.bc-head { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.bc-head > i { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 8px; }
+.bc-head b { flex: 1; font-weight: 700; }
+.bc-head .rank { font-size: 11px; color: var(--muted); font-weight: 700; }
+.bc-sum { display: flex; align-items: baseline; gap: 7px; margin: 7px 0 9px; }
+.bc-sum b { font-size: 19px; font-weight: 800; letter-spacing: -.03em; }
+.bcard .track { height: 5px; }
+.bc-goal { margin-top: 6px; font-size: 11px; color: var(--muted); }
+.bc-goal b { color: var(--ink); font-weight: 700; }
+.bc-foot {
+  display: flex; justify-content: space-between; margin-top: 9px;
+  font-size: 11px; color: var(--muted);
+}
+
+/* 지점 카드 안의 6개월 막대 */
+.spark { display: flex; align-items: flex-end; gap: 3px; height: 26px; margin-top: 11px; }
+.spark > i { flex: 1; display: block; border-radius: 1px; background: var(--surface-3); }
+
+/* 12개월 추이 */
 .trend { display: flex; align-items: flex-end; gap: 4px; }
 .tcol {
   flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 5px;
@@ -338,21 +401,32 @@ button { font-family: inherit; }
 }
 .tval { font-size: 10.5px; color: var(--muted); height: 14px; }
 .tbar {
-  position: relative; display: block; width: 100%; height: 108px;
+  position: relative; display: block; width: 100%; height: 112px;
   background: var(--surface-2); border-radius: 4px 4px 0 0; overflow: hidden;
 }
-.tbar > i { position: absolute; left: 0; right: 0; bottom: 0; display: block; }
+.tbar > i, .tbar > .stackcol { position: absolute; left: 0; right: 0; bottom: 0; }
 .tbar > i.goal { background: var(--surface-3); }
 .tbar > i.fill { background: var(--ink-2); border-radius: 4px 4px 0 0; }
+.tbar > .stackcol { display: flex; flex-direction: column-reverse; }
+.tbar > .stackcol > i { display: block; width: 100%; }
 .tlb { font-size: 10.5px; color: var(--muted); }
 .tcol:hover .tbar > i.fill { background: var(--ink); }
 .tcol.on .tbar > i.fill { background: var(--point); }
 .tcol.on .tlb, .tcol.on .tval { color: var(--ink); font-weight: 700; }
+.tcol.on .tbar { outline: 1px solid var(--ink); outline-offset: -1px; }
 
-/* 구성 — 한 줄로 비중을 보여주고 아래에 값을 적는다 */
+.legend {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px;
+  font-size: 11.5px; color: var(--muted);
+}
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 8px; height: 8px; border-radius: 2px; }
+.legend .goal i { background: var(--surface-3); }
+
+/* 구성 */
 .sales-grid {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 12px; align-items: start;
+  gap: 10px; align-items: start;
 }
 .sales-card {
   padding: 15px 16px 16px; background: var(--surface);
@@ -363,10 +437,10 @@ button { font-family: inherit; }
 
 .stack { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--surface-3); }
 .stack > i { display: block; height: 100%; }
-.s0 { background: var(--point); }
-.s1 { background: var(--ink-2); }
-.s2 { background: var(--muted); }
-.s3 { background: var(--surface-3); }
+.s0 { background: var(--c0); }
+.s1 { background: var(--c1); }
+.s2 { background: var(--c2); }
+.s3 { background: var(--c3); }
 
 .stack-list { list-style: none; margin: 12px 0 0; padding: 0; }
 .stack-list li {
@@ -377,7 +451,7 @@ button { font-family: inherit; }
 .stack-list .vl { font-weight: 700; }
 .stack-list .pc { min-width: 34px; text-align: right; font-size: 11px; color: var(--muted); }
 
-/* 일별 — 그 달 전체를 그린다 */
+/* 일별 */
 .day-bars {
   display: flex; align-items: flex-end; gap: 2px; height: 84px;
   padding-bottom: 1px; border-bottom: 1px solid var(--line);
