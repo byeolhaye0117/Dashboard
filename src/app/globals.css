@@ -346,9 +346,12 @@ button { font-family: inherit; }
   color: var(--muted); font-size: 13px; font-weight: 600;
   cursor: pointer; font-family: inherit;
 }
-.tab:hover { color: var(--ink); }
-.tab.on { color: var(--ink); border-bottom-color: var(--point); }
+.tab:hover { color: var(--ink); background: var(--surface-2); }
+.tab.on { color: var(--point); border-bottom-color: var(--point); font-weight: 700; }
 .tab .cnt { font-size: 11px; opacity: .65; }
+
+/* 지금 보고 있는 탭이 무엇인지 글로도 알려준다 */
+.tab-lead { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
 
 .mini-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .mini-stat {

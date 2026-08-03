@@ -642,6 +642,14 @@ function NewForm({
 /* ── 상세 ─────────────────────────────────── */
 const TABS = ["요약", "이용권", "결제", "기록"] as const;
 
+/** 지금 어느 탭을 보고 있는지 한 줄로 알려준다 */
+const TAB_LEAD: Record<(typeof TABS)[number], string> = {
+  요약: "지금 이 회원이 어떤 상태인지 한눈에 봅니다.",
+  이용권: "끊은 상품 전부입니다. 회원권 · 부가 · 서비스로 나눠 보여드립니다.",
+  결제: "지금까지 받은 돈과 아직 못 받은 돈입니다.",
+  기록: "언제 어떻게 등록됐는지, 누가 고쳤는지입니다.",
+};
+
 /**
  * 이용권 한 줄 + 얼마나 지났는지 막대
  *
@@ -848,13 +856,21 @@ function Detail({
               <div className="m-body">
                 <div className="tabs">
                   {TABS.map((t) => (
-                    <button key={t} className={`tab${view === t ? " on" : ""}`} onClick={() => setView(t)}>
+                    <button
+                      key={t}
+                      type="button"
+                      className={`tab${view === t ? " on" : ""}`}
+                      aria-pressed={view === t}
+                      onClick={() => setView(t)}
+                    >
                       {t}
                       {t === "이용권" && tickets.length > 0 && <span className="cnt num">{tickets.length}</span>}
                       {t === "결제" && paid.length > 0 && <span className="cnt num">{paid.length}</span>}
                     </button>
                   ))}
                 </div>
+
+                <p className="tab-lead">{TAB_LEAD[view]}</p>
 
                 {view === "요약" && (
                   <>
