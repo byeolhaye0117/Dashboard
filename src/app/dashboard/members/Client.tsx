@@ -375,6 +375,8 @@ type Line = {
   가격구분: "현금" | "카드";
   /** 이 상품에서 깎아준 금액 */
   할인: string;
+  /** 이 상품에서 아직 못 받은 금액 */
+  미수금: string;
 };
 
 type Buy = {
@@ -423,7 +425,7 @@ const defaultKind = (method: string): "현금" | "카드" =>
 function listPrice(l: Line, pr: ProductMeta | undefined): number {
   const unit = unitPrice(pr, l.가격구분 === "현금");
   if (!unit || !pr) return 0;
-  if (!canPickMonths(pr)) return unit;
+  if (!pricePerMonth(pr)) return unit;
   const base = pr.months || 1;
   const want = Number(l.개월) || base;
   return Math.round((unit * want) / base);
@@ -441,6 +443,19 @@ function linePrice(l: Line, pr: ProductMeta | undefined): number {
  * 달마다 값이 붙는 것들이라 몇 달치를 받을지 그때그때 정한다.
  */
 const canPickMonths = (pr?: ProductMeta) => {
+  const g = groupOf(pr);
+  if (g === "서비스") return false;
+  // 회원권은 상품 이름에 개월이 박혀 있다 (1+2, 6+6). 그건 건드리지 않는다
+  return g === "부가" || g === "옵션" || usesCount(pr);
+};
+
+/**
+ * 개월만큼 값이 곱해지는 상품인가
+ *
+ * 사물함 · 24시처럼 달마다 값이 붙는 것만 곱한다.
+ * PT 10회 100,000원은 몇 달 안에 쓰든 값이 같으므로 곱하면 안 된다.
+ */
+const pricePerMonth = (pr?: ProductMeta) => {
   const g = groupOf(pr);
   return (g === "부가" || g === "옵션") && !usesCount(pr);
 };
@@ -505,7 +520,8 @@ function buyPayload(b: Buy, products: ProductMeta[]) {
       : b.직접입력 ? b.금액 : String(suggested),
     카드액: split ? b.카드액 : "",
     계좌액: split ? b.계좌액 : "",
-    미수금액: b.미수금액,
+    // 미수금은 상품마다 적은 것을 더해서 결제 한 줄에 담는다
+    미수금액: String(b.lines.reduce((s, l) => s + onlyNum(l.미수금), 0)),
     미수금결제예정일: b.미수금결제예정일,
     매출유형: b.매출유형,
     suggested,
@@ -548,6 +564,8 @@ function PurchaseFields({
   /** 깎기 전 정가 합계와 깎아준 총액 — 얼마를 빼줬는지 눈에 보여야 한다 */
   const listTotal = b.lines.reduce((s, l) => s + listPrice(l, pOf(l.상품코드)), 0);
   const discount = listTotal - suggested;
+  /** 상품마다 적은 미수금을 더한 값 */
+  const unpaidTotal = b.lines.reduce((s, l) => s + onlyNum(l.미수금), 0);
   const split = b.결제수단.includes("+");
   const splitTotal = onlyNum(b.카드액) + onlyNum(b.계좌액);
   const cashSide = b.결제수단 === "현금" || b.결제수단 === "계좌";
@@ -585,6 +603,7 @@ function PurchaseFields({
           개월: months ? String(months) : "",
           가격구분: defaultKind(b.결제수단),
           할인: "",
+          미수금: "",
         },
       ],
     });
@@ -697,6 +716,7 @@ function PurchaseFields({
                           !extra && usesCount(pr) && l.총횟수 ? `${l.총횟수}회` : "",
                           extra ? "회원권에 얹음" : l.가격구분 + "가",
                           onlyNum(l.할인) > 0 ? `할인 ${money(onlyNum(l.할인))}원` : "",
+                          onlyNum(l.미수금) > 0 ? `미수 ${money(onlyNum(l.미수금))}원` : "",
                         ].filter(Boolean).join(" · ")}
                       </span>
                       <button type="button" className="x"
@@ -744,8 +764,8 @@ function PurchaseFields({
                         {!extra && usesCount(pr) && (
                           <label>
                             <span>횟수</span>
-                            <input className="input" inputMode="numeric" value={l.총횟수}
-                                   onChange={(e) => setLine(i, "총횟수", e.target.value)} />
+                            {/* 상품에 정해진 횟수다. 여기서 바꾸면 상품과 어긋난다 */}
+                            <input className="input" value={`${l.총횟수}회`} readOnly />
                           </label>
                         )}
                         {/* 어떤 상품이든 깎아줄 수 있어야 한다 */}
@@ -754,6 +774,12 @@ function PurchaseFields({
                           <input className="input" inputMode="numeric" placeholder="0"
                                  value={l.할인}
                                  onChange={(e) => setLine(i, "할인", e.target.value)} />
+                        </label>
+                        <label>
+                          <span>미수금</span>
+                          <input className="input" inputMode="numeric" placeholder="0"
+                                 value={l.미수금}
+                                 onChange={(e) => setLine(i, "미수금", e.target.value)} />
                         </label>
                         {onlyNum(l.할인) > 0 && (
                           <p className="cart-note">
@@ -844,12 +870,13 @@ function PurchaseFields({
               </label>
             )}
 
-            <label className="row f">
-              <span>미수금</span>
-              <input className="input" inputMode="numeric" placeholder="0" value={b.미수금액}
-                     onChange={(e) => setB({ ...b, 미수금액: e.target.value })} />
-            </label>
-            {onlyNum(b.미수금액) > 0 && (
+            {unpaidTotal > 0 && (
+              <div className="row">
+                <span>미수금</span>
+                <b className="num warn-text">{money(unpaidTotal)}원</b>
+              </div>
+            )}
+            {unpaidTotal > 0 && (
               <label className="row f">
                 <span>받기로 한 날</span>
                 <input className="input" type="date" value={b.미수금결제예정일}
@@ -864,6 +891,19 @@ function PurchaseFields({
               </b>
             </div>
 
+            {unpaidTotal > 0 && (
+              <p className="cart-note">
+                이 중 <b>{money(unpaidTotal)}원</b>은 아직 못 받은 돈입니다.
+                오늘 실제로 받는 금액은{" "}
+                <b>
+                  {money(
+                    Math.max(0, (split ? splitTotal : b.직접입력 ? onlyNum(b.금액) : suggested) - unpaidTotal)
+                  )}
+                  원
+                </b>
+                입니다.
+              </p>
+            )}
             {!split && !b.직접입력 && suggested > 0 && (
               <p className="cart-note">
                 상품마다 고른 값에서 할인을 뺀 금액입니다. 더 조정하시려면 금액을 직접 고쳐주세요.

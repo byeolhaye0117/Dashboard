@@ -449,6 +449,10 @@ button { font-family: inherit; }
 .cart-edit label .input {
   flex: 1; min-width: 0; height: 30px; padding: 0 9px; font-size: 12.5px;
 }
+/* 상품에 정해져 있어 고칠 수 없는 값 */
+.cart-edit label .input[readonly] {
+  background: var(--surface-3); color: var(--muted); cursor: default;
+}
 .cart-note { margin: 6px 0 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
 
 .cart-sum { padding: 11px 13px; border-top: 1px solid var(--line); background: var(--surface); }
