@@ -546,8 +546,11 @@ button { font-family: inherit; }
 .tiles {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;
 }
-/* 맨 위에 올린 것 — 지점 칩 바로 밑에 붙는다 */
-.tiles.top { margin-top: 12px; }
+/* 매출 바로 밑 네 칸 — 좁아져도 두 칸씩은 나란히 서게 */
+.tiles.four { margin-top: 10px; grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 860px) { .tiles.four { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 460px) { .tiles.four { grid-template-columns: 1fr; } }
+.tile .mini > i.good { background: var(--good); }
 .tile {
   padding: 15px 17px 14px; background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--r);

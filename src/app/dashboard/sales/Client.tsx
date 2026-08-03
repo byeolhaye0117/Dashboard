@@ -504,45 +504,6 @@ export default function Client(p: Props) {
         </div>
       )}
 
-      {/* 챙길 것 — 매출보다 먼저 눈에 들어와야 하는 세 가지 */}
-      <div className="tiles top">
-        <div className="tile">
-          <span className="lb">아직 못 받은 돈</span>
-          <b className={`vl num${cur.unpaid > 0 ? " bad" : ""}`}>{money(cur.unpaid)}원</b>
-          <span className="sub">
-            {cur.unpaid > 0
-              ? `${unpaidList.length}건 · 실입금 ${money(cur.sum - cur.unpaid)}원`
-              : "전액 입금"}
-          </span>
-          <div className="mini">
-            <i className={cur.unpaid > 0 ? "bad" : ""}
-               style={{ width: `${cur.sum > 0 ? Math.min(100, (cur.unpaid / cur.sum) * 100) : 0}%` }} />
-          </div>
-        </div>
-        <div className="tile">
-          <span className="lb">환불</span>
-          <b className="vl num">{money(cur.refund)}원</b>
-          <span className="sub">
-            {cur.rows.filter(isRefund).length}건
-            {cur.sum > 0 && ` · 매출의 ${((cur.refund / cur.sum) * 100).toFixed(1)}%`}
-          </span>
-          <div className="mini">
-            <i style={{ width: `${cur.sum > 0 ? Math.min(100, (cur.refund / cur.sum) * 100) : 0}%` }} />
-          </div>
-        </div>
-        <div className="tile">
-          <span className="lb">등록실패율</span>
-          <b className="vl num">{lead.failRate === null ? "-" : `${lead.failRate}%`}</b>
-          <span className="sub">
-            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.fail}건 미등록` : "이 달 상담 없음"}
-          </span>
-          <div className="mini">
-            <i className={lead.failRate !== null && lead.failRate >= 50 ? "bad" : "warn"}
-               style={{ width: `${lead.failRate ?? 0}%` }} />
-          </div>
-        </div>
-      </div>
-
       {/* 이번 달 — 숫자 하나가 주인공이라 그래프를 쓰지 않는다 */}
       <div className="hero">
         <div className="hero-main">
@@ -585,6 +546,55 @@ export default function Client(p: Props) {
           ) : (
             <p className="sub">월매출목표가 입력되지 않았습니다.</p>
           )}
+        </div>
+      </div>
+
+      {/* 매출 바로 밑에 오는 네 칸 — 돈이 새는 곳과 상담 성적 */}
+      <div className="tiles four">
+        <div className="tile">
+          <span className="lb">미수금</span>
+          <b className={`vl num${cur.unpaid > 0 ? " bad" : ""}`}>{money(cur.unpaid)}원</b>
+          <span className="sub">
+            {cur.unpaid > 0
+              ? `${unpaidList.length}건 · 실입금 ${money(cur.sum - cur.unpaid)}원`
+              : "전액 입금"}
+          </span>
+          <div className="mini">
+            <i className={cur.unpaid > 0 ? "bad" : ""}
+               style={{ width: `${cur.sum > 0 ? Math.min(100, (cur.unpaid / cur.sum) * 100) : 0}%` }} />
+          </div>
+        </div>
+        <div className="tile">
+          <span className="lb">환불</span>
+          <b className="vl num">{money(cur.refund)}원</b>
+          <span className="sub">
+            {cur.rows.filter(isRefund).length}건
+            {cur.sum > 0 && ` · 매출의 ${((cur.refund / cur.sum) * 100).toFixed(1)}%`}
+          </span>
+          <div className="mini">
+            <i style={{ width: `${cur.sum > 0 ? Math.min(100, (cur.refund / cur.sum) * 100) : 0}%` }} />
+          </div>
+        </div>
+        <div className="tile">
+          <span className="lb">등록성공률</span>
+          <b className="vl num">{lead.winRate === null ? "-" : `${lead.winRate}%`}</b>
+          <span className="sub">
+            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.done}건 등록` : "이 달 상담 없음"}
+          </span>
+          <div className="mini">
+            <i className="good" style={{ width: `${lead.winRate ?? 0}%` }} />
+          </div>
+        </div>
+        <div className="tile">
+          <span className="lb">등록실패율</span>
+          <b className="vl num">{lead.failRate === null ? "-" : `${lead.failRate}%`}</b>
+          <span className="sub">
+            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.fail}건 미등록` : "이 달 상담 없음"}
+          </span>
+          <div className="mini">
+            <i className={lead.failRate !== null && lead.failRate >= 50 ? "bad" : "warn"}
+               style={{ width: `${lead.failRate ?? 0}%` }} />
+          </div>
         </div>
       </div>
 
@@ -1060,12 +1070,12 @@ export default function Client(p: Props) {
 function SetupRefund({ missing, can }: { missing: string[]; can: boolean }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState("");
 
   if (done) {
     return (
       <div className="setup done">
-        <div>결제 탭에 칸을 만들었습니다. <b>새로고침</b>하면 환불 표가 채워집니다.</div>
+        <div>{done} <b>새로고침</b>하면 환불 표가 채워집니다.</div>
       </div>
     );
   }
@@ -1081,7 +1091,12 @@ function SetupRefund({ missing, can }: { missing: string[]; can: boolean }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "칸을 만들지 못했습니다.");
-      setDone(true);
+      // 무엇을 만들었는지 그대로 알려준다. 아무것도 안 만들었으면 그렇다고 말한다
+      setDone(
+        data.added?.length
+          ? `결제 탭에 ${data.added.join(" · ")} 칸을 만들었습니다.`
+          : "칸이 이미 있었습니다."
+      );
     } catch (e: any) {
       setMsg(e.message);
     } finally {
