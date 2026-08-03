@@ -192,8 +192,22 @@ function columnLetter(index: number): string {
   return s;
 }
 
+/** 탭 하나의 속성 — 칸을 늘리려면 시트 번호와 지금 칸 수가 필요하다 */
+async function sheetInfo(sheetName: string): Promise<{ id: number; columnCount: number }> {
+  const data = await call(`?fields=sheets.properties(sheetId,title,gridProperties/columnCount)`);
+  const found = (data.sheets ?? []).find((s: any) => s.properties?.title === sheetName);
+  if (!found) throw new Error(`시트에 "${sheetName}" 탭이 없습니다.`);
+  return {
+    id: found.properties.sheetId,
+    columnCount: found.properties.gridProperties?.columnCount ?? 26,
+  };
+}
+
 /**
  * 제목 줄 오른쪽 끝에 칸을 덧붙인다
+ *
+ * 구글 시트는 표가 가진 칸 수가 정해져 있어서, 그 밖에 글을 쓰면 거부한다.
+ * (새 시트는 보통 26칸이다) 그래서 모자라면 칸 수부터 늘리고 제목을 쓴다.
  *
  * 이미 있는 이름은 건너뛴다. 두 번 눌러도 칸이 겹쳐 생기지 않는다.
  * 자료가 든 칸은 건드리지 않고 제목 줄만 고치므로, 기존 줄들은 그대로다.
@@ -208,8 +222,27 @@ export async function addColumns(sheetName: string, names: string[]): Promise<st
   const add = names.filter((n) => !have.has(n.replace(/\s/g, "")));
   if (add.length === 0) return [];
 
+  const need = headers.length + add.length;
+  const info = await sheetInfo(sheetName);
+  if (info.columnCount < need) {
+    await call(`:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [
+          {
+            appendDimension: {
+              sheetId: info.id,
+              dimension: "COLUMNS",
+              length: need - info.columnCount,
+            },
+          },
+        ],
+      }),
+    });
+  }
+
   const from = columnLetter(headers.length);
-  const to = columnLetter(headers.length + add.length - 1);
+  const to = columnLetter(need - 1);
   const range = encodeURIComponent(`${sheetName}!${from}${headerRow}:${to}${headerRow}`);
   await call(`/values/${range}?valueInputOption=USER_ENTERED`, {
     method: "PUT",
