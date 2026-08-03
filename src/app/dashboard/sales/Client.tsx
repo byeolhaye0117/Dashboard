@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import type { ProductMeta } from "@/lib/productMeta";
+import { stageNow, baseDate } from "@/lib/stage";
 
 type Payment = {
   id: string;
@@ -32,12 +33,15 @@ type Payment = {
 type Ticket = { id: string; 상품코드: string; 결제번호: string; 금액: string };
 type Named = { code: string; name: string };
 type Goal = { 지점코드: string; 연월: string; 목표금액: number };
+/** 등록실패율을 내기 위한 상담 한 줄 */
+type Lead = { 지점코드: string; 상담날짜: string; 약속일시: string; 진행상태: string };
 
 type Props = {
   payments: Payment[];
   tickets: Ticket[];
   products: ProductMeta[];
   goals: Goal[];
+  leads: Lead[];
   branches: Named[];
   staffNames: Record<string, string>;
   problem: string;
@@ -178,18 +182,64 @@ export default function Client(p: Props) {
     { key: "계좌", sum: cur.live.reduce((s, x) => s + num(x.계좌액), 0) },
   ].filter((x) => x.sum > 0);
 
-  const byKind = useMemo(() => {
-    const ids = new Set(cur.live.map((x) => x.id));
-    const mine = p.tickets.filter((t) => ids.has(t.결제번호) && num(t.금액) > 0);
-    const map: Record<string, number> = {};
-    mine.forEach((t) => {
-      const kind = productOf(t.상품코드)?.kind || "기타";
-      map[kind] = (map[kind] ?? 0) + num(t.금액);
+  /**
+   * 결제 금액을 상품 갈래로 나눈다
+   *
+   * 이용권에 적힌 금액이 있으면 그대로 쓰고, 없으면 상품 정가로 나눈다.
+   * 결제 한 건에 회원권과 사물함이 같이 들어 있어도 각각 얼마인지 알 수 있다.
+   */
+  const bucket = useMemo(() => {
+    const byPay: Record<string, Ticket[]> = {};
+    p.tickets.forEach((t) => (byPay[t.결제번호] ??= []).push(t));
+
+    const out = { 회원권: 0, PT: 0, 수업: 0, 기타: 0, 미분류: 0 };
+    const where = (kind?: string): keyof typeof out => {
+      const k = kind ?? "";
+      if (k.includes("회원권")) return "회원권";
+      if (k.includes("PT")) return "PT";
+      if (k.includes("수업")) return "수업";
+      return "기타";
+    };
+
+    cur.live.forEach((pay) => {
+      const amt = num(pay.결제금액);
+      if (amt <= 0) return;
+      const ts = byPay[pay.id] ?? [];
+      const w = ts.map((t) => {
+        const pr = productOf(t.상품코드);
+        return num(t.금액) || pr?.card || pr?.cash || 0;
+      });
+      const wsum = w.reduce((a, b) => a + b, 0);
+      if (ts.length === 0 || wsum <= 0) {
+        out.미분류 += amt;
+        return;
+      }
+      ts.forEach((t, i) => {
+        out[where(productOf(t.상품코드)?.kind)] += Math.round((amt * w[i]) / wsum);
+      });
     });
-    return Object.entries(map)
-      .map(([key, sum]) => ({ key, sum }))
-      .sort((a, b) => b.sum - a.sum);
+    return out;
   }, [cur.live, p.tickets, p.products]);
+
+  /**
+   * 등록실패율 — 상담 화면과 같은 규칙으로 센다
+   *
+   * 약속을 잡은 건은 약속 날짜, 아직 없는 건은 문의가 들어온 날 기준이다.
+   */
+  const lead = useMemo(() => {
+    const rows = p.leads.filter(
+      (c) =>
+        baseDate(c).startsWith(month) && (branch === "전체" || c.지점코드 === branch)
+    );
+    const fail = rows.filter((c) => stageNow(c, now) === "미등록").length;
+    const done = rows.filter((c) => stageNow(c, now) === "등록").length;
+    return {
+      base: rows.length,
+      fail,
+      done,
+      failRate: rows.length > 0 ? Math.round((fail / rows.length) * 100) : null,
+    };
+  }, [p.leads, month, branch, now]);
 
   const byStaff = useMemo(() => {
     const map: Record<string, { sum: number; count: number }> = {};
@@ -276,8 +326,14 @@ export default function Client(p: Props) {
       )}
 
       <div className="kpis">
-        <Kpi label="매출" value={`${money(cur.sum)}원`} d={delta(cur.sum, prev.sum)}
+        <Kpi label="총 매출" value={`${money(cur.sum)}원`} d={delta(cur.sum, prev.sum)}
              sub={`지난달 ${money(prev.sum)}원`} />
+        <Kpi label="회원권 매출" value={`${money(bucket.회원권)}원`}
+             sub={cur.sum > 0 ? `전체의 ${Math.round((bucket.회원권 / cur.sum) * 100)}%` : "-"} />
+        <Kpi label="PT 매출" value={`${money(bucket.PT)}원`}
+             sub={cur.sum > 0 ? `전체의 ${Math.round((bucket.PT / cur.sum) * 100)}%` : "-"} />
+        <Kpi label="기타 매출" value={`${money(bucket.수업 + bucket.기타 + bucket.미분류)}원`}
+             sub={bucket.수업 > 0 ? `그룹수업 ${short(bucket.수업)}원 포함` : "사물함 · 운동복 등"} />
         <Kpi label="목표 달성률"
              value={rate === null ? "-" : `${rate}%`}
              sub={cur.goal > 0
@@ -286,10 +342,10 @@ export default function Client(p: Props) {
                  : `${money(cur.goal - cur.sum)}원 남음`
                : "월매출목표 미입력"}
              bar={cur.goal > 0 ? Math.min(100, (cur.sum / cur.goal) * 100) : undefined} />
-        <Kpi label="결제 건수" value={`${cur.count}건`} d={delta(cur.count, prev.count)}
-             sub={`지난달 ${prev.count}건`} />
-        <Kpi label="객단가" value={`${money(avg)}원`} d={delta(avg, prevAvg)}
-             sub={rejoin === null ? "재등록 자료 없음" : `재등록률 ${rejoin}%`} />
+        <Kpi label="등록실패율"
+             value={lead.failRate === null ? "-" : `${lead.failRate}%`}
+             sub={lead.base > 0 ? `문의 ${lead.base}건 중 ${lead.fail}건 미등록` : "이 달 상담 없음"}
+             tone={lead.failRate !== null && lead.failRate >= 50 ? "bad" : undefined} />
         <Kpi label="미수금" value={`${money(cur.unpaid)}원`}
              sub={cur.unpaid > 0 ? `실입금 ${money(cur.sum - cur.unpaid)}원` : "전액 입금"}
              tone={cur.unpaid > 0 ? "bad" : undefined} />
@@ -384,13 +440,12 @@ export default function Client(p: Props) {
           )}
         </Panel>
         <Panel title="상품 분류">
-          {byKind.length === 0 ? (
-            <p className="dim" style={{ fontSize: 12.5 }}>
-              이용권에 금액이 적힌 결제가 아직 없습니다.
-            </p>
-          ) : (
-            <Stack rows={byKind} />
-          )}
+          <Stack rows={[
+            { key: "회원권", sum: bucket.회원권 },
+            { key: "1:1PT", sum: bucket.PT },
+            { key: "그룹수업", sum: bucket.수업 },
+            { key: "기타", sum: bucket.기타 + bucket.미분류 },
+          ].filter((x) => x.sum > 0)} />
         </Panel>
       </div>
 
