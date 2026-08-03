@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getAllOptions, getStaffNames, getStaffAll, getProducts } from "@/lib/data";
-import { listMembers, listTickets } from "@/lib/members";
+import { listMembers, listTickets, listPayments } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
 import { listConsultations } from "@/lib/consultations";
 import Shell from "../Shell";
@@ -39,14 +39,16 @@ export default async function MembersPage() {
 
   let members: any[] = [];
   let tickets: any[] = [];
+  let payments: any[] = [];
   let waiting: { id: string; 이름: string; 전화번호: string; 지점코드: string }[] = [];
   let problem = "";
 
   try {
-    const [m, t] = await Promise.all([listMembers(), listTickets()]);
+    const [m, t, pay] = await Promise.all([listMembers(), listTickets(), listPayments()]);
     members = m.items.filter((x) => allowed.has(x.지점코드));
     const ids = new Set(members.map((x) => x.id));
     tickets = t.filter((x) => ids.has(x.회원번호));
+    payments = pay.filter((x) => ids.has(x.회원번호));
   } catch (e: any) {
     problem = String(e?.message ?? e);
   }
@@ -82,6 +84,7 @@ export default async function MembersPage() {
       <Client
         items={members}
         tickets={tickets}
+        payments={payments}
         products={products.map(readProduct)}
         waiting={waiting}
         options={options}

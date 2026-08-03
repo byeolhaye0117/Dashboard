@@ -39,12 +39,22 @@ type Ticket = {
   결제번호: string;
 };
 
+type Payment = {
+  id: string;
+  회원번호: string;
+  결제일시: string;
+  결제금액: string;
+  결제수단: string;
+  지점코드: string;
+};
+
 type Waiting = { id: string; 이름: string; 전화번호: string; 지점코드: string };
 type Named = { code: string; name: string };
 
 type Props = {
   items: Member[];
   tickets: Ticket[];
+  payments: Payment[];
   products: ProductMeta[];
   waiting: Waiting[];
   options: Record<string, string[]>;
@@ -74,16 +84,22 @@ export default function Client(p: Props) {
   const productOf = (code: string) => p.products.find((x) => x.code === code);
   const branchName = (c: string) => p.branches.find((b) => b.code === c)?.name ?? c;
 
-  /** 이 회원의 이용권 중 가장 늦게 끝나는 날 */
+  /**
+   * 이 회원의 이용권 중 가장 늦게 끝나는 날
+   *
+   * 서비스로 얹어준 항목은 빼고 센다. 무료로 드린 것이 남아 있다고 해서
+   * 회원권이 살아 있는 것은 아니기 때문이다.
+   */
   const endOf = useMemo(() => {
     const map: Record<string, string> = {};
     p.tickets.forEach((t) => {
       if (t.상태 === "환불") return;
+      if (productOf(t.상품코드)?.isService) return;
       const cur = map[t.회원번호] ?? "";
       if (t.종료일 > cur) map[t.회원번호] = t.종료일;
     });
     return map;
-  }, [p.tickets]);
+  }, [p.tickets, p.products]);
 
   const stateOf = (m: Member) => {
     const end = endOf[m.id];
@@ -262,6 +278,7 @@ export default function Client(p: Props) {
         <Detail
           item={detail}
           tickets={p.tickets.filter((t) => t.회원번호 === detail.id)}
+          payments={p.payments.filter((x) => x.회원번호 === detail.id)}
           productOf={productOf}
           options={p.options}
           trainers={p.trainers}
@@ -537,10 +554,11 @@ function NewForm({
 
 /* ── 상세 ─────────────────────────────────── */
 function Detail({
-  item, tickets, productOf, options, trainers, staffNames, branchName, can, onClose,
+  item, tickets, payments, productOf, options, trainers, staffNames, branchName, can, onClose,
 }: {
   item: Member;
   tickets: Ticket[];
+  payments: Payment[];
   productOf: (code: string) => ProductMeta | undefined;
   options: Record<string, string[]>;
   trainers: { id: string; name: string }[];
@@ -556,6 +574,10 @@ function Detail({
   const [confirmDel, setConfirmDel] = useState(false);
   const setV = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
   const now = today();
+
+  // 환불된 결제는 합계에서 뺀다
+  const paid = payments;
+  const totalPaid = paid.reduce((s, x) => s + (Number(x.결제금액) || 0), 0);
 
   async function save() {
     if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
@@ -662,33 +684,36 @@ function Detail({
 
             {item.메모 && <div className="quote">{item.메모}</div>}
 
-            <h4 className="mini-title">이용권 {tickets.length > 0 && `(${tickets.length})`}</h4>
-            {tickets.length === 0 ? (
-              <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>등록된 이용권이 없습니다.</p>
+            <TicketGroups tickets={tickets} productOf={productOf} now={now} />
+
+            <h4 className="mini-title">결제 내역 {paid.length > 0 && `(${paid.length})`}</h4>
+            {paid.length === 0 ? (
+              <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>
+                결제 기록이 없습니다. (무료 · 서비스로만 등록된 회원)
+              </p>
             ) : (
-              <div className="line-list">
-                {tickets
-                  .slice()
-                  .sort((a, b) => (b.종료일 ?? "").localeCompare(a.종료일 ?? ""))
-                  .map((t) => {
-                    const pr = productOf(t.상품코드);
-                    const left = daysLeft(t.종료일, now);
-                    return (
-                      <div className="line-item" key={t.id}>
+              <>
+                <div className="line-list">
+                  {paid
+                    .slice()
+                    .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
+                    .map((x) => (
+                      <div className="line-item" key={x.id}>
                         <div className="line-head">
-                          <b>{pr?.name ?? t.상품코드}</b>
+                          <b className="num">{money(Number(x.결제금액) || 0)}원</b>
                           <span className="dim">
-                            {t.시작일?.slice(2)} ~ {t.종료일?.slice(2)}
-                            {t.총횟수 && ` · ${t.잔여횟수 || t.총횟수}/${t.총횟수}회`}
+                            {(x.결제일시 ?? "").slice(0, 10)} · {x.결제수단 || "-"}
                           </span>
-                          <span className={`pill ${left < 0 ? "bad" : left <= SOON ? "warn" : "good"}`}>
-                            {left < 0 ? "만료" : `${left}일 남음`}
-                          </span>
+                          <span className="pill">{x.id}</span>
                         </div>
                       </div>
-                    );
-                  })}
-              </div>
+                    ))}
+                </div>
+                <p className="stat-note">
+                  지금까지 결제 <b>{paid.length}건</b> · 합계{" "}
+                  <b className="num">{money(totalPaid)}원</b>
+                </p>
+              </>
             )}
 
             {msg && <div className="alert-bad">{msg}</div>}
@@ -719,6 +744,125 @@ function Detail({
               </div>
             )}
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── 이용권 묶어 보여주기 ──────────────────── */
+
+/**
+ * 이용권을 세 덩어리로 나눈다
+ *
+ * 이용 중 / 지난 것 / 받은 서비스.
+ * 서비스는 돈을 안 낸 항목이라 이용권과 같이 세면 개수가 부풀려진다.
+ */
+function TicketGroups({
+  tickets, productOf, now,
+}: {
+  tickets: Ticket[];
+  productOf: (code: string) => ProductMeta | undefined;
+  now: string;
+}) {
+  const isService = (t: Ticket) => Boolean(productOf(t.상품코드)?.isService);
+  const isRefund = (t: Ticket) => t.상태 === "환불";
+  const isOver = (t: Ticket) => Boolean(t.종료일) && daysLeft(t.종료일, now) < 0;
+
+  const paidTickets = tickets.filter((t) => !isService(t));
+  const live = paidTickets.filter((t) => !isRefund(t) && !isOver(t));
+  const past = paidTickets.filter((t) => isRefund(t) || isOver(t));
+  const services = tickets.filter(isService);
+
+  const byEnd = (a: Ticket, b: Ticket) => (b.종료일 ?? "").localeCompare(a.종료일 ?? "");
+
+  if (tickets.length === 0) {
+    return (
+      <>
+        <h4 className="mini-title">이용권</h4>
+        <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>등록된 이용권이 없습니다.</p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <h4 className="mini-title">이용 중 {live.length > 0 && `(${live.length})`}</h4>
+      {live.length === 0 ? (
+        <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>
+          지금 쓸 수 있는 이용권이 없습니다. <b>재등록 대상</b>입니다.
+        </p>
+      ) : (
+        <div className="line-list">
+          {live.sort(byEnd).map((t) => (
+            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} />
+          ))}
+        </div>
+      )}
+
+      {past.length > 0 && (
+        <>
+          <h4 className="mini-title">지난 이용권 ({past.length})</h4>
+          <div className="line-list">
+            {past.sort(byEnd).map((t) => (
+              <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {services.length > 0 && (
+        <>
+          <h4 className="mini-title">받은 서비스 ({services.length})</h4>
+          <div className="line-list">
+            {services.sort(byEnd).map((t) => {
+              const pr = productOf(t.상품코드);
+              return (
+                <div className="line-item" key={t.id}>
+                  <div className="line-head">
+                    <b>{pr?.name ?? t.상품코드}</b>
+                    <span className="dim">
+                      {t.시작일 ? `${t.시작일.slice(2)} 부터` : ""}
+                      {t.종료일 && ` ~ ${t.종료일.slice(2)}`}
+                      {hasCount(t) && ` · ${t.총횟수}회`}
+                    </span>
+                    <span className="pill">무료</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="stat-note">서비스로 드린 항목은 횟수를 차감하지 않고 기록만 남깁니다.</p>
+        </>
+      )}
+    </>
+  );
+}
+
+/** 횟수제 상품인가 — 0 이나 빈칸은 기간제로 본다 */
+const hasCount = (t: Ticket) => Number(t.총횟수) > 0;
+
+function TicketLine({ t, pr, now }: { t: Ticket; pr?: ProductMeta; now: string }) {
+  const left = t.종료일 ? daysLeft(t.종료일, now) : null;
+  const refunded = t.상태 === "환불";
+
+  return (
+    <div className="line-item">
+      <div className="line-head">
+        <b>{pr?.name ?? t.상품코드}</b>
+        <span className="dim">
+          {t.시작일?.slice(2)}
+          {t.종료일 && ` ~ ${t.종료일.slice(2)}`}
+          {hasCount(t) && ` · ${t.잔여횟수 || t.총횟수}/${t.총횟수}회`}
+        </span>
+        {refunded ? (
+          <span className="pill bad">환불</span>
+        ) : left === null ? (
+          <span className="pill">기간 없음</span>
+        ) : (
+          <span className={`pill ${left < 0 ? "bad" : left <= SOON ? "warn" : "good"}`}>
+            {left < 0 ? `${-left}일 지남` : `${left}일 남음`}
+          </span>
         )}
       </div>
     </div>
