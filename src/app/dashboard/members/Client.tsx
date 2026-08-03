@@ -748,18 +748,23 @@ function PurchaseFields({
                                    onChange={(e) => setLine(i, "총횟수", e.target.value)} />
                           </label>
                         )}
-                        {!free && (
-                          <label>
-                            <span>할인</span>
-                            <input className="input" inputMode="numeric" placeholder="0"
-                                   value={l.할인}
-                                   onChange={(e) => setLine(i, "할인", e.target.value)} />
-                          </label>
-                        )}
+                        {/* 어떤 상품이든 깎아줄 수 있어야 한다 */}
+                        <label>
+                          <span>할인</span>
+                          <input className="input" inputMode="numeric" placeholder="0"
+                                 value={l.할인}
+                                 onChange={(e) => setLine(i, "할인", e.target.value)} />
+                        </label>
                         {onlyNum(l.할인) > 0 && (
                           <p className="cart-note">
-                            정가 {money(listPrice(l, pr))}원에서 {money(onlyNum(l.할인))}원을 깎아
-                            <b> {money(linePrice(l, pr))}원</b>으로 받습니다.
+                            {listPrice(l, pr) > 0 ? (
+                              <>
+                                정가 {money(listPrice(l, pr))}원에서 {money(onlyNum(l.할인))}원을 깎아
+                                <b> {money(linePrice(l, pr))}원</b>으로 받습니다.
+                              </>
+                            ) : (
+                              <>이 상품은 원래 값이 없어 할인이 반영되지 않습니다.</>
+                            )}
                           </p>
                         )}
                         {extra && (
