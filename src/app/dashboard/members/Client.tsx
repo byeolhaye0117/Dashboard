@@ -23,6 +23,10 @@ type Member = {
   회원상태: string;
   상담번호: string;
   메모: string;
+  등록일시: string;
+  등록자: string;
+  수정일시: string;
+  수정자: string;
 };
 
 type Ticket = {
@@ -594,6 +598,41 @@ function NewForm({
 }
 
 /* ── 상세 ─────────────────────────────────── */
+const TABS = ["요약", "이용권", "결제", "기록"] as const;
+
+/**
+ * 이용권 한 줄 + 얼마나 지났는지 막대
+ *
+ * 남은 날짜만 숫자로 보면 "많이 남았나" 감이 안 온다.
+ * 6개월짜리의 60일과 1개월짜리의 20일은 뜻이 다르기 때문이다.
+ */
+function ProgressLine({ t, pr, now }: { t: Ticket; pr?: ProductMeta; now: string }) {
+  const left = t.종료일 ? daysLeft(t.종료일, now) : null;
+  const total = t.시작일 && t.종료일 ? daysLeft(t.종료일, t.시작일) : 0;
+  const used = total > 0 && left !== null ? Math.min(100, Math.max(0, ((total - left) / total) * 100)) : 0;
+
+  return (
+    <div className="line-item">
+      <div className="line-head">
+        <b>{pr?.name ?? t.상품코드}</b>
+        <span className="dim">
+          {t.시작일?.slice(2)}
+          {t.종료일 && ` ~ ${t.종료일.slice(2)}`}
+          {hasCount(t) && ` · ${t.잔여횟수 || t.총횟수}/${t.총횟수}회`}
+        </span>
+        <span className={`pill ${left === null ? "" : left <= SOON ? "warn" : "good"}`}>
+          {left === null ? "기간 없음" : `${left}일 남음`}
+        </span>
+      </div>
+      {total > 0 && (
+        <div className="track" style={{ marginTop: 9 }}>
+          <i style={{ width: `${used}%` }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Detail({
   item, tickets, payments, productOf, options, trainers, staffNames, branchName, can, onClose,
 }: {
@@ -613,6 +652,7 @@ function Detail({
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [view, setView] = useState<(typeof TABS)[number]>("요약");
   const setV = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
   const now = today();
 
@@ -623,6 +663,27 @@ function Detail({
     return s + (Number(x.결제금액) || 0);
   }, 0);
   const unpaid = paid.reduce((s, x) => s + (Number(x.미수금액) || 0), 0);
+
+  /** 돈 낸 이용권만 놓고 지금 쓸 수 있는 것과 끝난 것을 센다 */
+  const live = useMemo(() => {
+    const real = tickets.filter((t) => !productOf(t.상품코드)?.isService);
+    const rows = real.filter(
+      (t) => t.상태 !== "환불" && (!t.종료일 || daysLeft(t.종료일, now) >= 0)
+    );
+    const past = real.length - rows.length;
+    const state =
+      rows.length === 0
+        ? real.length === 0
+          ? "이용권 없음"
+          : "만료"
+        : rows.some((t) => t.종료일 && daysLeft(t.종료일, now) <= SOON)
+          ? "만료임박"
+          : "이용중";
+    return { rows: rows.sort((a, b) => (a.종료일 ?? "").localeCompare(b.종료일 ?? "")), count: rows.length, past, state };
+  }, [tickets, now]);
+
+  /** 이용권을 두 번 이상 끊었으면 재등록 회원으로 본다 */
+  const isReturning = tickets.filter((t) => !productOf(t.상품코드)?.isService).length > 1;
 
   async function save() {
     if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
@@ -660,17 +721,11 @@ function Detail({
 
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <div className="detail-head">
-          <div>
-            <h3 style={{ margin: 0 }}>{item.이름}</h3>
-            <span className="dim num">{showPhone(item.전화번호)} · {item.id}</span>
-          </div>
-          <span className="pill">{item.회원상태 || "유효"}</span>
-        </div>
+      <div className={`modal ${editing ? "wide" : "xl"}`} onClick={(e) => e.stopPropagation()}>
 
         {editing ? (
           <>
+            <h3>{item.이름} 정보 수정</h3>
             <div className="form-grid">
               <L label="이름" req>
                 <input className="input" value={f["이름"] ?? ""} onChange={(e) => setV("이름", e.target.value)} />
@@ -718,58 +773,155 @@ function Detail({
           </>
         ) : (
           <>
-            <dl className="kv">
-              <Kv k="성별 · 나이" v={[item.성별, item.나이대].filter(Boolean).join(" · ")} />
-              <Kv k="거주 동네" v={item.거주동네} />
-              <Kv k="등록 지점" v={branchName} />
-              <Kv k="담당 트레이너" v={staffNames[item.담당직원사번]} />
-              <Kv k="가입일" v={korDate(item.가입일)} />
-              <Kv k="상담 기록" v={item.상담번호} />
-            </dl>
+            <div className="m-detail">
+              {/* 왼쪽 — 사람 정보. 어느 탭을 보든 계속 보인다 */}
+              <aside className="m-profile">
+                <div className="m-avatar">{item.이름.slice(0, 1)}</div>
+                <b className="m-name">{item.이름}</b>
+                <span className="dim num">{item.id}</span>
 
-            {item.메모 && <div className="quote">{item.메모}</div>}
-
-            <TicketGroups tickets={tickets} productOf={productOf} now={now} />
-
-            <h4 className="mini-title">결제 내역 {paid.length > 0 && `(${paid.length})`}</h4>
-            {paid.length === 0 ? (
-              <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>
-                결제 기록이 없습니다. (무료 · 서비스로만 등록된 회원)
-              </p>
-            ) : (
-              <>
-                <div className="line-list">
-                  {paid
-                    .slice()
-                    .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
-                    .map((x) => (
-                      <div className="line-item" key={x.id}>
-                        <div className="line-head">
-                          <b className="num">{money(Number(x.결제금액) || 0)}원</b>
-                          <span className="dim">
-                            {(x.결제일시 ?? "").slice(0, 10)} · {x.결제수단 || "-"}
-                            {Number(x.미수금액) > 0 && ` · 미수 ${money(Number(x.미수금액))}원`}
-                          </span>
-                          {x.환불여부?.toUpperCase() === "Y" ? (
-                            <span className="pill bad">환불</span>
-                          ) : Number(x.미수금액) > 0 ? (
-                            <span className="pill warn">미수금 있음</span>
-                          ) : (
-                            <span className="pill good">완납</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                <div className="m-chips">
+                  <span className={`pill ${TONE[live.state] ?? ""}`}>{live.state}</span>
+                  <span className="pill">{isReturning ? "재등록" : "신규"}</span>
+                  {unpaid > 0 && <span className="pill warn">미수금</span>}
                 </div>
-                <p className="stat-note">
-                  지금까지 결제 <b>{paid.length}건</b> · 합계{" "}
-                  <b className="num">{money(totalPaid)}원</b>
-                  {unpaid > 0 && (
-                    <> · 아직 못 받은 돈 <b className="warn-text num">{money(unpaid)}원</b></>
-                  )}
-                </p>
-              </>
-            )}
+
+                <dl className="kv tight">
+                  <Kv k="연락처" v={showPhone(item.전화번호)} />
+                  <Kv k="성별 · 나이" v={[item.성별, item.나이대].filter(Boolean).join(" · ")} />
+                  <Kv k="거주 동네" v={item.거주동네} />
+                  <Kv k="등록 지점" v={branchName} />
+                  <Kv k="담당 트레이너" v={staffNames[item.담당직원사번]} />
+                  <Kv k="가입일" v={korDate(item.가입일)} />
+                  <Kv k="회원 상태" v={item.회원상태 || "유효"} />
+                </dl>
+              </aside>
+
+              {/* 오른쪽 — 탭으로 나눠 담는다 */}
+              <div className="m-body">
+                <div className="tabs">
+                  {TABS.map((t) => (
+                    <button key={t} className={`tab${view === t ? " on" : ""}`} onClick={() => setView(t)}>
+                      {t}
+                      {t === "이용권" && tickets.length > 0 && <span className="cnt num">{tickets.length}</span>}
+                      {t === "결제" && paid.length > 0 && <span className="cnt num">{paid.length}</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {view === "요약" && (
+                  <>
+                    <div className="mini-stats">
+                      <div className="mini-stat">
+                        <span className="lb">이용 중</span>
+                        <b className="num">{live.count}</b>
+                      </div>
+                      <div className="mini-stat">
+                        <span className="lb">지난 이용권</span>
+                        <b className="num">{live.past}</b>
+                      </div>
+                      <div className="mini-stat">
+                        <span className="lb">총 결제</span>
+                        <b className="num">{money(totalPaid)}</b>
+                      </div>
+                      <div className="mini-stat">
+                        <span className="lb">미수금</span>
+                        <b className={`num${unpaid > 0 ? " warn-text" : ""}`}>{money(unpaid)}</b>
+                      </div>
+                    </div>
+
+                    <h4 className="mini-title">지금 쓰는 이용권</h4>
+                    {live.rows.length === 0 ? (
+                      <p className="dim" style={{ fontSize: 13 }}>
+                        이용 중인 이용권이 없습니다. <b>재등록 대상</b>입니다.
+                      </p>
+                    ) : (
+                      <div className="line-list">
+                        {live.rows.map((t) => (
+                          <ProgressLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} />
+                        ))}
+                      </div>
+                    )}
+
+                    {item.메모 && (
+                      <>
+                        <h4 className="mini-title">특이사항</h4>
+                        <div className="quote">{item.메모}</div>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {view === "이용권" && (
+                  <TicketGroups tickets={tickets} productOf={productOf} now={now} />
+                )}
+
+                {view === "결제" && (
+                  <>
+                    {paid.length === 0 ? (
+                      <p className="dim" style={{ fontSize: 13, margin: "8px 0 12px" }}>
+                        결제 기록이 없습니다. (무료 · 서비스로만 등록된 회원)
+                      </p>
+                    ) : (
+                      <>
+                        <div className="line-list">
+                          {paid
+                            .slice()
+                            .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
+                            .map((x) => (
+                              <div className="line-item" key={x.id}>
+                                <div className="line-head">
+                                  <b className="num">{money(Number(x.결제금액) || 0)}원</b>
+                                  <span className="dim">
+                                    {(x.결제일시 ?? "").slice(0, 10)} · {x.결제수단 || "-"}
+                                    {Number(x.미수금액) > 0 && ` · 미수 ${money(Number(x.미수금액))}원`}
+                                  </span>
+                                  {x.환불여부?.toUpperCase() === "Y" ? (
+                                    <span className="pill bad">환불</span>
+                                  ) : Number(x.미수금액) > 0 ? (
+                                    <span className="pill warn">미수금 있음</span>
+                                  ) : (
+                                    <span className="pill good">완납</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                        <p className="stat-note">
+                          지금까지 결제 <b>{paid.length}건</b> · 합계{" "}
+                          <b className="num">{money(totalPaid)}원</b>
+                          {unpaid > 0 && (
+                            <> · 아직 못 받은 돈 <b className="warn-text num">{money(unpaid)}원</b></>
+                          )}
+                        </p>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {view === "기록" && (
+                  <>
+                    <dl className="kv tight">
+                      <Kv k="상담 기록" v={item.상담번호 ? `${item.상담번호} 에서 전환` : ""} />
+                      <Kv k="처음 등록" v={[item.등록일시, staffNames[item.등록자]].filter(Boolean).join(" · ")} />
+                      <Kv k="마지막 수정" v={[item.수정일시, staffNames[item.수정자]].filter(Boolean).join(" · ")} />
+                    </dl>
+                    <h4 className="mini-title">특이사항 · 메모</h4>
+                    {item.메모 ? (
+                      <div className="quote">{item.메모}</div>
+                    ) : (
+                      <p className="dim" style={{ fontSize: 13 }}>
+                        적어둔 메모가 없습니다. 수정에서 넣을 수 있습니다.
+                      </p>
+                    )}
+                    <p className="stat-note">
+                      출석 · 예약 기록은 이 대시보드에서 다루지 않기로 하셨습니다.
+                      필요해지면 그때 붙일 수 있습니다.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
 
             {msg && <div className="alert-bad">{msg}</div>}
 

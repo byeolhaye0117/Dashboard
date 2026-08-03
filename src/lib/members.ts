@@ -100,6 +100,10 @@ export type Member = {
   회원상태: string;
   상담번호: string;
   메모: string;
+  등록일시: string;
+  등록자: string;
+  수정일시: string;
+  수정자: string;
   rowNumber: number;
 };
 
@@ -154,6 +158,10 @@ export async function listMembers(): Promise<{
       회원상태: get(r, cols, "회원상태") || "유효",
       상담번호: get(r, cols, "상담번호"),
       메모: get(r, cols, "메모"),
+      등록일시: get(r, cols, "등록일시"),
+      등록자: get(r, cols, "등록자"),
+      수정일시: get(r, cols, "수정일시"),
+      수정자: get(r, cols, "수정자"),
       rowNumber: rowNumbers[i],
     });
   });

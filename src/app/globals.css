@@ -307,6 +307,65 @@ button { font-family: inherit; }
 .pick-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .pick-row .mini-tab { flex: 0 0 auto; min-width: 84px; }
 
+/* ── 회원 상세 — 왼쪽 사람 정보 + 오른쪽 탭 ── */
+.m-detail { display: grid; grid-template-columns: 232px 1fr; gap: 18px; align-items: start; }
+
+.m-profile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 16px 15px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.m-avatar {
+  width: 48px; height: 48px; border-radius: 50%; margin-bottom: 8px;
+  display: grid; place-items: center;
+  background: var(--point-soft); color: var(--point);
+  font-size: 20px; font-weight: 800;
+}
+.m-name { font-size: 17px; font-weight: 800; line-height: 1.2; }
+.m-profile .num { font-size: 11.5px; }
+.m-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0 4px; }
+.m-profile .kv { width: 100%; margin-top: 8px; }
+
+/* 좁은 칸이라 이름과 값을 위아래로 쌓는다 */
+.kv.tight { display: block; }
+.kv.tight .kv-row {
+  display: block; padding: 7px 0; border-bottom: 1px solid var(--line-soft);
+}
+.kv.tight .kv-row:last-child { border-bottom: 0; }
+.kv.tight dt { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.kv.tight dd { margin: 0; font-size: 13px; font-weight: 600; }
+
+.tabs {
+  display: flex; gap: 2px; margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.tab {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 9px 13px; margin-bottom: -1px;
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  color: var(--muted); font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+}
+.tab:hover { color: var(--ink); }
+.tab.on { color: var(--ink); border-bottom-color: var(--point); }
+.tab .cnt { font-size: 11px; opacity: .65; }
+
+.mini-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.mini-stat {
+  padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.mini-stat .lb { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.mini-stat b { font-size: 17px; font-weight: 800; }
+.mini-stat b.warn-text { color: var(--bad); }
+
+.m-body > .mini-title:first-of-type { margin-top: 18px; }
+
+@media (max-width: 767px) {
+  .m-detail { grid-template-columns: 1fr; gap: 14px; }
+  .mini-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
 /* 등록 상품·이용권처럼 여러 줄로 쌓이는 목록 */
 .line-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .line-item {
@@ -583,6 +642,8 @@ table.grid .late { color: var(--bad); font-weight: 700; }
 
 /* ── 폼 ─────────────────────────────────── */
 .modal.wide { max-width: 620px; max-height: 88dvh; overflow-y: auto; }
+/* 회원 상세처럼 왼쪽 정보 + 오른쪽 탭이 같이 들어가는 창 */
+.modal.xl { max-width: 880px; max-height: 90dvh; overflow-y: auto; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
 .form-grid .field { margin-bottom: 0; }
 .form-grid .field.full { grid-column: 1 / -1; }
