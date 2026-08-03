@@ -375,7 +375,7 @@ button { font-family: inherit; }
 }
 
 /* ── 상품 고르기 (왼쪽) + 담긴 것·결제 (오른쪽) ── */
-.buy-grid { display: grid; grid-template-columns: 1fr 300px; gap: 14px; align-items: start; }
+.buy-grid { display: grid; grid-template-columns: 1fr 320px; gap: 14px; align-items: start; }
 
 .buy-pick { min-width: 0; }
 .prod-list {
@@ -411,21 +411,44 @@ button { font-family: inherit; }
   font-size: 12px; color: var(--muted); font-weight: 600;
 }
 .cart-head b { color: var(--ink); margin-left: 4px; }
-.cart-list { max-height: 200px; overflow-y: auto; padding: 4px 0; }
-.cart-item { padding: 9px 13px; border-bottom: 1px solid var(--line-soft); }
+.cart-list { max-height: 260px; overflow-y: auto; padding: 4px 0; }
+.cart-item { padding: 8px 11px; border-bottom: 1px solid var(--line-soft); }
 .cart-item:last-child { border-bottom: 0; }
-.cart-top { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.cart-item.open { background: var(--surface); }
+
+/* 눌러서 펼치는 줄 */
+.cart-top {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 0; background: none; border: 0; cursor: pointer;
+  font-family: inherit; font-size: 12.5px; color: var(--ink); text-align: left;
+}
+.cart-top > svg { flex: 0 0 auto; color: var(--muted); transition: transform .15s; }
+.cart-item.open .cart-top > svg { transform: rotate(180deg); }
 .cart-top b { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cart-top .num { font-weight: 700; font-size: 12px; }
-.cart-top .x {
+
+.cart-sub {
+  display: flex; align-items: center; gap: 8px;
+  margin: 3px 0 0 20px; font-size: 11px; color: var(--muted);
+}
+.cart-sub > span { flex: 1; font-variant-numeric: tabular-nums; }
+.cart-sub .x {
   width: 20px; height: 20px; flex: 0 0 auto; border: 0; border-radius: 5px;
   background: var(--surface-3); color: var(--muted);
   font-size: 14px; line-height: 1; cursor: pointer; font-family: inherit;
 }
-.cart-top .x:hover { background: var(--bad-soft); color: var(--bad); }
-.cart-fields { display: flex; gap: 4px; margin-top: 6px; }
-.cart-fields .input { height: 28px; padding: 0 7px; font-size: 11.5px; min-width: 0; }
-.cart-fields .input.mon { flex: 0 0 72px; }
+.cart-sub .x:hover { background: var(--bad-soft); color: var(--bad); }
+
+/* 펼쳤을 때 — 이름과 값을 나란히 두고 칸을 넓게 쓴다 */
+.cart-edit { margin: 9px 0 4px 20px; }
+.cart-edit label {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+  font-size: 11.5px; color: var(--muted);
+}
+.cart-edit label > span { flex: 0 0 48px; }
+.cart-edit label .input {
+  flex: 1; min-width: 0; height: 30px; padding: 0 9px; font-size: 12.5px;
+}
 .cart-note { margin: 6px 0 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
 
 .cart-sum { padding: 11px 13px; border-top: 1px solid var(--line); background: var(--surface); }

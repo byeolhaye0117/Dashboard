@@ -454,17 +454,20 @@ function KindPick({ value, pr, onChange }: {
 }) {
   if (!pr || !pr.cash || !pr.card || pr.cash === pr.card) return null;
   return (
-    <select className="input mon" value={value}
-            onChange={(e) => onChange(e.target.value as "현금" | "카드")}>
-      <option value="현금">현금가</option>
-      <option value="카드">카드가</option>
-    </select>
+    <label>
+      <span>가격</span>
+      <select className="input" value={value}
+              onChange={(e) => onChange(e.target.value as "현금" | "카드")}>
+        <option value="현금">현금가 {money(pr.cash)}원</option>
+        <option value="카드">카드가 {money(pr.card)}원</option>
+      </select>
+    </label>
   );
 }
 
 function MonthPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <select className="input mon" value={value} onChange={(e) => onChange(e.target.value)}>
+    <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
       {/* 프로틴처럼 한 번 사고 마는 것은 기간이 없다 */}
       <option value="">기간 없음</option>
       {MONTHS.map((n) => (
@@ -548,6 +551,8 @@ function PurchaseFields({
 
   const [cat, setCat] = useState(cats[0] ?? "회원권");
   const [q, setQ] = useState("");
+  /** 지금 펼쳐서 고치고 있는 줄 */
+  const [openLine, setOpenLine] = useState<number | null>(null);
 
   const shown = products
     .filter((x) => (q ? x.name.toLowerCase().includes(q.toLowerCase()) : catOf(x) === cat))
@@ -656,58 +661,87 @@ function PurchaseFields({
             <div className="cart-list">
               {b.lines.map((l, i) => {
                 const pr = pOf(l.상품코드);
+                const extra = isExtraKind(pr);
+                const open = openLine === i;
+                const free = !pr || (extra && !priceOf(pr));
                 return (
-                  <div className="cart-item" key={`${l.상품코드}-${i}`}>
-                    <div className="cart-top">
+                  <div className={`cart-item${open ? " open" : ""}`} key={`${l.상품코드}-${i}`}>
+                    <button type="button" className="cart-top"
+                            onClick={() => setOpenLine(open ? null : i)}>
+                      <Icon name="chevron" size={13} strokeWidth={2} />
                       <b>{pr?.name ?? l.상품코드}</b>
                       <span className="num">
-                        {!pr || (isExtraKind(pr) && !priceOf(pr))
-                          ? "무료"
-                          : `${isExtraKind(pr) ? "+" : ""}${money(linePrice(l, pr))}원`}
+                        {free ? "무료" : `${extra ? "+" : ""}${money(linePrice(l, pr))}원`}
+                      </span>
+                    </button>
+
+                    <div className="cart-sub">
+                      <span>
+                        {extra
+                          ? `${l.개월 ? `${l.개월}개월치` : "기간 없음"} · 회원권에 얹음`
+                          : [
+                              l.시작일 && l.종료일
+                                ? `${l.시작일} ~ ${l.종료일}`
+                                : l.시작일 || "기간 없음",
+                              usesCount(pr) && l.총횟수 ? `${l.총횟수}회` : "",
+                              l.가격구분 + "가",
+                            ].filter(Boolean).join(" · ")}
                       </span>
                       <button type="button" className="x"
-                              onClick={() => setB({ ...b, lines: b.lines.filter((_, k) => k !== i) })}
+                              onClick={() => {
+                                setOpenLine(null);
+                                setB({ ...b, lines: b.lines.filter((_, k) => k !== i) });
+                              }}
                               aria-label="빼기">×</button>
                     </div>
-                    {isExtraKind(pr) ? (
-                      <>
-                        <div className="cart-fields">
-                          <KindPick value={l.가격구분} pr={pr}
-                                  onChange={(v) => setLine(i, "가격구분", v)} />
-                          {canPickMonths(pr) && (
-                            <MonthPick value={l.개월} onChange={(v) => setMonths(i, v)} />
-                          )}
-                        </div>
-                        <span className="cart-note">
-                          {priceOf(pr!) > 0
-                            ? "회원권에 붙는 추가 요금 · 이용 기간은 회원권을 따라감"
-                            : "회원권에 얹어드림 · 기간은 회원권을 따라감"}
-                        </span>
-                      </>
-                    ) : (
-                      <div className="cart-fields">
+
+                    {open && (
+                      <div className="cart-edit">
                         <KindPick value={l.가격구분} pr={pr}
                                   onChange={(v) => setLine(i, "가격구분", v)} />
                         {canPickMonths(pr) && (
-                          <MonthPick value={l.개월} onChange={(v) => setMonths(i, v)} />
+                          <label>
+                            <span>기간</span>
+                            <MonthPick value={l.개월} onChange={(v) => setMonths(i, v)} />
+                          </label>
                         )}
-                        <input className="input" type="date" value={l.시작일}
-                               onChange={(e) => {
-                                 const v = e.target.value;
-                                 setB({
-                                   ...b,
-                                   lines: b.lines.map((x, k) => {
-                                     if (k !== i) return x;
-                                     const n = Number(x.개월) || pr?.months || 0;
-                                     return { ...x, 시작일: v, 종료일: n ? addMonths(v, n) : x.종료일 };
-                                   }),
-                                 });
-                               }} />
-                        <input className="input" type="date" value={l.종료일}
-                               onChange={(e) => setLine(i, "종료일", e.target.value)} />
+                        {!extra && (
+                          <>
+                            <label>
+                              <span>시작일</span>
+                              <input className="input" type="date" value={l.시작일}
+                                     onChange={(e) => {
+                                       const v = e.target.value;
+                                       setB({
+                                         ...b,
+                                         lines: b.lines.map((x, k) => {
+                                           if (k !== i) return x;
+                                           const n = Number(x.개월) || pr?.months || 0;
+                                           return { ...x, 시작일: v, 종료일: n ? addMonths(v, n) : x.종료일 };
+                                         }),
+                                       });
+                                     }} />
+                            </label>
+                            <label>
+                              <span>종료일</span>
+                              <input className="input" type="date" value={l.종료일}
+                                     onChange={(e) => setLine(i, "종료일", e.target.value)} />
+                            </label>
+                          </>
+                        )}
                         {usesCount(pr) && (
-                          <input className="input" inputMode="numeric" placeholder="횟수"
-                                 value={l.총횟수} onChange={(e) => setLine(i, "총횟수", e.target.value)} />
+                          <label>
+                            <span>횟수</span>
+                            <input className="input" inputMode="numeric" value={l.총횟수}
+                                   onChange={(e) => setLine(i, "총횟수", e.target.value)} />
+                          </label>
+                        )}
+                        {extra && (
+                          <p className="cart-note">
+                            {priceOf(pr!) > 0
+                              ? "회원권에 붙는 추가 요금입니다. 이용 기간은 얹은 회원권을 따라갑니다."
+                              : "무료로 얹어드리는 항목입니다. 기간은 얹은 회원권을 따라갑니다."}
+                          </p>
                         )}
                       </div>
                     )}
