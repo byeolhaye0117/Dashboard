@@ -1221,12 +1221,6 @@ function Detail({
 
   const ticketOf = (id: string) => tickets.find((t) => t.id === id);
 
-  /** 요약에는 최근 결제 두 건만 */
-  const recent = paid
-    .slice()
-    .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
-    .slice(0, 2);
-
   /** 회원권을 두 번 이상 끊었으면 재등록 회원으로 본다 (사물함은 세지 않는다) */
   const isReturning =
     tickets.filter((t) => groupOf(productOf(t.상품코드)) === "이용권").length > 1;
@@ -1421,18 +1415,6 @@ function Detail({
                     <ServiceList rows={live.serviceRows} extras={extras} productOf={productOf}
                                  ticketOf={ticketOf} now={now}
                                  onEdit={can.update ? setEditTicket : undefined} />
-
-                    {paid.length > 0 && (
-                      <>
-                        <h4 className="mini-title">최근 결제</h4>
-                        <div className="line-list">
-                          {recent.map((x) => (
-                            <PaymentLine key={x.id} x={x}
-                                         onEdit={can.update ? () => setEditPay(x) : undefined} />
-                          ))}
-                        </div>
-                      </>
-                    )}
 
                     {item.메모 && (
                       <>
