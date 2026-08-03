@@ -109,6 +109,39 @@ export default function Client(p: Props) {
   const prev = monthStat(shiftMonth(month, -1));
   const trend = useMemo(() => monthsBack(month, 12).map((m) => monthStat(m)), [month, monthStat]);
 
+  /** 이번 달 지점별 값 — 칩과 비교 카드가 같이 쓴다 */
+  const branchNow = useMemo(
+    () =>
+      p.branches.map((b, i) => {
+        const c = monthStat(month, b.code);
+        const q = monthStat(shiftMonth(month, -1), b.code);
+        return {
+          ...b,
+          i,
+          sum: c.sum,
+          count: c.count,
+          goal: c.goal,
+          rate: c.goal > 0 ? Math.round((c.sum / c.goal) * 100) : null,
+          mom: c.sum > 0 || q.sum > 0 ? (q.sum > 0 ? Math.round(((c.sum - q.sum) / q.sum) * 100) : null) : null,
+          avg: c.count > 0 ? Math.round(c.sum / c.count) : 0,
+          spark: monthsBack(month, 6).map((m) => monthStat(m, b.code).sum),
+        };
+      }),
+    [p.branches, month, monthStat]
+  );
+
+  /** 12개월 추이를 지점별로 쌓아 보기 위한 값 */
+  const trendByBranch = useMemo(
+    () =>
+      monthsBack(month, 12).map((m) => ({
+        m,
+        goal: monthStat(m).goal,
+        parts: p.branches.map((b, i) => ({ i, name: b.name, sum: monthStat(m, b.code).sum })),
+        sum: monthStat(m).sum,
+      })),
+    [month, monthStat, p.branches]
+  );
+
   const delta = (a: number, b: number) => (b > 0 ? Math.round(((a - b) / b) * 100) : null);
   const avg = cur.count > 0 ? Math.round(cur.sum / cur.count) : 0;
   const prevAvg = prev.count > 0 ? Math.round(prev.sum / prev.count) : 0;
@@ -157,22 +190,6 @@ export default function Client(p: Props) {
       .map(([key, sum]) => ({ key, sum }))
       .sort((a, b) => b.sum - a.sum);
   }, [cur.live, p.tickets, p.products]);
-
-  const byBranch = p.branches
-    .map((b) => {
-      const c = monthStat(month, b.code);
-      const q = monthStat(shiftMonth(month, -1), b.code);
-      return {
-        ...b,
-        sum: c.sum,
-        count: c.count,
-        goal: c.goal,
-        rate: c.goal > 0 ? Math.round((c.sum / c.goal) * 100) : null,
-        mom: delta(c.sum, q.sum),
-      };
-    })
-    .filter((b) => b.sum > 0 || b.goal > 0)
-    .sort((a, b) => b.sum - a.sum);
 
   const byStaff = useMemo(() => {
     const map: Record<string, { sum: number; count: number }> = {};
@@ -238,16 +255,25 @@ export default function Client(p: Props) {
           </select>
           <button className="icon-btn" disabled={month >= thisMonth}
                   onClick={() => setMonth(shiftMonth(month, 1))} aria-label="다음달">›</button>
-          {p.branches.length > 1 && (
-            <select className="select" value={branch} onChange={(e) => setBranch(e.target.value)}>
-              <option value="전체">전 지점</option>
-              {p.branches.map((b) => (
-                <option key={b.code} value={b.code}>{b.name}</option>
-              ))}
-            </select>
-          )}
         </div>
       </div>
+
+      {p.branches.length > 1 && (
+        <div className="bchips">
+          <button className={`bchip${branch === "전체" ? " on" : ""}`} onClick={() => setBranch("전체")}>
+            <span className="nm">전 지점</span>
+            <span className="am num">{short(cur.sum)}</span>
+          </button>
+          {branchNow.map((b) => (
+            <button key={b.code} className={`bchip${branch === b.code ? " on" : ""}`}
+                    onClick={() => setBranch(b.code)}>
+              <i className={`c${b.i % 4}`} />
+              <span className="nm">{b.name}</span>
+              <span className="am num">{b.sum > 0 ? short(b.sum) : "-"}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="kpis">
         <Kpi label="매출" value={`${money(cur.sum)}원`} d={delta(cur.sum, prev.sum)}
@@ -290,48 +316,57 @@ export default function Client(p: Props) {
       <h2 className="sec-title">최근 12개월</h2>
       <div className="panel">
         <div className="bd">
-          <Trend rows={trend} current={month} onPick={setMonth} />
+          <Trend rows={branch === "전체" ? trendByBranch : trend} current={month}
+                 onPick={setMonth} split={branch === "전체" && p.branches.length > 1} />
+          {branch === "전체" && p.branches.length > 1 && (
+            <div className="legend">
+              {branchNow.map((b) => (
+                <span key={b.code}><i className={`c${b.i % 4}`} />{b.name}</span>
+              ))}
+              <span className="goal"><i />목표</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {p.branches.length > 1 && (
+      {p.branches.length > 1 && branch === "전체" && (
         <>
-          <h2 className="sec-title">지점별</h2>
-          <div className="table-wrap">
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th style={{ width: 36 }}>순위</th>
-                  <th>지점</th>
-                  <th className="right">매출</th>
-                  <th className="right">목표</th>
-                  <th className="right">달성률</th>
-                  <th className="right">지난달 대비</th>
-                  <th className="right">건수</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byBranch.map((b, i) => (
-                  <tr key={b.code}>
-                    <td className="num dim">{i + 1}</td>
-                    <td className="strong">{b.name}</td>
-                    <td className="num right strong">{money(b.sum)}</td>
-                    <td className="num right dim">{b.goal > 0 ? money(b.goal) : "-"}</td>
-                    <td className="right">
-                      {b.rate === null ? (
-                        <span className="dim">-</span>
-                      ) : (
-                        <span className={`pill ${b.rate >= 100 ? "good" : b.rate >= 80 ? "warn" : "bad"}`}>
-                          {b.rate}%
-                        </span>
-                      )}
-                    </td>
-                    <td className="right"><Delta v={b.mom} /></td>
-                    <td className="num right dim">{b.count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <h2 className="sec-title">지점 비교</h2>
+          <div className="bcards">
+            {branchNow
+              .slice()
+              .sort((a, b) => b.sum - a.sum)
+              .map((b, rank) => (
+                <button key={b.code} className="bcard" onClick={() => setBranch(b.code)}>
+                  <div className="bc-head">
+                    <i className={`c${b.i % 4}`} />
+                    <b>{b.name}</b>
+                    <span className="rank num">{rank + 1}위</span>
+                  </div>
+                  <div className="bc-sum">
+                    <b className="num">{money(b.sum)}</b>
+                    <Delta v={b.mom} />
+                  </div>
+                  {b.goal > 0 ? (
+                    <>
+                      <div className="track">
+                        <i className={`c${b.i % 4}`}
+                           style={{ width: `${Math.min(100, (b.sum / b.goal) * 100)}%` }} />
+                      </div>
+                      <div className="bc-goal">
+                        목표 {short(b.goal)}원 · <b>{b.rate}%</b>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="bc-goal">목표 미입력</div>
+                  )}
+                  <Spark rows={b.spark} tone={b.i % 4} />
+                  <div className="bc-foot">
+                    <span>{b.count}건</span>
+                    <span>건당 {short(b.avg)}원</span>
+                  </div>
+                </button>
+              ))}
           </div>
         </>
       )}
@@ -504,11 +539,31 @@ function Delta({ v }: { v: number | null | undefined }) {
   );
 }
 
-/** 12개월 추이 — 옅은 칸이 목표, 진한 막대가 실적 */
-function Trend({ rows, current, onPick }: {
-  rows: { m: string; sum: number; goal: number }[];
+/** 지점 카드 안의 작은 6개월 막대 */
+function Spark({ rows, tone }: { rows: number[]; tone: number }) {
+  const top = Math.max(1, ...rows);
+  return (
+    <div className="spark">
+      {rows.map((v, i) => (
+        <i key={i} className={v > 0 ? `c${tone}` : ""}
+           style={{ height: v > 0 ? `${Math.max(10, (v / top) * 100)}%` : "2px" }} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 12개월 추이
+ *
+ * 옅은 칸이 목표, 채워진 막대가 실적이다.
+ * 전 지점을 보고 있을 때는 지점별로 색을 나눠 쌓는다.
+ * 총액만 보면 어느 지점이 끌어올렸는지 알 수 없다.
+ */
+function Trend({ rows, current, onPick, split }: {
+  rows: { m: string; sum: number; goal: number; parts?: { i: number; name: string; sum: number }[] }[];
   current: string;
   onPick: (m: string) => void;
+  split: boolean;
 }) {
   const top = Math.max(1, ...rows.map((r) => Math.max(r.sum, r.goal)));
   return (
@@ -517,11 +572,23 @@ function Trend({ rows, current, onPick }: {
         <button key={r.m} type="button"
                 className={`tcol${r.m === current ? " on" : ""}`}
                 onClick={() => onPick(r.m)}
-                title={`${r.m} · ${money(r.sum)}원`}>
+                title={
+                  split && r.parts
+                    ? `${r.m}\n${r.parts.filter((x) => x.sum > 0).map((x) => `${x.name} ${money(x.sum)}`).join("\n") || "매출 없음"}`
+                    : `${r.m} · ${money(r.sum)}원`
+                }>
           <span className="tval num">{r.sum > 0 ? short(r.sum) : ""}</span>
           <span className="tbar">
             {r.goal > 0 && <i className="goal" style={{ height: `${(r.goal / top) * 100}%` }} />}
-            <i className="fill" style={{ height: `${(r.sum / top) * 100}%` }} />
+            {split && r.parts ? (
+              <span className="stackcol">
+                {r.parts.filter((x) => x.sum > 0).map((x) => (
+                  <i key={x.i} className={`c${x.i % 4}`} style={{ height: `${(x.sum / top) * 100}%` }} />
+                ))}
+              </span>
+            ) : (
+              <i className="fill" style={{ height: `${(r.sum / top) * 100}%` }} />
+            )}
           </span>
           <span className="tlb">{Number(r.m.slice(5, 7))}월</span>
         </button>
