@@ -54,6 +54,7 @@ type Payment = {
   미수금액: string;
   환불여부: string;
   환불액: string;
+  매출유형: string;
 };
 
 /** 이용권에 얹어준 서비스·옵션 */
@@ -497,7 +498,55 @@ function MonthPick({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
-function buyPayload(b: Buy, products: ProductMeta[]) {
+/** 만료 뒤 이 기간 안에 다시 끊으면 재등록으로 본다 */
+const REJOIN_DAYS = 7;
+
+/**
+ * 매출 유형을 스스로 정한다
+ *
+ * 기타매출: 사물함 · 운동복처럼 부가 상품만 산 경우
+ * 재등록  : 아직 쓰는 회원권이 있거나, 끝난 지 7일 안에 다시 끊은 경우
+ * 신규    : 처음 오신 분이거나, 끝난 지 7일이 지나 다시 오신 경우
+ *
+ * 직원이 매번 고르게 하면 사람마다 다르게 찍혀서 재등록률을 믿을 수 없게 된다.
+ */
+function salesType(
+  lines: Line[],
+  products: ProductMeta[],
+  tickets: Ticket[],
+  now: string
+): "신규" | "재등록" | "기타매출" {
+  const pOf = (code: string) => products.find((x) => x.code === code);
+  const isMain = (code: string) => groupOf(pOf(code)) === "이용권";
+
+  if (!lines.some((l) => isMain(l.상품코드))) return "기타매출";
+
+  const mains = tickets.filter((t) => isMain(t.상품코드) && t.상태 !== "환불");
+  if (mains.length === 0) return "신규";
+
+  const lastEnd = mains.map((t) => t.종료일).filter(Boolean).sort().pop();
+  // 기간이 없는 이용권만 있어도 이미 다니던 분이다
+  if (!lastEnd) return "재등록";
+
+  const left = daysLeft(lastEnd, now);
+  if (left >= 0) return "재등록";
+  return -left <= REJOIN_DAYS ? "재등록" : "신규";
+}
+
+/** 시트 선택목록에 비슷한 값이 있으면 그 표기를 그대로 쓴다 */
+function matchOption(value: string, opts?: string[]): string {
+  if (!opts?.length) return value;
+  const head = value.slice(0, 2);
+  return opts.find((o) => o.replace(/\s/g, "").startsWith(head)) ?? value;
+}
+
+function buyPayload(
+  b: Buy,
+  products: ProductMeta[],
+  tickets: Ticket[] = [],
+  now: string = today(),
+  saleOpts?: string[]
+) {
   const pOf = (code: string) => products.find((x) => x.code === code);
   const split = b.결제수단.includes("+");
   // 옵션은 돈을 받는 항목이라 합계에 들어간다. 무료 서비스만 뺀다
@@ -521,7 +570,7 @@ function buyPayload(b: Buy, products: ProductMeta[]) {
     // 미수금은 상품마다 적은 것을 더해서 결제 한 줄에 담는다
     미수금액: String(b.lines.reduce((s, l) => s + onlyNum(l.미수금), 0)),
     미수금결제예정일: b.미수금결제예정일,
-    매출유형: b.매출유형,
+    매출유형: matchOption(salesType(b.lines, products, tickets, now), saleOpts),
     suggested,
   };
 }
@@ -549,16 +598,20 @@ const catOf = (pr: ProductMeta) => {
  * 화면이라, 무엇을 골랐고 얼마인지가 항상 같이 보여야 한다.
  */
 function PurchaseFields({
-  products, options, baseDate, b, setB,
+  products, options, baseDate, tickets, b, setB,
 }: {
   products: ProductMeta[];
   options: Record<string, string[]>;
   baseDate: string;
+  /** 이 회원이 지금까지 끊은 이용권 — 신규인지 재등록인지 가리는 데 쓴다 */
+  tickets: Ticket[];
   b: Buy;
   setB: (next: Buy) => void;
 }) {
+  const now = today();
   const pOf = (code: string) => products.find((x) => x.code === code);
-  const { suggested } = buyPayload(b, products);
+  const { suggested } = buyPayload(b, products, tickets, now);
+  const sale = salesType(b.lines, products, tickets, now);
   /** 깎기 전 정가 합계와 깎아준 총액 — 얼마를 빼줬는지 눈에 보여야 한다 */
   const listTotal = b.lines.reduce((s, l) => s + listPrice(l, pOf(l.상품코드)), 0);
   const discount = listTotal - suggested;
@@ -845,15 +898,11 @@ function PurchaseFields({
               </label>
             )}
 
-            {(options["매출유형"] ?? []).length > 0 && (
-              <label className="row f">
+            {b.lines.length > 0 && (
+              <div className="row">
                 <span>매출 유형</span>
-                <select className="input" value={b.매출유형}
-                        onChange={(e) => setB({ ...b, 매출유형: e.target.value })}>
-                  <option value="">선택</option>
-                  {options["매출유형"].map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </label>
+                <b>{sale}</b>
+              </div>
             )}
 
             {unpaidTotal > 0 && (
@@ -897,9 +946,10 @@ function PurchaseFields({
 
 /* ── 이미 있는 회원에게 상품 더하기 ────────── */
 function AddPurchase({
-  member, products, options, onClose,
+  member, tickets, products, options, onClose,
 }: {
   member: Member;
+  tickets: Ticket[];
   products: ProductMeta[];
   options: Record<string, string[]>;
   onClose: () => void;
@@ -909,7 +959,7 @@ function AddPurchase({
   const [busy, setBusy] = useState(false);
 
   async function save() {
-    const payload = buyPayload(b, products);
+    const payload = buyPayload(b, products, tickets, today(), options["매출유형"]);
     if (payload.이용권.length === 0 && payload.부가서비스.length === 0) {
       return setMsg("더할 상품을 하나 이상 골라주세요.");
     }
@@ -934,7 +984,7 @@ function AddPurchase({
       <div className="modal xl" onClick={(e) => e.stopPropagation()}>
         <h3>{member.이름}님 상품 추가</h3>
 
-        <PurchaseFields products={products} options={options}
+        <PurchaseFields products={products} options={options} tickets={tickets}
                         baseDate={today()} b={b} setB={setB} />
 
         {msg && <div className="alert-bad">{msg}</div>}
@@ -982,7 +1032,7 @@ function NewForm({
     if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
     if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
 
-    const payload = buyPayload(b, products);
+    const payload = buyPayload(b, products, [], today(), options["매출유형"]);
     if (payload.이용권.length === 0) {
       return setMsg("회원권이나 PT를 하나 이상 골라주세요.");
     }
@@ -1047,7 +1097,7 @@ function NewForm({
           </L>
         </div>
 
-        <PurchaseFields products={products} options={options}
+        <PurchaseFields products={products} options={options} tickets={[]}
                         baseDate={f["가입일"] ?? today()} b={b} setB={setB} />
 
         <div className="form-grid" style={{ marginTop: 10 }}>
@@ -1448,7 +1498,7 @@ function Detail({
               <PaymentEdit x={editPay} options={options} onClose={() => setEditPay(null)} />
             )}
             {adding && (
-              <AddPurchase member={item} products={products} options={options}
+              <AddPurchase member={item} tickets={tickets} products={products} options={options}
                            onClose={() => setAdding(false)} />
             )}
 
@@ -1835,6 +1885,7 @@ function PaymentEdit({
     계좌액: "",
     미수금액: x.미수금액 ?? "",
     미수금결제예정일: "",
+    매출유형: x.매출유형 ?? "",
     환불여부: x.환불여부 ?? "",
     환불액: x.환불액 ?? "",
   });
@@ -1898,6 +1949,15 @@ function PaymentEdit({
           <L label="미수금">
             <input className="input" inputMode="numeric" placeholder="0"
                    value={f.미수금액} onChange={(e) => set("미수금액", e.target.value)} />
+          </L>
+          <L label="매출 유형">
+            <select className="input" value={f.매출유형}
+                    onChange={(e) => set("매출유형", e.target.value)}>
+              <option value="">선택</option>
+              {(options["매출유형"] ?? ["신규", "재등록", "기타매출"]).map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
           </L>
           {onlyNum(f.미수금액) > 0 && (
             <L label="미수금 받기로 한 날">

@@ -146,6 +146,7 @@ export type Payment = {
   미수금액: string;
   환불여부: string;
   환불액: string;
+  매출유형: string;
 };
 
 export async function listMembers(): Promise<{
@@ -260,6 +261,7 @@ export async function listPayments(): Promise<Payment[]> {
       미수금액: get(r, cols, "미수금액"),
       환불여부: get(r, cols, "환불여부"),
       환불액: get(r, cols, "환불액"),
+      매출유형: get(r, cols, "매출유형"),
     });
   });
   return out;
