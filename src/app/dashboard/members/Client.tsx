@@ -371,6 +371,8 @@ type Line = {
   총횟수: string;
   /** 사물함 · 운동복처럼 개월을 골라 사는 상품에서 쓴다 */
   개월: string;
+  /** 이 줄에 현금가를 쓸지 카드가를 쓸지 */
+  가격구분: "현금" | "카드";
 };
 
 type Buy = {
@@ -400,11 +402,15 @@ const isExtraKind = (pr?: ProductMeta) => {
 };
 
 /** 화면에서 고른 것을 서버가 받는 모양으로 바꾼다 */
-/** 결제수단에 맞는 정가 한 개 값 */
+/** 현금가 또는 카드가 한 개 값 */
 function unitPrice(pr: ProductMeta | undefined, cashSide: boolean): number {
   if (!pr) return 0;
   return (cashSide ? pr.cash : pr.card) || pr.cash || pr.card || 0;
 }
+
+/** 결제수단이 정하는 기본 가격 종류 */
+const defaultKind = (method: string): "현금" | "카드" =>
+  method === "현금" || method === "계좌" ? "현금" : "카드";
 
 /**
  * 이 줄의 값
@@ -412,8 +418,8 @@ function unitPrice(pr: ProductMeta | undefined, cashSide: boolean): number {
  * 사물함처럼 개월을 골라 사는 상품은 상품에 적힌 기본 개월을 한 단위로 보고
  * 고른 개월만큼 곱한다. (1개월 11,000원짜리를 3개월 고르면 33,000원)
  */
-function linePrice(l: Line, pr: ProductMeta | undefined, cashSide: boolean): number {
-  const unit = unitPrice(pr, cashSide);
+function linePrice(l: Line, pr: ProductMeta | undefined): number {
+  const unit = unitPrice(pr, l.가격구분 === "현금");
   if (!unit || !pr) return 0;
   if (!canPickMonths(pr)) return unit;
   const base = pr.months || 1;
@@ -435,6 +441,27 @@ const canPickMonths = (pr?: ProductMeta) => {
 /** 고를 수 있는 개월 — 1개월부터 12개월까지 */
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
+/**
+ * 이 줄에 현금가를 쓸지 카드가를 쓸지
+ *
+ * 회원권은 현금으로 받고 사물함은 카드로 긁는 경우가 있어 줄마다 따로 고른다.
+ * 값이 한 가지뿐인 상품에는 고를 것이 없으므로 보여주지 않는다.
+ */
+function KindPick({ value, pr, onChange }: {
+  value: "현금" | "카드";
+  pr?: ProductMeta;
+  onChange: (v: "현금" | "카드") => void;
+}) {
+  if (!pr || !pr.cash || !pr.card || pr.cash === pr.card) return null;
+  return (
+    <select className="input mon" value={value}
+            onChange={(e) => onChange(e.target.value as "현금" | "카드")}>
+      <option value="현금">현금가</option>
+      <option value="카드">카드가</option>
+    </select>
+  );
+}
+
 function MonthPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <select className="input mon" value={value} onChange={(e) => onChange(e.target.value)}>
@@ -450,10 +477,8 @@ function MonthPick({ value, onChange }: { value: string; onChange: (v: string) =
 function buyPayload(b: Buy, products: ProductMeta[]) {
   const pOf = (code: string) => products.find((x) => x.code === code);
   const split = b.결제수단.includes("+");
-  const cashSide = b.결제수단 === "현금" || b.결제수단 === "계좌";
   // 옵션은 돈을 받는 항목이라 합계에 들어간다. 무료 서비스만 뺀다
-  const price = (pr?: ProductMeta) => unitPrice(pr, cashSide);
-  const suggested = b.lines.reduce((s, l) => s + linePrice(l, pOf(l.상품코드), cashSide), 0);
+  const suggested = b.lines.reduce((s, l) => s + linePrice(l, pOf(l.상품코드)), 0);
 
   return {
     이용권: b.lines.filter((l) => !isExtraKind(pOf(l.상품코드))),
@@ -462,7 +487,7 @@ function buyPayload(b: Buy, products: ProductMeta[]) {
       .map((l) => ({
         상품코드: l.상품코드,
         // 옵션은 달마다 붙는 값이라 고른 개월만큼 곱해서 남긴다
-        추가금액: String(linePrice(l, pOf(l.상품코드), cashSide)),
+        추가금액: String(linePrice(l, pOf(l.상품코드))),
       })),
     결제수단: b.결제수단,
     결제금액: split
@@ -543,6 +568,7 @@ function PurchaseFields({
           종료일: months ? addMonths(start, months) : "",
           총횟수: pr.count ? String(pr.count) : "",
           개월: months ? String(months) : "",
+          가격구분: defaultKind(b.결제수단),
         },
       ],
     });
@@ -637,7 +663,7 @@ function PurchaseFields({
                       <span className="num">
                         {!pr || (isExtraKind(pr) && !priceOf(pr))
                           ? "무료"
-                          : `${isExtraKind(pr) ? "+" : ""}${money(linePrice(l, pr, cashSide))}원`}
+                          : `${isExtraKind(pr) ? "+" : ""}${money(linePrice(l, pr))}원`}
                       </span>
                       <button type="button" className="x"
                               onClick={() => setB({ ...b, lines: b.lines.filter((_, k) => k !== i) })}
@@ -645,11 +671,13 @@ function PurchaseFields({
                     </div>
                     {isExtraKind(pr) ? (
                       <>
-                        {canPickMonths(pr) && (
-                          <div className="cart-fields">
+                        <div className="cart-fields">
+                          <KindPick value={l.가격구분} pr={pr}
+                                  onChange={(v) => setLine(i, "가격구분", v)} />
+                          {canPickMonths(pr) && (
                             <MonthPick value={l.개월} onChange={(v) => setMonths(i, v)} />
-                          </div>
-                        )}
+                          )}
+                        </div>
                         <span className="cart-note">
                           {priceOf(pr!) > 0
                             ? "회원권에 붙는 추가 요금 · 이용 기간은 회원권을 따라감"
@@ -658,6 +686,8 @@ function PurchaseFields({
                       </>
                     ) : (
                       <div className="cart-fields">
+                        <KindPick value={l.가격구분} pr={pr}
+                                  onChange={(v) => setLine(i, "가격구분", v)} />
                         {canPickMonths(pr) && (
                           <MonthPick value={l.개월} onChange={(v) => setMonths(i, v)} />
                         )}
@@ -696,7 +726,16 @@ function PurchaseFields({
             <label className="row f">
               <span>결제 수단</span>
               <select className="input" value={b.결제수단}
-                      onChange={(e) => setB({ ...b, 결제수단: e.target.value })}>
+                      onChange={(e) => {
+                        // 수단을 바꾸면 각 줄의 가격 종류도 같이 맞춘다.
+                        // 줄마다 다르게 하고 싶으면 그 뒤에 개별로 바꾸면 된다
+                        const kind = defaultKind(e.target.value);
+                        setB({
+                          ...b,
+                          결제수단: e.target.value,
+                          lines: b.lines.map((l) => ({ ...l, 가격구분: kind })),
+                        });
+                      }}>
                 {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </label>
@@ -756,7 +795,7 @@ function PurchaseFields({
 
             {!split && !b.직접입력 && suggested > 0 && (
               <p className="cart-note">
-                {cashSide ? "현금가" : "카드가"} 합계입니다. 할인하셨다면 금액을 직접 고쳐주세요.
+                상품마다 고른 값의 합계입니다. 할인하셨다면 금액을 직접 고쳐주세요.
               </p>
             )}
             {split && (
