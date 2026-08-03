@@ -1595,9 +1595,6 @@ function ServiceList({ rows, extras, productOf, ticketOf, now, onEdit }: {
                       onEdit={onEdit && (() => onEdit(t))} />
         ))}
       </div>
-      <p className="stat-note">
-        서비스로 드린 항목은 횟수를 차감하지 않고 기록만 남깁니다.
-      </p>
     </>
   );
 }
@@ -1631,7 +1628,7 @@ function TicketGroups({
     );
   }
 
-  const section = (title: string, rows: Ticket[], note?: string, tag?: string) =>
+  const section = (title: string, rows: Ticket[], tag?: string) =>
     rows.length > 0 && (
       <>
         <h4 className="mini-title">{title} ({rows.length})</h4>
@@ -1641,7 +1638,6 @@ function TicketGroups({
                         onEdit={onEdit && (() => onEdit(t))} />
           ))}
         </div>
-        {note && <p className="stat-note">{note}</p>}
       </>
     );
 
@@ -1662,12 +1658,8 @@ function TicketGroups({
       )}
 
       {section("지난 이용권", past)}
-      {section(
-        "부가 상품",
-        extra,
-        "운동복 · 사물함 같은 항목입니다. 이게 남아 있어도 회원권이 살아 있는 것으로는 세지 않습니다."
-      )}
-      {section("붙은 옵션", opts, "회원권에 얹은 추가 요금입니다.")}
+      {section("부가 상품", extra)}
+      {section("붙은 옵션", opts)}
       <ServiceList rows={services} extras={extras} productOf={productOf} ticketOf={ticketOf}
                    now={now} onEdit={onEdit} />
     </>
