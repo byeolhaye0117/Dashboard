@@ -457,6 +457,8 @@ button { font-family: inherit; }
   margin-bottom: 8px; font-size: 12px; color: var(--muted);
 }
 .cart-sum .row b { color: var(--ink); font-weight: 700; font-size: 13px; }
+.cart-sum .row b.warn-text { color: var(--bad); }
+.cart-note b { color: var(--ink); font-weight: 700; }
 .cart-sum .row.f > span { flex: 0 0 74px; }
 .cart-sum .row.f .input { flex: 1; height: 30px; padding: 0 9px; font-size: 12.5px; min-width: 0; }
 .cart-sum .row.total {

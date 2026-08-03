@@ -373,6 +373,8 @@ type Line = {
   개월: string;
   /** 이 줄에 현금가를 쓸지 카드가를 쓸지 */
   가격구분: "현금" | "카드";
+  /** 이 상품에서 깎아준 금액 */
+  할인: string;
 };
 
 type Buy = {
@@ -418,13 +420,18 @@ const defaultKind = (method: string): "현금" | "카드" =>
  * 사물함처럼 개월을 골라 사는 상품은 상품에 적힌 기본 개월을 한 단위로 보고
  * 고른 개월만큼 곱한다. (1개월 11,000원짜리를 3개월 고르면 33,000원)
  */
-function linePrice(l: Line, pr: ProductMeta | undefined): number {
+function listPrice(l: Line, pr: ProductMeta | undefined): number {
   const unit = unitPrice(pr, l.가격구분 === "현금");
   if (!unit || !pr) return 0;
   if (!canPickMonths(pr)) return unit;
   const base = pr.months || 1;
   const want = Number(l.개월) || base;
   return Math.round((unit * want) / base);
+}
+
+/** 깎아준 뒤 실제로 받을 값 */
+function linePrice(l: Line, pr: ProductMeta | undefined): number {
+  return Math.max(0, listPrice(l, pr) - onlyNum(l.할인));
 }
 
 /**
@@ -538,6 +545,9 @@ function PurchaseFields({
 }) {
   const pOf = (code: string) => products.find((x) => x.code === code);
   const { suggested } = buyPayload(b, products);
+  /** 깎기 전 정가 합계와 깎아준 총액 — 얼마를 빼줬는지 눈에 보여야 한다 */
+  const listTotal = b.lines.reduce((s, l) => s + listPrice(l, pOf(l.상품코드)), 0);
+  const discount = listTotal - suggested;
   const split = b.결제수단.includes("+");
   const splitTotal = onlyNum(b.카드액) + onlyNum(b.계좌액);
   const cashSide = b.결제수단 === "현금" || b.결제수단 === "계좌";
@@ -574,6 +584,7 @@ function PurchaseFields({
           총횟수: pr.count ? String(pr.count) : "",
           개월: months ? String(months) : "",
           가격구분: defaultKind(b.결제수단),
+          할인: "",
         },
       ],
     });
@@ -677,15 +688,16 @@ function PurchaseFields({
 
                     <div className="cart-sub">
                       <span>
-                        {extra
-                          ? `${l.개월 ? `${l.개월}개월치` : "기간 없음"} · 회원권에 얹음`
-                          : [
-                              l.시작일 && l.종료일
-                                ? `${l.시작일} ~ ${l.종료일}`
-                                : l.시작일 || "기간 없음",
-                              usesCount(pr) && l.총횟수 ? `${l.총횟수}회` : "",
-                              l.가격구분 + "가",
-                            ].filter(Boolean).join(" · ")}
+                        {[
+                          extra
+                            ? l.개월 ? `${l.개월}개월치` : "기간 없음"
+                            : l.시작일 && l.종료일
+                              ? `${l.시작일} ~ ${l.종료일}`
+                              : l.시작일 || "기간 없음",
+                          !extra && usesCount(pr) && l.총횟수 ? `${l.총횟수}회` : "",
+                          extra ? "회원권에 얹음" : l.가격구분 + "가",
+                          onlyNum(l.할인) > 0 ? `할인 ${money(onlyNum(l.할인))}원` : "",
+                        ].filter(Boolean).join(" · ")}
                       </span>
                       <button type="button" className="x"
                               onClick={() => {
@@ -729,12 +741,26 @@ function PurchaseFields({
                             </label>
                           </>
                         )}
-                        {usesCount(pr) && (
+                        {!extra && usesCount(pr) && (
                           <label>
                             <span>횟수</span>
                             <input className="input" inputMode="numeric" value={l.총횟수}
                                    onChange={(e) => setLine(i, "총횟수", e.target.value)} />
                           </label>
+                        )}
+                        {!free && (
+                          <label>
+                            <span>할인</span>
+                            <input className="input" inputMode="numeric" placeholder="0"
+                                   value={l.할인}
+                                   onChange={(e) => setLine(i, "할인", e.target.value)} />
+                          </label>
+                        )}
+                        {onlyNum(l.할인) > 0 && (
+                          <p className="cart-note">
+                            정가 {money(listPrice(l, pr))}원에서 {money(onlyNum(l.할인))}원을 깎아
+                            <b> {money(linePrice(l, pr))}원</b>으로 받습니다.
+                          </p>
                         )}
                         {extra && (
                           <p className="cart-note">
@@ -753,9 +779,15 @@ function PurchaseFields({
 
           <div className="cart-sum">
             <div className="row">
-              <span>상품 합계</span>
-              <b className="num">{money(suggested)}원</b>
+              <span>정가 합계</span>
+              <b className="num">{money(listTotal)}원</b>
             </div>
+            {discount > 0 && (
+              <div className="row">
+                <span>할인</span>
+                <b className="num warn-text">-{money(discount)}원</b>
+              </div>
+            )}
 
             <label className="row f">
               <span>결제 수단</span>
@@ -829,7 +861,7 @@ function PurchaseFields({
 
             {!split && !b.직접입력 && suggested > 0 && (
               <p className="cart-note">
-                상품마다 고른 값의 합계입니다. 할인하셨다면 금액을 직접 고쳐주세요.
+                상품마다 고른 값에서 할인을 뺀 금액입니다. 더 조정하시려면 금액을 직접 고쳐주세요.
               </p>
             )}
             {split && (
@@ -1621,7 +1653,8 @@ const hasCount = (t: Ticket) => Number(t.총횟수) > 0;
  * 개월로 파는 회원권에 횟수 칸을 보여주면 0 만 남아 헷갈린다.
  */
 const usesCount = (pr?: ProductMeta, t?: Ticket) =>
-  (pr?.count ?? 0) > 0 || /PT|수업|회/.test(pr?.kind ?? "") || Number(t?.총횟수) > 0;
+  // 분류 이름에 "회" 하나만 보고 판단하면 "회원권"까지 횟수제로 잡힌다
+  (pr?.count ?? 0) > 0 || /PT|수업/.test(pr?.kind ?? "") || Number(t?.총횟수) > 0;
 
 function TicketLine({ t, pr, now, tag, onEdit }: {
   t: Ticket; pr?: ProductMeta; now: string; tag?: string; onEdit?: () => void;
