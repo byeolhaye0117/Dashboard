@@ -1349,7 +1349,9 @@ function Detail({
                       onClick={() => setView(t)}
                     >
                       {t}
-                      {t === "이용권" && tickets.length > 0 && <span className="cnt num">{tickets.length}</span>}
+                      {t === "이용권" && tickets.length + extras.length > 0 && (
+                        <span className="cnt num">{tickets.length + extras.length}</span>
+                      )}
                       {t === "결제" && paid.length > 0 && <span className="cnt num">{paid.length}</span>}
                     </button>
                   ))}
@@ -1374,7 +1376,9 @@ function Detail({
                       </div>
                       <div className="mini-stat">
                         <span className="lb">부가 · 서비스</span>
-                        <b className="num">{live.extra + live.service}</b>
+                        {/* 얹어준 서비스는 이용권이 아니라 이용권서비스 탭에 있다.
+                            그걸 빼먹으면 아래 목록과 숫자가 안 맞는다 */}
+                        <b className="num">{live.extra + live.service + extras.length}</b>
                       </div>
                       <div className="mini-stat">
                         <span className="lb">총 결제</span>
