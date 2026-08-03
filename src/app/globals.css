@@ -355,7 +355,14 @@ button { font-family: inherit; }
 }
 .kpi .lb { font-size: 11.5px; color: var(--muted); font-weight: 600; }
 .kpi .row { display: flex; align-items: baseline; gap: 7px; margin-top: 4px; }
-.kpi .vl { font-size: 20px; font-weight: 800; letter-spacing: -.03em; }
+.kpi .vl { display: block; margin-top: 4px; font-size: 20px; font-weight: 800; letter-spacing: -.03em; }
+
+/* 전월·전년 두 가지를 나란히 — 하나만 보면 계절을 못 거른다 */
+.kpi .cmp { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.kpi .cmp > span { display: inline-flex; align-items: baseline; gap: 4px; }
+.kpi .cmp em {
+  font-style: normal; font-size: 10.5px; color: var(--muted); font-weight: 600;
+}
 .kpi .vl.bad { color: var(--bad); }
 .kpi .dt { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
 .kpi .track { height: 5px; }
