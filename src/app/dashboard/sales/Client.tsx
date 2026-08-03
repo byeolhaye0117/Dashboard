@@ -111,6 +111,8 @@ export default function Client(p: Props) {
 
   const cur = monthStat(month);
   const prev = monthStat(shiftMonth(month, -1));
+  /** 전년 같은 달 — 헬스장은 계절을 타므로 지난달보다 이쪽이 더 맞는 비교다 */
+  const yoy = monthStat(shiftMonth(month, -12));
   const trend = useMemo(() => monthsBack(month, 12).map((m) => monthStat(m)), [month, monthStat]);
 
   /** 이번 달 지점별 값 — 칩과 비교 카드가 같이 쓴다 */
@@ -187,39 +189,51 @@ export default function Client(p: Props) {
    *
    * 이용권에 적힌 금액이 있으면 그대로 쓰고, 없으면 상품 정가로 나눈다.
    * 결제 한 건에 회원권과 사물함이 같이 들어 있어도 각각 얼마인지 알 수 있다.
+   * 전년 같은 달과 비교해야 하므로 달을 바꿔가며 부를 수 있게 함수로 둔다.
    */
-  const bucket = useMemo(() => {
+  const bucketOf = useMemo(() => {
     const byPay: Record<string, Ticket[]> = {};
     p.tickets.forEach((t) => (byPay[t.결제번호] ??= []).push(t));
 
-    const out = { 회원권: 0, PT: 0, 수업: 0, 기타: 0, 미분류: 0 };
-    const where = (kind?: string): keyof typeof out => {
+    const where = (kind?: string) => {
       const k = kind ?? "";
-      if (k.includes("회원권")) return "회원권";
-      if (k.includes("PT")) return "PT";
-      if (k.includes("수업")) return "수업";
-      return "기타";
+      if (k.includes("회원권")) return "회원권" as const;
+      if (k.includes("PT")) return "PT" as const;
+      if (k.includes("수업")) return "수업" as const;
+      return "기타" as const;
     };
 
-    cur.live.forEach((pay) => {
-      const amt = num(pay.결제금액);
-      if (amt <= 0) return;
-      const ts = byPay[pay.id] ?? [];
-      const w = ts.map((t) => {
-        const pr = productOf(t.상품코드);
-        return num(t.금액) || pr?.card || pr?.cash || 0;
+    return (live: Payment[]) => {
+      const out = { 회원권: 0, PT: 0, 수업: 0, 기타: 0, 미분류: 0 };
+      live.forEach((pay) => {
+        const amt = num(pay.결제금액);
+        if (amt <= 0) return;
+        const ts = byPay[pay.id] ?? [];
+        const w = ts.map((t) => {
+          const pr = productOf(t.상품코드);
+          return num(t.금액) || pr?.card || pr?.cash || 0;
+        });
+        const wsum = w.reduce((a, b) => a + b, 0);
+        if (ts.length === 0 || wsum <= 0) {
+          out.미분류 += amt;
+          return;
+        }
+        ts.forEach((t, i) => {
+          out[where(productOf(t.상품코드)?.kind)] += Math.round((amt * w[i]) / wsum);
+        });
       });
-      const wsum = w.reduce((a, b) => a + b, 0);
-      if (ts.length === 0 || wsum <= 0) {
-        out.미분류 += amt;
-        return;
-      }
-      ts.forEach((t, i) => {
-        out[where(productOf(t.상품코드)?.kind)] += Math.round((amt * w[i]) / wsum);
-      });
-    });
-    return out;
-  }, [cur.live, p.tickets, p.products]);
+      return out;
+    };
+  }, [p.tickets, p.products]);
+
+  const bucket = bucketOf(cur.live);
+  const bPrev = bucketOf(prev.live);
+  const bYoy = bucketOf(yoy.live);
+  const etc = (b: ReturnType<typeof bucketOf>) => b.수업 + b.기타 + b.미분류;
+
+  /** 매출 유형별 합계 — 신규와 재등록을 나눠 보기 위한 것 */
+  const typeSum = (live: Payment[], key: string) =>
+    live.filter((x) => typeOf(x.매출유형) === key).reduce((s, x) => s + num(x.결제금액), 0);
 
   /**
    * 등록실패율 — 상담 화면과 같은 규칙으로 센다
@@ -326,14 +340,24 @@ export default function Client(p: Props) {
       )}
 
       <div className="kpis">
-        <Kpi label="총 매출" value={`${money(cur.sum)}원`} d={delta(cur.sum, prev.sum)}
-             sub={`지난달 ${money(prev.sum)}원`} />
+        <Kpi label="총 매출" value={`${money(cur.sum)}원`}
+             mom={delta(cur.sum, prev.sum)} yoy={delta(cur.sum, yoy.sum)} />
         <Kpi label="회원권 매출" value={`${money(bucket.회원권)}원`}
-             sub={cur.sum > 0 ? `전체의 ${Math.round((bucket.회원권 / cur.sum) * 100)}%` : "-"} />
+             mom={delta(bucket.회원권, bPrev.회원권)} yoy={delta(bucket.회원권, bYoy.회원권)} />
         <Kpi label="PT 매출" value={`${money(bucket.PT)}원`}
-             sub={cur.sum > 0 ? `전체의 ${Math.round((bucket.PT / cur.sum) * 100)}%` : "-"} />
-        <Kpi label="기타 매출" value={`${money(bucket.수업 + bucket.기타 + bucket.미분류)}원`}
-             sub={bucket.수업 > 0 ? `그룹수업 ${short(bucket.수업)}원 포함` : "사물함 · 운동복 등"} />
+             mom={delta(bucket.PT, bPrev.PT)} yoy={delta(bucket.PT, bYoy.PT)} />
+        <Kpi label="기타 매출" value={`${money(etc(bucket))}원`}
+             mom={delta(etc(bucket), etc(bPrev))} yoy={delta(etc(bucket), etc(bYoy))}
+             sub={bucket.수업 > 0 ? `그룹수업 ${short(bucket.수업)}원 포함` : undefined} />
+
+        <Kpi label="신규 매출" value={`${money(typeSum(cur.live, "신규"))}원`}
+             mom={delta(typeSum(cur.live, "신규"), typeSum(prev.live, "신규"))}
+             yoy={delta(typeSum(cur.live, "신규"), typeSum(yoy.live, "신규"))} />
+        <Kpi label="재등록 매출" value={`${money(typeSum(cur.live, "재등록"))}원`}
+             mom={delta(typeSum(cur.live, "재등록"), typeSum(prev.live, "재등록"))}
+             yoy={delta(typeSum(cur.live, "재등록"), typeSum(yoy.live, "재등록"))}
+             sub={rejoin === null ? undefined : `재등록률 ${rejoin}%`} />
+
         <Kpi label="목표 달성률"
              value={rate === null ? "-" : `${rate}%`}
              sub={cur.goal > 0
@@ -562,17 +586,31 @@ export default function Client(p: Props) {
 
 /* ── 조각들 ────────────────────────────────── */
 
-function Kpi({ label, value, sub, d, bar, tone }: {
+/**
+ * 핵심 숫자 한 칸
+ *
+ * 값만 크게 띄우면 좋은지 나쁜지 알 수 없다.
+ * 전월 대비는 흐름을, 전년 대비는 계절을 걸러낸 실력을 보여준다.
+ * 헬스장은 1월과 8월이 원래 다르므로 둘을 같이 봐야 한다.
+ */
+function Kpi({ label, value, sub, mom, yoy, bar, tone }: {
   label: string; value: string; sub?: string;
-  d?: number | null; bar?: number; tone?: "bad";
+  mom?: number | null; yoy?: number | null; bar?: number; tone?: "bad";
 }) {
   return (
     <div className="kpi">
       <div className="lb">{label}</div>
-      <div className="row">
-        <b className={`vl num${tone ? ` ${tone}` : ""}`}>{value}</b>
-        {d !== undefined && <Delta v={d} />}
-      </div>
+      <b className={`vl num${tone ? ` ${tone}` : ""}`}>{value}</b>
+      {(mom !== undefined || yoy !== undefined) && (
+        <div className="cmp">
+          {mom !== undefined && (
+            <span><em>전월</em><Delta v={mom} /></span>
+          )}
+          {yoy !== undefined && (
+            <span><em>전년</em><Delta v={yoy} /></span>
+          )}
+        </div>
+      )}
       {bar !== undefined && (
         <div className="track" style={{ margin: "9px 0 7px" }}>
           <i style={{ width: `${bar}%` }} />
