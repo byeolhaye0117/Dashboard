@@ -7,7 +7,9 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffNames, getProducts } from "@/lib/data";
-import { listPayments, listTickets, listMembers } from "@/lib/members";
+import { listPayments, listTickets, listMembers, SHEET_P } from "@/lib/members";
+import { REFUND_COLUMNS } from "@/lib/refund";
+import { readSheet } from "@/lib/sheets";
 import { getGoals } from "@/lib/sales";
 import { listConsultations } from "@/lib/consultations";
 import { readProduct } from "@/lib/productMeta";
@@ -46,6 +48,16 @@ export default async function SalesPage() {
     tickets = tick.filter((t) => ids.has(t.결제번호));
   } catch (e: any) {
     problem = String(e?.message ?? e);
+  }
+
+  // 환불 칸이 시트에 있는지 본다. 없으면 화면에서 만들 수 있게 알려준다
+  let missingRefund: string[] = [];
+  try {
+    const { headers } = await readSheet(SHEET_P);
+    const have = new Set(headers.map((h) => h.replace(/\s/g, "")));
+    missingRefund = REFUND_COLUMNS.filter((c) => !have.has(c));
+  } catch {
+    missingRefund = [];
   }
 
   // 미수금 명단에 "누가"를 적으려면 회원 이름이 있어야 한다.
@@ -87,6 +99,8 @@ export default async function SalesPage() {
         branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
         staffNames={staffNames}
         memberNames={memberNames}
+        missingRefund={missingRefund}
+        canSetup={Boolean(ab.get("직원관리")?.update)}
         problem={problem}
       />
     </Shell>

@@ -9,6 +9,7 @@ import { korDate, today } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
 import type { ProductMeta } from "@/lib/productMeta";
+import { REFUND_STAGES, REFUND_REASONS } from "@/lib/refund";
 
 type Member = {
   id: string;
@@ -53,8 +54,13 @@ type Payment = {
   결제수단: string;
   지점코드: string;
   미수금액: string;
+  미수금결제예정일: string;
   환불여부: string;
   환불액: string;
+  환불진행상태: string;
+  환불사유: string;
+  환불신청일: string;
+  환불완료일: string;
   매출유형: string;
   현금액: string;
   카드액: string;
@@ -1895,6 +1901,10 @@ function PaymentEdit({
     매출유형: x.매출유형 ?? "",
     환불여부: x.환불여부 ?? "",
     환불액: x.환불액 ?? "",
+    환불진행상태: x.환불진행상태 ?? "",
+    환불사유: x.환불사유 ?? "",
+    환불신청일: (x.환불신청일 ?? "").slice(0, 10),
+    환불완료일: (x.환불완료일 ?? "").slice(0, 10),
   });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1980,10 +1990,36 @@ function PaymentEdit({
             </select>
           </L>
           {refunded && (
-            <L label="환불 금액">
-              <input className="input" inputMode="numeric" value={f.환불액}
-                     onChange={(e) => set("환불액", e.target.value)} />
-            </L>
+            <>
+              <L label="환불 금액">
+                <input className="input" inputMode="numeric" value={f.환불액}
+                       onChange={(e) => set("환불액", e.target.value)} />
+              </L>
+              <L label="진행 상태">
+                <select className="input" value={f.환불진행상태}
+                        onChange={(e) => set("환불진행상태", e.target.value)}>
+                  <option value="">선택</option>
+                  {REFUND_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </L>
+              <L label="환불 사유">
+                <input className="input" list="refund-reasons" placeholder="고르거나 직접 적기"
+                       value={f.환불사유} onChange={(e) => set("환불사유", e.target.value)} />
+                <datalist id="refund-reasons">
+                  {REFUND_REASONS.map((r) => <option key={r} value={r} />)}
+                </datalist>
+              </L>
+              <L label="신청일">
+                <input className="input" type="date" value={f.환불신청일}
+                       onChange={(e) => set("환불신청일", e.target.value)} />
+              </L>
+              {f.환불진행상태 === "환불완료" && (
+                <L label="완료일">
+                  <input className="input" type="date" value={f.환불완료일}
+                         onChange={(e) => set("환불완료일", e.target.value)} />
+                </L>
+              )}
+            </>
           )}
         </div>
 

@@ -32,6 +32,10 @@ type Payment = {
   미수금결제예정일: string;
   환불여부: string;
   환불액: string;
+  환불진행상태: string;
+  환불사유: string;
+  환불신청일: string;
+  환불완료일: string;
   매출유형: string;
   현금액: string;
   카드액: string;
@@ -57,6 +61,10 @@ type Props = {
   branches: Named[];
   staffNames: Record<string, string>;
   memberNames: Record<string, string>;
+  /** 결제 탭에 아직 없는 환불 칸 이름 */
+  missingRefund: string[];
+  /** 시트에 칸을 만들 수 있는 사람인지 (대표) */
+  canSetup: boolean;
   problem: string;
 };
 
@@ -403,6 +411,10 @@ export default function Client(p: Props) {
           branch: branchName(x.지점코드),
           date: (x.결제일시 ?? "").slice(0, 10),
           amount: num(x.환불액) || num(x.결제금액),
+          stage: (x.환불진행상태 ?? "").trim(),
+          reason: (x.환불사유 ?? "").trim(),
+          asked: (x.환불신청일 ?? "").slice(0, 10),
+          done: (x.환불완료일 ?? "").slice(0, 10),
           staff: p.staffNames[x.담당직원사번] ?? "-",
         }))
         .sort((a, b) => b.amount - a.amount),
@@ -863,47 +875,61 @@ export default function Client(p: Props) {
         </>
       )}
 
-      {/* 환불 — 진행상태·사유 칸은 아직 시트에 없다 */}
-      {refundList.length > 0 && (
+      {/* 환불 */}
+      {(refundList.length > 0 || p.missingRefund.length > 0) && (
         <>
           <h2 className="sec-title">환불 {refundList.length}건</h2>
-          <p className="sec-sub">
-            진행상태와 사유는 결제 탭에 칸이 만들어지면 여기에 같이 나옵니다
-          </p>
-          <div className="table-wrap">
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th>회원</th>
-                  <th>지점</th>
-                  <th>결제일</th>
-                  <th className="right">환불액</th>
-                  <th>진행상태</th>
-                  <th>사유</th>
-                  <th>담당</th>
-                </tr>
-              </thead>
-              <tbody>
-                {refundList.map((r) => (
-                  <tr key={r.id}>
-                    <td className="strong">{r.name}</td>
-                    <td className="dim">{r.branch}</td>
-                    <td className="num dim">{r.date.slice(5)}</td>
-                    <td className="num right late">{money(r.amount)}</td>
-                    <td className="dim">-</td>
-                    <td className="dim">-</td>
-                    <td className="dim">{r.staff}</td>
+          <p className="sec-sub">신청일부터 완료일까지 어디까지 왔는지</p>
+
+          {p.missingRefund.length > 0 && <SetupRefund missing={p.missingRefund} can={p.canSetup} />}
+
+          {refundList.length > 0 && (
+            <div className="table-wrap">
+              <table className="grid">
+                <thead>
+                  <tr>
+                    <th>회원</th>
+                    <th>지점</th>
+                    <th>결제일</th>
+                    <th className="right">환불액</th>
+                    <th>진행상태</th>
+                    <th>사유</th>
+                    <th>신청 → 완료</th>
+                    <th>담당</th>
                   </tr>
-                ))}
-                <tr className="sum-row">
-                  <td className="strong">합계</td>
-                  <td colSpan={2} />
-                  <td className="num right late strong">{money(cur.refund)}</td>
-                  <td colSpan={3} />
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {refundList.map((r) => (
+                    <tr key={r.id}>
+                      <td className="strong">{r.name}</td>
+                      <td className="dim">{r.branch}</td>
+                      <td className="num dim">{r.date.slice(5)}</td>
+                      <td className="num right late">{money(r.amount)}</td>
+                      <td>
+                        {r.stage ? (
+                          <span className={`pill${r.stage === "반려" ? " bad" : ""}`}>{r.stage}</span>
+                        ) : (
+                          <span className="dim">-</span>
+                        )}
+                      </td>
+                      <td className="dim">{r.reason || "-"}</td>
+                      <td className="num dim">
+                        {r.asked ? r.asked.slice(5) : "-"}
+                        {r.done ? ` → ${r.done.slice(5)}` : ""}
+                      </td>
+                      <td className="dim">{r.staff}</td>
+                    </tr>
+                  ))}
+                  <tr className="sum-row">
+                    <td className="strong">합계</td>
+                    <td colSpan={2} />
+                    <td className="num right late strong">{money(cur.refund)}</td>
+                    <td colSpan={4} />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
 
@@ -1023,6 +1049,68 @@ export default function Client(p: Props) {
 }
 
 /* ── 조각들 ────────────────────────────────── */
+
+/**
+ * 환불 칸 만들기
+ *
+ * 시트를 직접 여시지 않아도 되게 버튼 하나로 끝낸다.
+ * 이 앱이 구글 열쇠를 갖고 있으니 대신 칸을 만들어 준다.
+ * 두 번 눌러도 이미 있는 칸은 건너뛰므로 겹쳐 생기지 않는다.
+ */
+function SetupRefund({ missing, can }: { missing: string[]; can: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [done, setDone] = useState(false);
+
+  if (done) {
+    return (
+      <div className="setup done">
+        <div>결제 탭에 칸을 만들었습니다. <b>새로고침</b>하면 환불 표가 채워집니다.</div>
+      </div>
+    );
+  }
+
+  const run = async () => {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/sheet-columns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ set: "환불" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "칸을 만들지 못했습니다.");
+      setDone(true);
+    } catch (e: any) {
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="setup">
+      <div>
+        <b>결제 탭에 칸 {missing.length}개가 없습니다</b>
+        <p>
+          {missing.join(" · ")} — 이 칸이 있어야 환불이 어디까지 왔는지, 왜 환불했는지
+          적을 수 있습니다.
+        </p>
+        {msg && <p className="err">{msg}</p>}
+      </div>
+      {can ? (
+        <button className="btn-dark" onClick={run} disabled={busy}>
+          {busy ? "만드는 중…" : "칸 만들기"}
+        </button>
+      ) : (
+        <span className="dim" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
+          대표만 만들 수 있습니다
+        </span>
+      )}
+    </div>
+  );
+}
 
 /** 지난달·작년 대비 증감 */
 function Delta({ v }: { v: number | null | undefined }) {
