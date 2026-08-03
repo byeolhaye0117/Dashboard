@@ -6,11 +6,13 @@
  *
  * 시트 칸 이름이 조금 달라도 되도록 columns.ts 로 이어준다.
  */
-import { readSheet, appendRow, updateRow, type Row } from "./sheets";
+import { readSheet, appendRow, appendRows, updateRow, type Row } from "./sheets";
 import { resolve, toSheetRow, get, type ColumnMap, type ColumnSpec } from "./columns";
 import { now, today } from "./time";
 import { formatPhone } from "./phone";
 import { patchConsultation } from "./consultations";
+import { addMonths } from "./dateCalc";
+import type { ProductMeta } from "./productMeta";
 
 export const SHEET_M = "회원";
 export const SHEET_V = "이용권";
@@ -687,4 +689,265 @@ export async function softDeleteMember(id: string, staffId: string): Promise<voi
     삭제여부: "Y",
     ...toSheetRow({ 수정일시: now(), 수정자: staffId }, cols),
   });
+}
+
+
+/* ── 화면 확인용 샘플 자료 ─────────────────── */
+
+/** 샘플로 넣은 줄임을 표시한다. 지울 때 이 표시를 보고 찾는다 */
+export const SAMPLE_TAG = "[샘플]";
+
+const NAMES = [
+  "김민준", "이서연", "박지훈", "최수아", "정예린", "강도현", "윤하은", "임재원",
+  "한지우", "오채원", "서준영", "신유진", "권태윤", "황서윤", "안현우", "송다인",
+  "배준호", "문가영", "조성민", "노아름", "홍민우", "전소율", "구본석", "남지호",
+];
+
+/** 같은 결과가 나오도록 씨앗을 두고 굴린다 */
+function rng(seed: number) {
+  let x = seed;
+  return () => {
+    x = (x * 1103515245 + 12345) % 2147483648;
+    return x / 2147483648;
+  };
+}
+
+/**
+ * 화면을 확인해 볼 수 있게 지난 13개월치 회원·이용권·결제를 만들어 넣는다
+ *
+ * 지점·상품·날짜를 섞어 넣어야 지점 비교와 전년 대비가 실제로 어떻게
+ * 보이는지 알 수 있다. 넣은 줄은 모두 메모에 표시를 남겨 한 번에 지울 수 있다.
+ */
+export async function addSampleData(
+  branches: string[],
+  products: ProductMeta[],
+  staffIds: string[],
+  byId: string
+): Promise<number> {
+  if (branches.length === 0) throw new Error("지점 정보를 읽지 못했습니다.");
+  if (products.length === 0) throw new Error("상품 정보를 읽지 못했습니다.");
+
+  const pick = (kind: string) => products.filter((x) => (x.kind ?? "").includes(kind) && (x.card || x.cash));
+  const memberships = pick("회원권");
+  const pts = pick("PT");
+  const classes = pick("수업");
+  const etcs = products.filter(
+    (x) => (x.kind ?? "") === "기타" && (x.card || x.cash) && !x.isOption
+  );
+  if (memberships.length === 0) throw new Error("상품 탭에 회원권이 없습니다.");
+
+  const [m, v, pay] = await Promise.all([
+    readSheet(SHEET_M),
+    readSheet(SHEET_V),
+    readSheet(SHEET_P),
+  ]);
+  const mCols = resolve(SHEET_M, m.headers, M_COLS);
+  const vCols = resolve(SHEET_V, v.headers, V_COLS);
+  const pCols = resolve(SHEET_P, pay.headers, P_COLS);
+
+  const usedM = m.rows.map((r) => get(r, mCols, "회원번호"));
+  const usedV = v.rows.map((r) => get(r, vCols, "이용권번호"));
+  const usedP = pay.rows.map((r) => get(r, pCols, "결제번호"));
+
+  const stamp = now();
+  const today0 = today();
+  const [ty, tm] = today0.slice(0, 7).split("-").map(Number);
+
+  const rand = rng(20260803);
+  const one = <T,>(list: T[]) => list[Math.floor(rand() * list.length) % list.length];
+  const weightedBranch = () => {
+    const r = rand();
+    if (branches.length < 2) return branches[0];
+    if (r < 0.4) return branches[0];
+    if (r < 0.7) return branches[1] ?? branches[0];
+    if (r < 0.88) return branches[2] ?? branches[0];
+    return branches[3] ?? branches[0];
+  };
+
+  const mRows: Row[] = [];
+  const vRows: Row[] = [];
+  const pRows: Row[] = [];
+  let nameAt = 0;
+
+  // 13개월 전부터 이번 달까지 — 전년 같은 달 비교가 가능해야 한다
+  for (let back = 12; back >= 0; back--) {
+    const d = new Date(Date.UTC(ty, tm - 1 - back, 1));
+    const ym = d.toISOString().slice(0, 7);
+    const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    // 1월은 신규가 몰리는 달이다. 그런 결이 보여야 추이 차트가 뜻을 갖는다
+    const busy = ym.endsWith("-01") ? 5 : ym.endsWith("-08") ? 4 : 3;
+
+    for (let k = 0; k < busy; k++) {
+      const branch = weightedBranch();
+      const day = Math.min(lastDay, 1 + Math.floor(rand() * lastDay));
+      const date = `${ym}-${String(day).padStart(2, "0")}`;
+      const memberId = nextId(usedM, "M", 5);
+      usedM.push(memberId);
+      const name = NAMES[nameAt % NAMES.length] + (nameAt >= NAMES.length ? String(Math.floor(nameAt / NAMES.length) + 1) : "");
+      nameAt += 1;
+      const staff = staffIds.length > 0 ? one(staffIds) : byId;
+
+      mRows.push(
+        toSheetRow(
+          {
+            회원번호: memberId,
+            이름: name,
+            전화번호: `010-0000-${String(1000 + nameAt).slice(0, 4)}`,
+            성별: rand() < 0.55 ? "남자" : "여자",
+            나이대: one(["20대", "30대", "40대", "50대"]),
+            거주동네: "",
+            지점코드: branch,
+            가입일: date,
+            담당직원사번: staff,
+            회원상태: "유효",
+            상담번호: "",
+            메모: `${SAMPLE_TAG} 화면 확인용 자료`,
+            등록일시: stamp,
+            등록자: byId,
+            수정일시: stamp,
+            수정자: byId,
+            삭제여부: "",
+          },
+          mCols
+        )
+      );
+
+      // 이 회원이 산 것 — 회원권은 늘 사고, PT·수업·기타는 가끔 얹는다
+      const buys: { pr: ProductMeta; months: number }[] = [];
+      buys.push({ pr: one(memberships), months: 0 });
+      if (pts.length > 0 && rand() < 0.35) buys.push({ pr: one(pts), months: 0 });
+      if (classes.length > 0 && rand() < 0.15) buys.push({ pr: one(classes), months: 0 });
+      if (etcs.length > 0 && rand() < 0.3) buys.push({ pr: one(etcs), months: 3 });
+
+      const payId = nextId(usedP, "PAY", 5);
+      usedP.push(payId);
+
+      let total = 0;
+      const cashSide = rand() < 0.35;
+      buys.forEach((b) => {
+        const ticketId = nextId(usedV, "V", 5);
+        usedV.push(ticketId);
+        const unit = (cashSide ? b.pr.cash : b.pr.card) || b.pr.cash || b.pr.card || 0;
+        const months = b.months || b.pr.months || 1;
+        const amount = b.months ? unit * b.months : unit;
+        total += amount;
+
+        vRows.push(
+          toSheetRow(
+            {
+              이용권번호: ticketId,
+              회원번호: memberId,
+              상품코드: b.pr.code,
+              지점코드: branch,
+              시작일: date,
+              종료일: addMonths(date, months),
+              총횟수: b.pr.count ? String(b.pr.count) : "",
+              잔여횟수: b.pr.count ? String(b.pr.count) : "",
+              정지일수: "0",
+              금액: String(amount),
+              담당트레이너사번: staff,
+              등록직원사번: byId,
+              상태: "진행중",
+              결제번호: payId,
+              등록일시: stamp,
+              등록자: byId,
+              수정일시: stamp,
+              수정자: byId,
+              삭제여부: "",
+            },
+            vCols
+          )
+        );
+      });
+
+      // 회원권을 산 적이 있는 달이 지났으면 재등록으로 본다
+      const 매출유형 = back <= 6 && rand() < 0.35 ? "재등록" : "신규";
+      const 미수금 = rand() < 0.12 ? Math.round(total * 0.3) : 0;
+      const 환불 = rand() < 0.04;
+      const method = cashSide ? (rand() < 0.5 ? "현금" : "계좌") : "카드";
+
+      pRows.push(
+        toSheetRow(
+          {
+            결제번호: payId,
+            회원번호: memberId,
+            이용권번호: "",
+            지점코드: branch,
+            결제일시: `${date} 15:00`,
+            결제금액: String(total),
+            결제수단: method,
+            현금액: String(method === "현금" ? total : 0),
+            카드액: String(method === "카드" ? total : 0),
+            계좌액: String(method === "계좌" ? total : 0),
+            매출유형,
+            미수금액: String(미수금),
+            미수금결제예정일: "",
+            담당직원사번: staff,
+            환불여부: 환불 ? "Y" : "",
+            환불액: 환불 ? String(total) : "",
+            메모: `${SAMPLE_TAG} 화면 확인용 자료`,
+            등록일시: stamp,
+            등록자: byId,
+            수정일시: stamp,
+            수정자: byId,
+            삭제여부: "",
+          },
+          pCols
+        )
+      );
+    }
+  }
+
+  await appendRows(SHEET_M, m.headers, mRows);
+  await appendRows(SHEET_V, v.headers, vRows);
+  await appendRows(SHEET_P, pay.headers, pRows);
+  return mRows.length;
+}
+
+/**
+ * 샘플로 넣은 줄을 모두 지운다
+ *
+ * 줄을 실제로 없애지 않고 삭제 표시만 남긴다. 다른 자료와 같은 방식이다.
+ */
+export async function removeSampleData(byId: string): Promise<number> {
+  const stamp = now();
+  const m = await readSheet(SHEET_M);
+  const mCols = resolve(SHEET_M, m.headers, M_COLS);
+
+  const ids = new Set<string>();
+  const jobs: Promise<unknown>[] = [];
+
+  m.rows.forEach((r, i) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    if (!get(r, mCols, "메모").startsWith(SAMPLE_TAG)) return;
+    ids.add(get(r, mCols, "회원번호"));
+    jobs.push(
+      updateRow(SHEET_M, m.rowNumbers[i], m.headers, {
+        ...r,
+        삭제여부: "Y",
+        ...toSheetRow({ 수정일시: stamp, 수정자: byId }, mCols),
+      })
+    );
+  });
+
+  if (ids.size === 0) return 0;
+
+  const [v, pay] = await Promise.all([readSheet(SHEET_V), readSheet(SHEET_P)]);
+  const vCols = resolve(SHEET_V, v.headers, V_COLS);
+  const pCols = resolve(SHEET_P, pay.headers, P_COLS);
+
+  v.rows.forEach((r, i) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    if (!ids.has(get(r, vCols, "회원번호"))) return;
+    jobs.push(updateRow(SHEET_V, v.rowNumbers[i], v.headers, { ...r, 삭제여부: "Y" }));
+  });
+
+  pay.rows.forEach((r, i) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    if (!ids.has(get(r, pCols, "회원번호"))) return;
+    jobs.push(updateRow(SHEET_P, pay.rowNumbers[i], pay.headers, { ...r, 삭제여부: "Y" }));
+  });
+
+  await Promise.all(jobs);
+  return ids.size;
 }
