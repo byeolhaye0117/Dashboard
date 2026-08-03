@@ -323,7 +323,7 @@ const won = (v?: string) => Number((v ?? "").replace(/[^0-9]/g, "")) || 0;
  * 카드+계좌처럼 나눠 낸 경우 직원이 적은 금액을 그대로 쓰고,
  * 한 가지 수단이면 총액을 그 칸에 넣는다.
  */
-function splitAmount(input: NewMember, total: number) {
+function splitAmount(input: Purchase, total: number) {
   const card = won(input.카드액);
   const cash = won(input.현금액);
   const bank = won(input.계좌액);
@@ -335,53 +335,39 @@ function splitAmount(input: NewMember, total: number) {
   return { card: total, cash: 0, bank: 0 };
 }
 
+/** 한 번의 구매 — 결제 한 줄 + 이용권 여러 줄 + 얹어준 서비스 */
+export type Purchase = {
+  이용권: NewTicket[];
+  /** 회원권에 얹어준 서비스·옵션 */
+  부가서비스?: { 상품코드: string; 추가금액?: string }[];
+  결제수단: string;
+  결제금액: string;
+  /** 카드+계좌처럼 나눠 낸 경우 각각의 금액 */
+  카드액?: string;
+  현금액?: string;
+  계좌액?: string;
+  미수금액?: string;
+  미수금결제예정일?: string;
+  매출유형?: string;
+  담당직원사번?: string;
+  메모?: string;
+};
+
 /**
- * 회원 등록
+ * 구매 한 건을 시트에 적는다
  *
- * 회원 한 줄 + 결제 한 줄 + 이용권 여러 줄을 함께 만든다.
- * 상담에서 넘어온 경우 그 상담을 "등록"으로 바꾼다. 직원이 상담 화면에
- * 다시 들어가 상태를 고칠 필요가 없게 하기 위해서다.
+ * 처음 등록할 때도, 나중에 재등록·추가할 때도 똑같이 쓴다.
+ * 두 곳에서 따로 짜면 한쪽만 고쳐서 어긋나기 때문이다.
  */
-export async function createMember(input: NewMember, staffId: string): Promise<string> {
+async function writePurchase(
+  memberId: string,
+  branch: string,
+  input: Purchase,
+  staffId: string
+): Promise<{ payId: string; firstTicket: string }> {
   const stamp = now();
 
-  // 1) 회원
-  const m = await readSheet(SHEET_M);
-  const mCols = resolve(SHEET_M, m.headers, M_COLS);
-  const memberId = nextId(
-    m.rows.map((r) => get(r, mCols, "회원번호")),
-    "M",
-    5
-  );
-
-  await appendRow(
-    SHEET_M,
-    m.headers,
-    toSheetRow(
-      {
-        회원번호: memberId,
-        이름: input.이름.trim(),
-        전화번호: formatPhone(input.전화번호),
-        성별: input.성별 ?? "",
-        나이대: input.나이대 ?? "",
-        거주동네: input.거주동네 ?? "",
-        지점코드: input.지점코드,
-        가입일: input.가입일 || today(),
-        담당직원사번: input.담당직원사번 ?? "",
-        회원상태: "유효",
-        상담번호: input.상담번호 ?? "",
-        메모: input.메모 ?? "",
-        등록일시: stamp,
-        등록자: staffId,
-        수정일시: stamp,
-        수정자: staffId,
-        삭제여부: "",
-      },
-      mCols
-    )
-  );
-
-  // 2) 결제 — 돈을 받은 건에 한해서만 한 줄 만든다
+  // 1) 결제 — 돈을 받은 건에 한해서만 한 줄 만든다
   const amount =
     won(input.결제금액) || won(input.카드액) + won(input.현금액) + won(input.계좌액);
   let payId = "";
@@ -399,7 +385,7 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
           결제번호: payId,
           회원번호: memberId,
           이용권번호: "",
-          지점코드: input.지점코드,
+          지점코드: branch,
           결제일시: stamp,
           결제금액: String(amount),
           결제수단: input.결제수단,
@@ -424,7 +410,7 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
     );
   }
 
-  // 3) 이용권 — 회원권 · PT · 부가 상품을 각각 한 줄로
+  // 2) 이용권 — 회원권 · PT · 부가 상품을 각각 한 줄로
   let firstTicket = "";
   if (input.이용권.length > 0) {
     const v = await readSheet(SHEET_V);
@@ -444,7 +430,7 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
             이용권번호: ticketId,
             회원번호: memberId,
             상품코드: t.상품코드,
-            지점코드: input.지점코드,
+            지점코드: branch,
             시작일: t.시작일,
             종료일: t.종료일,
             총횟수: t.총횟수 ?? "",
@@ -466,7 +452,7 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
     }
   }
 
-  // 4) 얹어준 서비스·옵션 — 이용권에 매달아 둔다
+  // 3) 얹어준 서비스·옵션 — 이용권에 매달아 둔다
   const extras = input.부가서비스 ?? [];
   if (extras.length > 0 && firstTicket) {
     try {
@@ -497,15 +483,59 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
         );
       }
     } catch (e: any) {
-      // 서비스 기록에 실패해도 회원·이용권·결제는 이미 들어갔다.
+      // 서비스 기록에 실패해도 이용권·결제는 이미 들어갔다.
       // 여기서 되돌리면 오히려 더 꼬이므로 알리기만 한다.
-      throw new Error(
-        `회원 등록은 됐지만 서비스 항목을 남기지 못했습니다: ${e?.message ?? e}`
-      );
+      throw new Error(`저장은 됐지만 서비스 항목을 남기지 못했습니다: ${e?.message ?? e}`);
     }
   }
 
-  // 5) 상담에서 넘어온 사람이면 그 상담을 등록으로 바꾼다
+  return { payId, firstTicket };
+}
+
+/**
+ * 회원 등록
+ *
+ * 회원 한 줄 + 결제 한 줄 + 이용권 여러 줄을 함께 만든다.
+ * 상담에서 넘어온 경우 그 상담을 "등록"으로 바꾼다. 직원이 상담 화면에
+ * 다시 들어가 상태를 고칠 필요가 없게 하기 위해서다.
+ */
+export async function createMember(input: NewMember, staffId: string): Promise<string> {
+  const stamp = now();
+
+  const m = await readSheet(SHEET_M);
+  const mCols = resolve(SHEET_M, m.headers, M_COLS);
+  const memberId = nextId(m.rows.map((r) => get(r, mCols, "회원번호")), "M", 5);
+
+  await appendRow(
+    SHEET_M,
+    m.headers,
+    toSheetRow(
+      {
+        회원번호: memberId,
+        이름: input.이름.trim(),
+        전화번호: formatPhone(input.전화번호),
+        성별: input.성별 ?? "",
+        나이대: input.나이대 ?? "",
+        거주동네: input.거주동네 ?? "",
+        지점코드: input.지점코드,
+        가입일: input.가입일 || today(),
+        담당직원사번: input.담당직원사번 ?? "",
+        회원상태: "유효",
+        상담번호: input.상담번호 ?? "",
+        메모: input.메모 ?? "",
+        등록일시: stamp,
+        등록자: staffId,
+        수정일시: stamp,
+        수정자: staffId,
+        삭제여부: "",
+      },
+      mCols
+    )
+  );
+
+  await writePurchase(memberId, input.지점코드, input, staffId);
+
+  // 상담에서 넘어온 사람이면 그 상담을 등록으로 바꾼다
   if (input.상담번호) {
     try {
       await patchConsultation(
@@ -519,6 +549,23 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
   }
 
   return memberId;
+}
+
+/**
+ * 이미 있는 회원에게 상품을 더한다 (재등록 · PT 추가 · 사물함 등)
+ *
+ * 회원 줄은 건드리지 않고 이용권 · 결제만 새로 만든다.
+ */
+export async function addPurchase(
+  memberId: string,
+  branch: string,
+  input: Purchase,
+  staffId: string
+): Promise<void> {
+  if (input.이용권.length === 0 && (input.부가서비스 ?? []).length === 0) {
+    throw new Error("더할 상품을 하나 이상 골라주세요.");
+  }
+  await writePurchase(memberId, branch, input, staffId);
 }
 
 /** 회원 정보 고치기 */

@@ -342,6 +342,7 @@ export default function Client(p: Props) {
             const mine = new Set(p.tickets.filter((t) => t.회원번호 === detail.id).map((t) => t.id));
             return p.extras.filter((s) => mine.has(s.이용권번호));
           })()}
+          products={p.products}
           productOf={productOf}
           options={p.options}
           trainers={p.trainers}
@@ -362,13 +363,313 @@ const TONE: Record<string, string> = {
   "이용권 없음": "",
 };
 
-/* ── 회원 등록 ─────────────────────────────── */
+/* ── 상품 고르기 + 결제 (등록·추가에서 같이 쓴다) ── */
 type Line = {
   상품코드: string;
   시작일: string;
   종료일: string;
   총횟수: string;
 };
+
+type Buy = {
+  lines: Line[];
+  결제수단: string;
+  /** 직접 고쳤을 때만 채운다. 비어 있으면 상품값 합계를 쓴다 */
+  금액: string;
+  직접입력: boolean;
+  카드액: string;
+  계좌액: string;
+  미수금액: string;
+  미수금결제예정일: string;
+  매출유형: string;
+};
+
+const emptyBuy = (): Buy => ({
+  lines: [], 결제수단: "카드", 금액: "", 직접입력: false,
+  카드액: "", 계좌액: "", 미수금액: "", 미수금결제예정일: "", 매출유형: "",
+});
+
+const onlyNum = (v?: string) => Number((v ?? "").replace(/[^0-9]/g, "")) || 0;
+
+/** 서비스·옵션인가 — 이용권이 아니라 회원권에 얹는 항목이다 */
+const isExtraKind = (pr?: ProductMeta) => {
+  const g = groupOf(pr);
+  return g === "서비스" || g === "옵션";
+};
+
+/** 화면에서 고른 것을 서버가 받는 모양으로 바꾼다 */
+function buyPayload(b: Buy, products: ProductMeta[]) {
+  const pOf = (code: string) => products.find((x) => x.code === code);
+  const split = b.결제수단.includes("+");
+  const suggested = b.lines.reduce((s, l) => {
+    const pr = pOf(l.상품코드);
+    if (!pr || pr.isService) return s;
+    const cash = b.결제수단 === "현금" || b.결제수단 === "계좌";
+    return s + ((cash ? pr.cash : pr.card) || pr.cash || pr.card || 0);
+  }, 0);
+
+  return {
+    이용권: b.lines.filter((l) => !isExtraKind(pOf(l.상품코드))),
+    부가서비스: b.lines
+      .filter((l) => isExtraKind(pOf(l.상품코드)))
+      .map((l) => ({ 상품코드: l.상품코드, 추가금액: String(pOf(l.상품코드)?.card ?? 0) })),
+    결제수단: b.결제수단,
+    결제금액: split
+      ? String(onlyNum(b.카드액) + onlyNum(b.계좌액))
+      : b.직접입력 ? b.금액 : String(suggested),
+    카드액: split ? b.카드액 : "",
+    계좌액: split ? b.계좌액 : "",
+    미수금액: b.미수금액,
+    미수금결제예정일: b.미수금결제예정일,
+    매출유형: b.매출유형,
+    suggested,
+  };
+}
+
+function PurchaseFields({
+  products, options, baseDate, b, setB,
+}: {
+  products: ProductMeta[];
+  options: Record<string, string[]>;
+  baseDate: string;
+  b: Buy;
+  setB: (next: Buy) => void;
+}) {
+  const [pick, setPick] = useState("");
+  const pOf = (code: string) => products.find((x) => x.code === code);
+  const { suggested } = buyPayload(b, products);
+  const split = b.결제수단.includes("+");
+  const splitTotal = onlyNum(b.카드액) + onlyNum(b.계좌액);
+
+  function addLine(code: string) {
+    const pr = pOf(code);
+    if (!pr) return;
+    const start = baseDate || today();
+    setB({
+      ...b,
+      lines: [
+        ...b.lines,
+        {
+          상품코드: code,
+          시작일: start,
+          종료일: pr.months ? addMonths(start, pr.months) : "",
+          총횟수: pr.count ? String(pr.count) : "",
+        },
+      ],
+    });
+    setPick("");
+  }
+
+  const setLine = (i: number, key: keyof Line, v: string) =>
+    setB({ ...b, lines: b.lines.map((l, k) => (k === i ? { ...l, [key]: v } : l)) });
+
+  const paid = products.filter((x) => !isExtraKind(x));
+  const service = products.filter((x) => isExtraKind(x));
+
+  return (
+    <>
+      <h4 className="mini-title">등록 상품</h4>
+      <div className="inline-form">
+        <select className="input" value={pick}
+                onChange={(e) => { if (e.target.value) addLine(e.target.value); }}>
+          <option value="">상품을 골라 추가하세요</option>
+          <optgroup label="회원권 · PT · 수업 · 부가 상품">
+            {paid.map((x) => (
+              <option key={x.code} value={x.code}>
+                {x.name}{x.card ? ` · ${money(x.card)}원` : ""}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="서비스 · 옵션 (회원권에 얹어줌)">
+            {service.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
+          </optgroup>
+        </select>
+      </div>
+
+      {b.lines.length === 0 ? (
+        <p className="stat-note">
+          아직 고른 상품이 없습니다. 회원권 · PT · 사물함 · 운동복 · 서비스 모두 여기서 고릅니다.
+        </p>
+      ) : (
+        <div className="line-list">
+          {b.lines.map((l, i) => {
+            const pr = pOf(l.상품코드);
+            return (
+              <div className="line-item" key={`${l.상품코드}-${i}`}>
+                <div className="line-head">
+                  <b>{pr?.name ?? l.상품코드}</b>
+                  <span className="dim">
+                    {groupOf(pr)}
+                    {pr && !isExtraKind(pr) && pr.card ? ` · ${money(pr.card)}원` : ""}
+                  </span>
+                  <button type="button" className="btn-ghost"
+                          onClick={() => setB({ ...b, lines: b.lines.filter((_, k) => k !== i) })}>
+                    빼기
+                  </button>
+                </div>
+                {isExtraKind(pr) ? (
+                  <p className="stat-note" style={{ margin: "6px 0 0" }}>
+                    회원권에 얹어드리는 항목입니다. 기간은 얹은 회원권을 따라갑니다.
+                  </p>
+                ) : (
+                  <div className="line-fields">
+                    <label>
+                      시작일
+                      <input className="input" type="date" value={l.시작일}
+                             onChange={(e) => {
+                               const v = e.target.value;
+                               setB({
+                                 ...b,
+                                 lines: b.lines.map((x, k) =>
+                                   k === i
+                                     ? { ...x, 시작일: v, 종료일: pr?.months ? addMonths(v, pr.months) : x.종료일 }
+                                     : x
+                                 ),
+                               });
+                             }} />
+                    </label>
+                    <label>
+                      종료일
+                      <input className="input" type="date" value={l.종료일}
+                             onChange={(e) => setLine(i, "종료일", e.target.value)} />
+                    </label>
+                    {usesCount(pr) && (
+                      <label>
+                        총 횟수
+                        <input className="input" inputMode="numeric" value={l.총횟수}
+                               onChange={(e) => setLine(i, "총횟수", e.target.value)} />
+                      </label>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <h4 className="mini-title">결제</h4>
+      <div className="form-grid">
+        <L label="결제 수단">
+          <select className="input" value={b.결제수단}
+                  onChange={(e) => setB({ ...b, 결제수단: e.target.value })}>
+            {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </L>
+        {split ? (
+          <>
+            <L label="카드">
+              <input className="input" inputMode="numeric" value={b.카드액}
+                     onChange={(e) => setB({ ...b, 카드액: e.target.value })} />
+            </L>
+            <L label="계좌">
+              <input className="input" inputMode="numeric" value={b.계좌액}
+                     onChange={(e) => setB({ ...b, 계좌액: e.target.value })} />
+            </L>
+          </>
+        ) : (
+          <L label="결제 금액">
+            <input className="input" inputMode="numeric"
+                   value={b.직접입력 ? b.금액 : suggested ? String(suggested) : ""}
+                   onChange={(e) => setB({ ...b, 직접입력: true, 금액: e.target.value })} />
+          </L>
+        )}
+        {(options["매출유형"] ?? []).length > 0 && (
+          <L label="매출 유형">
+            <select className="input" value={b.매출유형}
+                    onChange={(e) => setB({ ...b, 매출유형: e.target.value })}>
+              <option value="">선택</option>
+              {options["매출유형"].map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </L>
+        )}
+        <L label="미수금 (없으면 비움)">
+          <input className="input" inputMode="numeric" placeholder="0" value={b.미수금액}
+                 onChange={(e) => setB({ ...b, 미수금액: e.target.value })} />
+        </L>
+        {onlyNum(b.미수금액) > 0 && (
+          <L label="미수금 받기로 한 날">
+            <input className="input" type="date" value={b.미수금결제예정일}
+                   onChange={(e) => setB({ ...b, 미수금결제예정일: e.target.value })} />
+          </L>
+        )}
+      </div>
+
+      {split ? (
+        <p className="stat-note">
+          나눠 내신 금액을 각각 적어주세요. 합계 <b>{money(splitTotal)}원</b>으로 저장됩니다.
+          {suggested > 0 && <> 상품값 합계는 {money(suggested)}원입니다.</>}
+        </p>
+      ) : (
+        !b.직접입력 && suggested > 0 && (
+          <p className="stat-note">
+            고른 상품의 {b.결제수단 === "현금" || b.결제수단 === "계좌" ? "현금가" : "카드가"}를
+            더해 <b>{money(suggested)}원</b>으로 잡았습니다. 할인하셨다면 직접 고쳐주세요.
+          </p>
+        )
+      )}
+    </>
+  );
+}
+
+/* ── 이미 있는 회원에게 상품 더하기 ────────── */
+function AddPurchase({
+  member, products, options, onClose,
+}: {
+  member: Member;
+  products: ProductMeta[];
+  options: Record<string, string[]>;
+  onClose: () => void;
+}) {
+  const [b, setB] = useState<Buy>(emptyBuy());
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    const payload = buyPayload(b, products);
+    if (payload.이용권.length === 0 && payload.부가서비스.length === 0) {
+      return setMsg("더할 상품을 하나 이상 골라주세요.");
+    }
+    if (payload.이용권.length === 0) {
+      return setMsg("서비스·옵션만 더할 수는 없습니다. 얹을 회원권이나 PT를 같이 골라주세요.");
+    }
+
+    setBusy(true);
+    const res = await fetch("/api/members/purchase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 회원번호: member.id, ...payload }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
+    location.reload();
+  }
+
+  return (
+    <div className="modal-back top" onClick={onClose}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{member.이름}님 상품 추가</h3>
+        <p className="modal-lead">
+          재등록 · PT 추가 · 사물함 · 운동복 모두 여기서 더합니다.
+          회원 정보는 그대로 두고 이용권과 결제만 새로 만듭니다.
+        </p>
+
+        <PurchaseFields products={products} options={options}
+                        baseDate={today()} b={b} setB={setB} />
+
+        {msg && <div className="alert-bad">{msg}</div>}
+
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onClose}>취소</button>
+          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+            {busy ? "저장 중…" : "추가"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function NewForm({
   products, waiting, options, branches, trainers, defaultBranch, onClose,
@@ -384,61 +685,12 @@ function NewForm({
   const [f, setF] = useState<Record<string, string>>({
     가입일: today(),
     지점코드: defaultBranch,
-    결제수단: "카드",
   });
-  const [lines, setLines] = useState<Line[]>([]);
-  const [pickProduct, setPickProduct] = useState("");
-  const [amountTouched, setAmountTouched] = useState(false);
-  const [amount, setAmount] = useState("");
+  const [b, setB] = useState<Buy>(emptyBuy());
   const [fromId, setFromId] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
-
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
-  const productOf = (code: string) => products.find((x) => x.code === code);
-
-  /** 서비스·옵션인가 — 이용권이 아니라 회원권에 얹는 항목이다 */
-  const isExtra = (code: string) => {
-    const g = groupOf(productOf(code));
-    return g === "서비스" || g === "옵션";
-  };
-
-  /** 고른 상품값을 합쳐 결제금액을 미리 채운다 */
-  const suggested = useMemo(() => {
-    return lines.reduce((sum, l) => {
-      const pr = productOf(l.상품코드);
-      if (!pr || pr.isService) return sum;
-      const price = f["결제수단"] === "현금" || f["결제수단"] === "계좌" ? pr.cash : pr.card;
-      return sum + (price || pr.cash || pr.card || 0);
-    }, 0);
-  }, [lines, f["결제수단"], products]);
-
-  const shownAmount = amountTouched ? amount : suggested ? String(suggested) : "";
-
-  /** 카드+계좌처럼 두 가지로 나눠 낸 경우 금액을 따로 받는다 */
-  const split = (f["결제수단"] ?? "").includes("+");
-  const onlyNum = (v?: string) => Number((v ?? "").replace(/[^0-9]/g, "")) || 0;
-  const splitTotal = onlyNum(f["카드액"]) + onlyNum(f["계좌액"]) + onlyNum(f["현금액"]);
-
-  function addLine(code: string) {
-    const pr = productOf(code);
-    if (!pr) return;
-    const start = f["가입일"] || today();
-    setLines((old) => [
-      ...old,
-      {
-        상품코드: code,
-        시작일: start,
-        종료일: pr.months ? addMonths(start, pr.months) : "",
-        총횟수: pr.count ? String(pr.count) : "",
-      },
-    ]);
-    setPickProduct("");
-  }
-
-  function setLine(i: number, key: keyof Line, v: string) {
-    setLines((old) => old.map((l, k) => (k === i ? { ...l, [key]: v } : l)));
-  }
 
   function pickFrom(id: string) {
     setFromId(id);
@@ -450,34 +702,23 @@ function NewForm({
   async function save() {
     if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
     if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
-    if (lines.length === 0) return setMsg("등록할 상품을 하나 이상 골라주세요.");
-    if (lines.every((l) => isExtra(l.상품코드))) {
-      return setMsg("서비스·옵션만으로는 등록할 수 없습니다. 회원권이나 PT를 같이 골라주세요.");
+
+    const payload = buyPayload(b, products);
+    if (payload.이용권.length === 0) {
+      return setMsg("회원권이나 PT를 하나 이상 골라주세요.");
     }
 
     setBusy(true);
     const res = await fetch("/api/members", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...f,
-        상담번호: fromId,
-        // 서비스·옵션은 이용권이 아니라 "얹어준 것"으로 따로 보낸다
-        이용권: lines.filter((l) => !isExtra(l.상품코드)),
-        부가서비스: lines
-          .filter((l) => isExtra(l.상품코드))
-          .map((l) => ({ 상품코드: l.상품코드, 추가금액: String(productOf(l.상품코드)?.card ?? 0) })),
-        결제금액: split ? String(splitTotal) : shownAmount,
-      }),
+      body: JSON.stringify({ ...f, 상담번호: fromId, ...payload }),
     });
     const data = await res.json();
     setBusy(false);
     if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
     location.reload();
   }
-
-  const paid = products.filter((x) => !x.isService);
-  const service = products.filter((x) => x.isService);
 
   return (
     <div className="modal-back" onClick={onClose}>
@@ -520,7 +761,7 @@ function NewForm({
           <Sel label="거주 동네" k="거주동네" f={f} set={set} opts={options["거주동네"]} />
           <L label="등록 지점">
             <select className="input" value={f["지점코드"] ?? ""} onChange={(e) => set("지점코드", e.target.value)}>
-              {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+              {branches.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
             </select>
           </L>
           <L label="담당 트레이너">
@@ -535,131 +776,15 @@ function NewForm({
           </L>
         </div>
 
-        <h4 className="mini-title">등록 상품</h4>
-        <div className="inline-form">
-          <select className="input" value={pickProduct}
-                  onChange={(e) => { if (e.target.value) addLine(e.target.value); }}>
-            <option value="">상품을 골라 추가하세요</option>
-            <optgroup label="유료 상품">
-              {paid.map((x) => (
-                <option key={x.code} value={x.code}>
-                  {x.name}{x.card ? ` · ${money(x.card)}원` : ""}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="서비스 상품 (금액 없음)">
-              {service.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
-            </optgroup>
-          </select>
-        </div>
+        <PurchaseFields products={products} options={options}
+                        baseDate={f["가입일"] ?? today()} b={b} setB={setB} />
 
-        {lines.length === 0 ? (
-          <p className="stat-note">아직 고른 상품이 없습니다. 회원권 · PT · 서비스 상품을 골라주세요.</p>
-        ) : (
-          <div className="line-list">
-            {lines.map((l, i) => {
-              const pr = productOf(l.상품코드);
-              return (
-                <div className="line-item" key={`${l.상품코드}-${i}`}>
-                  <div className="line-head">
-                    <b>{pr?.name ?? l.상품코드}</b>
-                    <span className="dim">
-                      {pr?.isService ? "서비스" : pr?.kind || ""}
-                      {pr && !pr.isService && pr.card ? ` · ${money(pr.card)}원` : ""}
-                    </span>
-                    <button className="btn-ghost" onClick={() => setLines(lines.filter((_, k) => k !== i))}>
-                      빼기
-                    </button>
-                  </div>
-                  {isExtra(l.상품코드) ? (
-                    <p className="stat-note" style={{ margin: "6px 0 0" }}>
-                      회원권에 얹어드리는 항목입니다. 기간을 따로 세지 않고 무엇을 드렸는지만 남깁니다.
-                    </p>
-                  ) : (
-                  <div className="line-fields">
-                    <label>
-                      시작일
-                      <input className="input" type="date" value={l.시작일}
-                             onChange={(e) => {
-                               setLine(i, "시작일", e.target.value);
-                               if (pr?.months) setLine(i, "종료일", addMonths(e.target.value, pr.months));
-                             }} />
-                    </label>
-                    <label>
-                      종료일
-                      <input className="input" type="date" value={l.종료일}
-                             onChange={(e) => setLine(i, "종료일", e.target.value)} />
-                    </label>
-                    {usesCount(pr) && (
-                      <label>
-                        총 횟수
-                        <input className="input" inputMode="numeric"
-                               value={l.총횟수} onChange={(e) => setLine(i, "총횟수", e.target.value)} />
-                      </label>
-                    )}
-                  </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <h4 className="mini-title">결제</h4>
-        <div className="form-grid">
-          <L label="결제 수단">
-            <select className="input" value={f["결제수단"] ?? ""} onChange={(e) => set("결제수단", e.target.value)}>
-              {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </L>
-          {split ? (
-            <>
-              <L label="카드">
-                <input className="input" inputMode="numeric" value={f["카드액"] ?? ""}
-                       onChange={(e) => set("카드액", e.target.value)} />
-              </L>
-              <L label="계좌">
-                <input className="input" inputMode="numeric" value={f["계좌액"] ?? ""}
-                       onChange={(e) => set("계좌액", e.target.value)} />
-              </L>
-            </>
-          ) : (
-            <L label="결제 금액">
-              <input className="input" inputMode="numeric" value={shownAmount}
-                     onChange={(e) => { setAmountTouched(true); setAmount(e.target.value); }} />
-            </L>
-          )}
-          {(options["매출유형"] ?? []).length > 0 && (
-            <Sel label="매출 유형" k="매출유형" f={f} set={set} opts={options["매출유형"]} />
-          )}
-          <L label="미수금 (없으면 비움)">
-            <input className="input" inputMode="numeric" placeholder="0"
-                   value={f["미수금액"] ?? ""} onChange={(e) => set("미수금액", e.target.value)} />
-          </L>
-          {Number((f["미수금액"] ?? "").replace(/[^0-9]/g, "")) > 0 && (
-            <L label="미수금 받기로 한 날">
-              <input className="input" type="date" value={f["미수금결제예정일"] ?? ""}
-                     onChange={(e) => set("미수금결제예정일", e.target.value)} />
-            </L>
-          )}
+        <div className="form-grid" style={{ marginTop: 10 }}>
           <L label="메모" full>
             <textarea className="input area" rows={2} value={f["메모"] ?? ""}
                       onChange={(e) => set("메모", e.target.value)} />
           </L>
         </div>
-        {split ? (
-          <p className="stat-note">
-            나눠 내신 금액을 각각 적어주세요. 합계 <b>{money(splitTotal)}원</b>으로 저장됩니다.
-            {suggested > 0 && <> 상품값 합계는 {money(suggested)}원입니다.</>}
-          </p>
-        ) : (
-          !amountTouched && suggested > 0 && (
-            <p className="stat-note">
-              고른 상품의 {f["결제수단"] === "현금" || f["결제수단"] === "계좌" ? "현금가" : "카드가"}를
-              더해 <b>{money(suggested)}원</b>으로 잡았습니다. 할인하셨다면 직접 고쳐주세요.
-            </p>
-          )
-        )}
 
         {msg && <div className="alert-bad">{msg}</div>}
 
@@ -721,12 +846,13 @@ function ProgressLine({ t, pr, now, onEdit }: {
 }
 
 function Detail({
-  item, tickets, payments, extras, productOf, options, trainers, staffNames, branchName, can, onClose,
+  item, tickets, payments, extras, products, productOf, options, trainers, staffNames, branchName, can, onClose,
 }: {
   item: Member;
   tickets: Ticket[];
   payments: Payment[];
   extras: Extra[];
+  products: ProductMeta[];
   productOf: (code: string) => ProductMeta | undefined;
   options: Record<string, string[]>;
   trainers: { id: string; name: string }[];
@@ -743,6 +869,7 @@ function Detail({
   const [view, setView] = useState<(typeof TABS)[number]>("요약");
   const [editTicket, setEditTicket] = useState<Ticket | null>(null);
   const [editPay, setEditPay] = useState<Payment | null>(null);
+  const [adding, setAdding] = useState(false);
   const setV = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
   const now = today();
 
@@ -925,7 +1052,15 @@ function Detail({
                   ))}
                 </div>
 
-                <p className="tab-lead">{TAB_LEAD[view]}</p>
+                <div className="tab-bar">
+                  <p className="tab-lead">{TAB_LEAD[view]}</p>
+                  {can.update && (view === "요약" || view === "이용권") && (
+                    <button className="btn-dark" onClick={() => setAdding(true)}>
+                      <Icon name="plus" size={15} strokeWidth={2} />
+                      상품 추가
+                    </button>
+                  )}
+                </div>
 
                 {view === "요약" && (
                   <>
@@ -1068,6 +1203,10 @@ function Detail({
             )}
             {editPay && (
               <PaymentEdit x={editPay} options={options} onClose={() => setEditPay(null)} />
+            )}
+            {adding && (
+              <AddPurchase member={item} products={products} options={options}
+                           onClose={() => setAdding(false)} />
             )}
 
             {msg && <div className="alert-bad">{msg}</div>}
