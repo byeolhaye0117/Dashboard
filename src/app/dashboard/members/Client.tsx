@@ -401,18 +401,21 @@ const isExtraKind = (pr?: ProductMeta) => {
 function buyPayload(b: Buy, products: ProductMeta[]) {
   const pOf = (code: string) => products.find((x) => x.code === code);
   const split = b.결제수단.includes("+");
+  const cashSide = b.결제수단 === "현금" || b.결제수단 === "계좌";
+  // 옵션은 돈을 받는 항목이라 합계에 들어간다. 무료 서비스만 뺀다
+  const price = (pr?: ProductMeta) =>
+    pr ? (cashSide ? pr.cash : pr.card) || pr.cash || pr.card || 0 : 0;
   const suggested = b.lines.reduce((s, l) => {
     const pr = pOf(l.상품코드);
-    if (!pr || pr.isService) return s;
-    const cash = b.결제수단 === "현금" || b.결제수단 === "계좌";
-    return s + ((cash ? pr.cash : pr.card) || pr.cash || pr.card || 0);
+    if (!pr) return s;
+    return s + price(pr);
   }, 0);
 
   return {
     이용권: b.lines.filter((l) => !isExtraKind(pOf(l.상품코드))),
     부가서비스: b.lines
       .filter((l) => isExtraKind(pOf(l.상품코드)))
-      .map((l) => ({ 상품코드: l.상품코드, 추가금액: String(pOf(l.상품코드)?.card ?? 0) })),
+      .map((l) => ({ 상품코드: l.상품코드, 추가금액: String(price(pOf(l.상품코드))) })),
     결제수단: b.결제수단,
     결제금액: split
       ? String(onlyNum(b.카드액) + onlyNum(b.계좌액))
@@ -426,13 +429,19 @@ function buyPayload(b: Buy, products: ProductMeta[]) {
   };
 }
 
-/** 상품을 고르는 묶음 — 시트 상품분류를 그대로 따라간다 */
-const CAT_ORDER = ["회원권", "1:1PT", "그룹수업", "기타", "서비스", "옵션"];
+/**
+ * 상품을 고르는 묶음
+ *
+ * 옵션(24시 · 여성전용)은 따로 두지 않고 기타에 같이 넣는다.
+ * 두 개뿐인데 칩을 하나 더 만들면 찾으러 가는 손만 늘어난다.
+ * 저장될 때는 그대로 "회원권에 얹는 항목"으로 들어간다.
+ */
+const CAT_ORDER = ["회원권", "1:1PT", "그룹수업", "기타", "서비스"];
 
 const catOf = (pr: ProductMeta) => {
   const g = groupOf(pr);
   if (g === "서비스") return "서비스";
-  if (g === "옵션") return "옵션";
+  if (g === "옵션") return "기타";
   return pr.kind || "기타";
 };
 
@@ -520,7 +529,7 @@ function PurchaseFields({
               </p>
             ) : (
               shown.map((x) => {
-                const free = isExtraKind(x) && !x.card;
+                const free = isExtraKind(x) && !priceOf(x);
                 return (
                   <button key={x.code} type="button" className="prod" onClick={() => addLine(x.code)}>
                     <span className="nm">{x.name}</span>
@@ -556,14 +565,20 @@ function PurchaseFields({
                     <div className="cart-top">
                       <b>{pr?.name ?? l.상품코드}</b>
                       <span className="num">
-                        {pr && !isExtraKind(pr) ? `${money(priceOf(pr))}원` : "무료"}
+                        {!pr || (isExtraKind(pr) && !priceOf(pr))
+                          ? "무료"
+                          : `${isExtraKind(pr) ? "+" : ""}${money(priceOf(pr))}원`}
                       </span>
                       <button type="button" className="x"
                               onClick={() => setB({ ...b, lines: b.lines.filter((_, k) => k !== i) })}
                               aria-label="빼기">×</button>
                     </div>
                     {isExtraKind(pr) ? (
-                      <span className="cart-note">회원권에 얹어드림 · 기간은 회원권을 따라감</span>
+                      <span className="cart-note">
+                        {priceOf(pr!) > 0
+                          ? "회원권에 붙는 추가 요금 · 기간은 회원권을 따라감"
+                          : "회원권에 얹어드림 · 기간은 회원권을 따라감"}
+                      </span>
                     ) : (
                       <div className="cart-fields">
                         <input className="input" type="date" value={l.시작일}
