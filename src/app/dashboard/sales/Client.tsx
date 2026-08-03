@@ -807,8 +807,8 @@ export default function Client(p: Props) {
       {champions.length === 0 ? (
         <div className="viz"><p className="dim mini-note">이 달에 쌓인 상담·결제가 없습니다.</p></div>
       ) : (
-        <div className="t2wrap">
-          <table className="t2">
+        <div className="table-wrap t2wrap">
+          <table className="grid t2">
             <thead>
               <tr>
                 <th style={{ width: 40 }}>순위</th>
@@ -866,11 +866,11 @@ export default function Client(p: Props) {
                 </div>
                 <div className="mid">
                   {u.due ? (
-                    <span className={`chip${u.due < now ? " bad" : ""}`}>
+                    <span className={`pill${u.due < now ? " bad" : ""}`}>
                       {u.due.slice(5)} {u.due < now ? "지남" : "받기로"}
                     </span>
                   ) : (
-                    <span className="chip">날짜 미정</span>
+                    <span className="pill">날짜 미정</span>
                   )}
                 </div>
                 <div className="amt">
@@ -910,11 +910,11 @@ export default function Client(p: Props) {
                   </div>
                   <div className="mid">
                     {r.stage ? (
-                      <span className={`chip${r.stage === "반려" ? " bad" : r.stage === "환불완료" ? " good" : ""}`}>
+                      <span className={`pill${r.stage === "반려" ? " bad" : r.stage === "환불완료" ? " good" : ""}`}>
                         {r.stage}
                       </span>
                     ) : (
-                      <span className="chip">상태 미입력</span>
+                      <span className="pill">상태 미입력</span>
                     )}
                   </div>
                   <div className="amt">
@@ -963,8 +963,8 @@ export default function Client(p: Props) {
         {byStaff.length > 0 && (
           <>
             <h3 className="viz-title mt">담당 직원별 매출</h3>
-            <div className="t2wrap">
-              <table className="t2">
+            <div className="table-wrap t2wrap">
+              <table className="grid t2">
                 <thead>
                   <tr>
                     <th style={{ width: 40 }}>순위</th>
@@ -1009,8 +1009,8 @@ export default function Client(p: Props) {
             <p>회원 등록이나 상품 추가로 결제가 쌓이면 여기에 나옵니다.</p>
           </div>
         ) : (
-          <div className="t2wrap">
-            <table className="t2">
+          <div className="table-wrap t2wrap">
+            <table className="grid t2">
               <thead>
                 <tr>
                   <th>결제일</th>
@@ -1031,7 +1031,7 @@ export default function Client(p: Props) {
                       <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
                       <td className="dim">{branchName(x.지점코드)}</td>
                       <td>
-                        <span className={`chip${isRefund(x) ? " bad" : ""}`}>
+                        <span className={`pill${isRefund(x) ? " bad" : ""}`}>
                           {isRefund(x) ? "환불" : typeOf(x.매출유형)}
                         </span>
                       </td>
