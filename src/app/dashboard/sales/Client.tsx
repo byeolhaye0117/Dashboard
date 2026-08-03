@@ -411,6 +411,10 @@ export default function Client(p: Props) {
       )}
 
       <h2 className="sec-title">최근 12개월</h2>
+      <p className="sec-sub">
+        달마다 어느 지점이 얼마를 만들었는지. 색이 지점, 뒤쪽 회색 칸이 그 달 목표입니다.
+        막대를 누르면 그 달로 넘어갑니다.
+      </p>
       <div className="panel">
         <div className="bd">
           <Trend rows={branch === "전체" ? trendByBranch : trend} current={month}
@@ -420,7 +424,7 @@ export default function Client(p: Props) {
               {branchNow.map((b) => (
                 <span key={b.code}><i className={`c${b.i % 4}`} />{b.name}</span>
               ))}
-              <span className="goal"><i />목표</span>
+              <span className="goal"><i />그 달 목표</span>
             </div>
           )}
         </div>
@@ -429,6 +433,9 @@ export default function Client(p: Props) {
       {p.branches.length > 1 && branch === "전체" && (
         <>
           <h2 className="sec-title">지점 비교</h2>
+          <p className="sec-sub">
+            이번 달 지점별 실적입니다. 카드를 누르면 그 지점만 걸러서 봅니다.
+          </p>
           <div className="bcards">
             {branchNow
               .slice()
@@ -441,26 +448,33 @@ export default function Client(p: Props) {
                     <span className="rank num">{rank + 1}위</span>
                   </div>
                   <div className="bc-sum">
-                    <b className="num">{money(b.sum)}</b>
-                    <Delta v={b.mom} />
+                    <b className="num">{money(b.sum)}원</b>
+                  </div>
+                  <div className="bc-line">
+                    <span>지난달 대비</span><Delta v={b.mom} />
                   </div>
                   {b.goal > 0 ? (
                     <>
-                      <div className="track">
+                      <div className="track" style={{ marginTop: 9 }}>
                         <i className={`c${b.i % 4}`}
                            style={{ width: `${Math.min(100, (b.sum / b.goal) * 100)}%` }} />
                       </div>
                       <div className="bc-goal">
-                        목표 {short(b.goal)}원 · <b>{b.rate}%</b>
+                        목표 {short(b.goal)}원 중 <b>{b.rate}%</b> 달성
                       </div>
                     </>
                   ) : (
-                    <div className="bc-goal">목표 미입력</div>
+                    <div className="bc-goal" style={{ marginTop: 9 }}>
+                      월매출목표 미입력
+                    </div>
                   )}
+                  <div className="bc-line" style={{ marginTop: 12 }}>
+                    <span>최근 6개월 흐름</span>
+                  </div>
                   <Spark rows={b.spark} tone={b.i % 4} />
                   <div className="bc-foot">
-                    <span>{b.count}건</span>
-                    <span>건당 {short(b.avg)}원</span>
+                    <span>결제 {b.count}건</span>
+                    <span>건당 평균 {short(b.avg)}원</span>
                   </div>
                 </button>
               ))}
@@ -469,6 +483,7 @@ export default function Client(p: Props) {
       )}
 
       <h2 className="sec-title">매출 구성</h2>
+      <p className="sec-sub">이번 달 매출이 무엇으로 이뤄졌는지.</p>
       <div className="sales-grid">
         <Panel title="유형별" note={rejoin !== null ? `재등록률 ${rejoin}%` : undefined}>
           <Stack rows={byType.map((t) => ({ key: t.key, sum: t.sum }))} />
@@ -491,6 +506,9 @@ export default function Client(p: Props) {
       </div>
 
       <h2 className="sec-title">일별</h2>
+      <p className="sec-sub">
+        이번 달 날짜별 매출입니다. 막대가 없는 날은 결제가 없던 날입니다.
+      </p>
       <div className="panel">
         <div className="bd">
           {cur.count === 0 ? (
@@ -507,7 +525,7 @@ export default function Client(p: Props) {
               </div>
               <div className="day-axis">
                 <span>1일</span>
-                <span>가장 많은 날 {short(byDay.top)}원</span>
+                <span>막대가 가장 높은 날 = {short(byDay.top)}원</span>
                 <span>{byDay.list.length}일</span>
               </div>
             </>
@@ -518,6 +536,7 @@ export default function Client(p: Props) {
       {byStaff.length > 0 && (
         <>
           <h2 className="sec-title">담당 직원별</h2>
+          <p className="sec-sub">결제를 처리한 직원 기준입니다.</p>
           <div className="table-wrap">
             <table className="grid">
               <thead>

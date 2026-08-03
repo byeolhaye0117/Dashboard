@@ -320,12 +320,6 @@ button { font-family: inherit; }
 
 /* ── 매출 ───────────────────────────────── */
 
-/* 지점 색 */
-.c0 { background: var(--c0); }
-.c1 { background: var(--c1); }
-.c2 { background: var(--c2); }
-.c3 { background: var(--c3); }
-
 /* 지점 고르기 — 네 곳을 한 줄에 놓고 금액까지 같이 본다 */
 .bchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 2px; }
 .bchip {
@@ -414,7 +408,7 @@ button { font-family: inherit; }
 .tbar > i, .tbar > .stackcol { position: absolute; left: 0; right: 0; bottom: 0; }
 .tbar > i.goal { background: var(--surface-3); }
 .tbar > i.fill { background: var(--ink-2); border-radius: 4px 4px 0 0; }
-.tbar > .stackcol { display: flex; flex-direction: column-reverse; }
+.tbar > .stackcol { top: 0; height: 100%; display: flex; flex-direction: column-reverse; }
 .tbar > .stackcol > i { display: block; width: 100%; }
 .tlb { font-size: 10.5px; color: var(--muted); }
 .tcol:hover .tbar > i.fill { background: var(--ink); }
@@ -472,6 +466,22 @@ button { font-family: inherit; }
 }
 
 .grid th.right, .grid td.right { text-align: right; }
+
+/* 지점 색 — 다른 규칙 뒤에 둬야 회색 기본값에 덮이지 않는다 */
+i.c0 { background: var(--c0); }
+i.c1 { background: var(--c1); }
+i.c2 { background: var(--c2); }
+i.c3 { background: var(--c3); }
+
+/* 무엇을 보는 자리인지 제목 밑에 한 줄 */
+.sec-sub { margin: -4px 0 10px; font-size: 12px; color: var(--muted); }
+
+/* 지점 카드 안의 이름표 붙은 값 */
+.bc-line {
+  display: flex; align-items: baseline; gap: 6px;
+  margin-top: 7px; font-size: 11px; color: var(--muted);
+}
+.bc-line b { color: var(--ink); font-weight: 700; font-size: 12px; }
 
 /* ── 회원 상세 — 왼쪽 사람 정보 + 오른쪽 탭 ── */
 .m-detail { display: grid; grid-template-columns: 232px 1fr; gap: 18px; align-items: start; }
