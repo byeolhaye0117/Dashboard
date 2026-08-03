@@ -426,6 +426,22 @@ function buyPayload(b: Buy, products: ProductMeta[]) {
   };
 }
 
+/** 상품을 고르는 묶음 — 시트 상품분류를 그대로 따라간다 */
+const CAT_ORDER = ["회원권", "1:1PT", "그룹수업", "기타", "서비스", "옵션"];
+
+const catOf = (pr: ProductMeta) => {
+  const g = groupOf(pr);
+  if (g === "서비스") return "서비스";
+  if (g === "옵션") return "옵션";
+  return pr.kind || "기타";
+};
+
+/**
+ * 상품 고르기 + 결제
+ *
+ * 왼쪽에서 고르면 오른쪽에 담긴다. 데스크에서 회원 앞에 두고 쓰는
+ * 화면이라, 무엇을 골랐고 얼마인지가 항상 같이 보여야 한다.
+ */
 function PurchaseFields({
   products, options, baseDate, b, setB,
 }: {
@@ -435,11 +451,25 @@ function PurchaseFields({
   b: Buy;
   setB: (next: Buy) => void;
 }) {
-  const [pick, setPick] = useState("");
   const pOf = (code: string) => products.find((x) => x.code === code);
   const { suggested } = buyPayload(b, products);
   const split = b.결제수단.includes("+");
   const splitTotal = onlyNum(b.카드액) + onlyNum(b.계좌액);
+  const cashSide = b.결제수단 === "현금" || b.결제수단 === "계좌";
+
+  const cats = useMemo(() => {
+    const found = new Set(products.map(catOf));
+    const known = CAT_ORDER.filter((c) => found.has(c));
+    const rest = [...found].filter((c) => !CAT_ORDER.includes(c));
+    return [...known, ...rest];
+  }, [products]);
+
+  const [cat, setCat] = useState(cats[0] ?? "회원권");
+  const [q, setQ] = useState("");
+
+  const shown = products
+    .filter((x) => (q ? x.name.toLowerCase().includes(q.toLowerCase()) : catOf(x) === cat))
+    .slice(0, 60);
 
   function addLine(code: string) {
     const pr = pOf(code);
@@ -457,157 +487,191 @@ function PurchaseFields({
         },
       ],
     });
-    setPick("");
   }
 
   const setLine = (i: number, key: keyof Line, v: string) =>
     setB({ ...b, lines: b.lines.map((l, k) => (k === i ? { ...l, [key]: v } : l)) });
 
-  const paid = products.filter((x) => !isExtraKind(x));
-  const service = products.filter((x) => isExtraKind(x));
+  const priceOf = (pr: ProductMeta) => (cashSide ? pr.cash : pr.card) || pr.cash || pr.card || 0;
 
   return (
     <>
-      <h4 className="mini-title">등록 상품</h4>
-      <div className="inline-form">
-        <select className="input" value={pick}
-                onChange={(e) => { if (e.target.value) addLine(e.target.value); }}>
-          <option value="">상품을 골라 추가하세요</option>
-          <optgroup label="회원권 · PT · 수업 · 부가 상품">
-            {paid.map((x) => (
-              <option key={x.code} value={x.code}>
-                {x.name}{x.card ? ` · ${money(x.card)}원` : ""}
-              </option>
+      <h4 className="mini-title">상품</h4>
+      <div className="buy-grid">
+        {/* 왼쪽 — 고르는 곳 */}
+        <div className="buy-pick">
+          <div className="chips" style={{ marginBottom: 8 }}>
+            {cats.map((c) => (
+              <button key={c} type="button"
+                      className={`chip${!q && cat === c ? " on" : ""}`}
+                      onClick={() => { setCat(c); setQ(""); }}>
+                {c}
+              </button>
             ))}
-          </optgroup>
-          <optgroup label="서비스 · 옵션 (회원권에 얹어줌)">
-            {service.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
-          </optgroup>
-        </select>
-      </div>
+          </div>
+          <input className="search" style={{ width: "100%", marginBottom: 8 }}
+                 placeholder="상품 이름으로 찾기"
+                 value={q} onChange={(e) => setQ(e.target.value)} />
 
-      {b.lines.length === 0 ? (
-        <p className="stat-note">
-          아직 고른 상품이 없습니다. 회원권 · PT · 사물함 · 운동복 · 서비스 모두 여기서 고릅니다.
-        </p>
-      ) : (
-        <div className="line-list">
-          {b.lines.map((l, i) => {
-            const pr = pOf(l.상품코드);
-            return (
-              <div className="line-item" key={`${l.상품코드}-${i}`}>
-                <div className="line-head">
-                  <b>{pr?.name ?? l.상품코드}</b>
-                  <span className="dim">
-                    {groupOf(pr)}
-                    {pr && !isExtraKind(pr) && pr.card ? ` · ${money(pr.card)}원` : ""}
-                  </span>
-                  <button type="button" className="btn-ghost"
-                          onClick={() => setB({ ...b, lines: b.lines.filter((_, k) => k !== i) })}>
-                    빼기
+          <div className="prod-list">
+            {shown.length === 0 ? (
+              <p className="dim" style={{ fontSize: 12.5, padding: "10px 2px" }}>
+                해당하는 상품이 없습니다.
+              </p>
+            ) : (
+              shown.map((x) => {
+                const free = isExtraKind(x) && !x.card;
+                return (
+                  <button key={x.code} type="button" className="prod" onClick={() => addLine(x.code)}>
+                    <span className="nm">{x.name}</span>
+                    <span className="meta">
+                      {x.months > 0 && `${x.months}개월`}
+                      {x.months > 0 && x.count > 0 && " · "}
+                      {x.count > 0 && `${x.count}회`}
+                    </span>
+                    <span className="pr num">{free ? "무료" : `${money(priceOf(x))}원`}</span>
                   </button>
-                </div>
-                {isExtraKind(pr) ? (
-                  <p className="stat-note" style={{ margin: "6px 0 0" }}>
-                    회원권에 얹어드리는 항목입니다. 기간은 얹은 회원권을 따라갑니다.
-                  </p>
-                ) : (
-                  <div className="line-fields">
-                    <label>
-                      시작일
-                      <input className="input" type="date" value={l.시작일}
-                             onChange={(e) => {
-                               const v = e.target.value;
-                               setB({
-                                 ...b,
-                                 lines: b.lines.map((x, k) =>
-                                   k === i
-                                     ? { ...x, 시작일: v, 종료일: pr?.months ? addMonths(v, pr.months) : x.종료일 }
-                                     : x
-                                 ),
-                               });
-                             }} />
-                    </label>
-                    <label>
-                      종료일
-                      <input className="input" type="date" value={l.종료일}
-                             onChange={(e) => setLine(i, "종료일", e.target.value)} />
-                    </label>
-                    {usesCount(pr) && (
-                      <label>
-                        총 횟수
-                        <input className="input" inputMode="numeric" value={l.총횟수}
-                               onChange={(e) => setLine(i, "총횟수", e.target.value)} />
-                      </label>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* 오른쪽 — 담긴 것과 결제 */}
+        <div className="buy-cart">
+          <div className="cart-head">
+            고른 상품 <b className="num">{b.lines.length}</b>
+          </div>
+
+          {b.lines.length === 0 ? (
+            <p className="dim" style={{ fontSize: 12.5, padding: "14px 2px" }}>
+              왼쪽에서 상품을 눌러 담아주세요.
+            </p>
+          ) : (
+            <div className="cart-list">
+              {b.lines.map((l, i) => {
+                const pr = pOf(l.상품코드);
+                return (
+                  <div className="cart-item" key={`${l.상품코드}-${i}`}>
+                    <div className="cart-top">
+                      <b>{pr?.name ?? l.상품코드}</b>
+                      <span className="num">
+                        {pr && !isExtraKind(pr) ? `${money(priceOf(pr))}원` : "무료"}
+                      </span>
+                      <button type="button" className="x"
+                              onClick={() => setB({ ...b, lines: b.lines.filter((_, k) => k !== i) })}
+                              aria-label="빼기">×</button>
+                    </div>
+                    {isExtraKind(pr) ? (
+                      <span className="cart-note">회원권에 얹어드림 · 기간은 회원권을 따라감</span>
+                    ) : (
+                      <div className="cart-fields">
+                        <input className="input" type="date" value={l.시작일}
+                               onChange={(e) => {
+                                 const v = e.target.value;
+                                 setB({
+                                   ...b,
+                                   lines: b.lines.map((x, k) =>
+                                     k === i
+                                       ? { ...x, 시작일: v, 종료일: pr?.months ? addMonths(v, pr.months) : x.종료일 }
+                                       : x
+                                   ),
+                                 });
+                               }} />
+                        <input className="input" type="date" value={l.종료일}
+                               onChange={(e) => setLine(i, "종료일", e.target.value)} />
+                        {usesCount(pr) && (
+                          <input className="input" inputMode="numeric" placeholder="횟수"
+                                 value={l.총횟수} onChange={(e) => setLine(i, "총횟수", e.target.value)} />
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
+
+          <div className="cart-sum">
+            <div className="row">
+              <span>상품 합계</span>
+              <b className="num">{money(suggested)}원</b>
+            </div>
+
+            <label className="row f">
+              <span>결제 수단</span>
+              <select className="input" value={b.결제수단}
+                      onChange={(e) => setB({ ...b, 결제수단: e.target.value })}>
+                {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </label>
+
+            {split ? (
+              <>
+                <label className="row f">
+                  <span>카드</span>
+                  <input className="input" inputMode="numeric" value={b.카드액}
+                         onChange={(e) => setB({ ...b, 카드액: e.target.value })} />
+                </label>
+                <label className="row f">
+                  <span>계좌</span>
+                  <input className="input" inputMode="numeric" value={b.계좌액}
+                         onChange={(e) => setB({ ...b, 계좌액: e.target.value })} />
+                </label>
+              </>
+            ) : (
+              <label className="row f">
+                <span>결제 금액</span>
+                <input className="input" inputMode="numeric"
+                       value={b.직접입력 ? b.금액 : suggested ? String(suggested) : ""}
+                       onChange={(e) => setB({ ...b, 직접입력: true, 금액: e.target.value })} />
+              </label>
+            )}
+
+            {(options["매출유형"] ?? []).length > 0 && (
+              <label className="row f">
+                <span>매출 유형</span>
+                <select className="input" value={b.매출유형}
+                        onChange={(e) => setB({ ...b, 매출유형: e.target.value })}>
+                  <option value="">선택</option>
+                  {options["매출유형"].map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
+            )}
+
+            <label className="row f">
+              <span>미수금</span>
+              <input className="input" inputMode="numeric" placeholder="0" value={b.미수금액}
+                     onChange={(e) => setB({ ...b, 미수금액: e.target.value })} />
+            </label>
+            {onlyNum(b.미수금액) > 0 && (
+              <label className="row f">
+                <span>받기로 한 날</span>
+                <input className="input" type="date" value={b.미수금결제예정일}
+                       onChange={(e) => setB({ ...b, 미수금결제예정일: e.target.value })} />
+              </label>
+            )}
+
+            <div className="row total">
+              <span>받을 금액</span>
+              <b className="num">
+                {money(split ? splitTotal : b.직접입력 ? onlyNum(b.금액) : suggested)}원
+              </b>
+            </div>
+
+            {!split && !b.직접입력 && suggested > 0 && (
+              <p className="cart-note">
+                {cashSide ? "현금가" : "카드가"} 합계입니다. 할인하셨다면 금액을 직접 고쳐주세요.
+              </p>
+            )}
+            {split && (
+              <p className="cart-note">
+                나눠 내신 금액을 각각 적어주세요. 합계가 받을 금액이 됩니다.
+              </p>
+            )}
+          </div>
         </div>
-      )}
-
-      <h4 className="mini-title">결제</h4>
-      <div className="form-grid">
-        <L label="결제 수단">
-          <select className="input" value={b.결제수단}
-                  onChange={(e) => setB({ ...b, 결제수단: e.target.value })}>
-            {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </L>
-        {split ? (
-          <>
-            <L label="카드">
-              <input className="input" inputMode="numeric" value={b.카드액}
-                     onChange={(e) => setB({ ...b, 카드액: e.target.value })} />
-            </L>
-            <L label="계좌">
-              <input className="input" inputMode="numeric" value={b.계좌액}
-                     onChange={(e) => setB({ ...b, 계좌액: e.target.value })} />
-            </L>
-          </>
-        ) : (
-          <L label="결제 금액">
-            <input className="input" inputMode="numeric"
-                   value={b.직접입력 ? b.금액 : suggested ? String(suggested) : ""}
-                   onChange={(e) => setB({ ...b, 직접입력: true, 금액: e.target.value })} />
-          </L>
-        )}
-        {(options["매출유형"] ?? []).length > 0 && (
-          <L label="매출 유형">
-            <select className="input" value={b.매출유형}
-                    onChange={(e) => setB({ ...b, 매출유형: e.target.value })}>
-              <option value="">선택</option>
-              {options["매출유형"].map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </L>
-        )}
-        <L label="미수금 (없으면 비움)">
-          <input className="input" inputMode="numeric" placeholder="0" value={b.미수금액}
-                 onChange={(e) => setB({ ...b, 미수금액: e.target.value })} />
-        </L>
-        {onlyNum(b.미수금액) > 0 && (
-          <L label="미수금 받기로 한 날">
-            <input className="input" type="date" value={b.미수금결제예정일}
-                   onChange={(e) => setB({ ...b, 미수금결제예정일: e.target.value })} />
-          </L>
-        )}
       </div>
-
-      {split ? (
-        <p className="stat-note">
-          나눠 내신 금액을 각각 적어주세요. 합계 <b>{money(splitTotal)}원</b>으로 저장됩니다.
-          {suggested > 0 && <> 상품값 합계는 {money(suggested)}원입니다.</>}
-        </p>
-      ) : (
-        !b.직접입력 && suggested > 0 && (
-          <p className="stat-note">
-            고른 상품의 {b.결제수단 === "현금" || b.결제수단 === "계좌" ? "현금가" : "카드가"}를
-            더해 <b>{money(suggested)}원</b>으로 잡았습니다. 할인하셨다면 직접 고쳐주세요.
-          </p>
-        )
-      )}
     </>
   );
 }
@@ -648,7 +712,7 @@ function AddPurchase({
 
   return (
     <div className="modal-back top" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+      <div className="modal xl" onClick={(e) => e.stopPropagation()}>
         <h3>{member.이름}님 상품 추가</h3>
         <p className="modal-lead">
           재등록 · PT 추가 · 사물함 · 운동복 모두 여기서 더합니다.
@@ -722,7 +786,7 @@ function NewForm({
 
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+      <div className="modal xl" onClick={(e) => e.stopPropagation()}>
         <h3>회원 등록</h3>
         <p className="modal-lead">
           상품을 고르면 만료일과 금액이 자동으로 채워집니다. 다르면 그 자리에서 고치시면 됩니다.
