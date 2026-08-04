@@ -39,12 +39,19 @@ export async function abilitiesFor(roleCode: string): Promise<Map<string, Abilit
   // 홈은 로그인한 사람 누구나 본다
   map.set("홈", { view: true, create: false, update: false, remove: false, condition: "" });
 
-  // 대표가 관리 화면에서 잠기는 것만은 막는다.
-  // 시트 권한 탭에 줄이 아예 없을 때만 채워 넣으므로, 대표님이 직접 정하신 값은 그대로 둔다.
+  /*
+   * 대표는 새 메뉴가 생겨도 바로 쓸 수 있어야 한다.
+   *
+   * 권한은 시트에서 읽는데, 메뉴를 새로 만들면 그 줄이 시트에 없다.
+   * 그러면 대표조차 메뉴가 안 보여서, 권한을 고치러 시트를 직접 열어야 한다.
+   * 줄이 "아예 없을 때"만 채우므로, 대표님이 직접 정하신 값은 건드리지 않는다.
+   * 대표가 어떤 메뉴를 스스로 끄고 싶다면 시트에 N 으로 적으면 그대로 따른다.
+   */
   if (roleCode === "R1") {
     const ALL: Ability = { view: true, create: true, update: true, remove: true, condition: "" };
-    if (!map.has("직원관리")) map.set("직원관리", ALL);
-    if (!map.has("권한설정")) map.set("권한설정", ALL);
+    MENUS.forEach((m) => {
+      if (!map.has(m.key)) map.set(m.key, ALL);
+    });
   }
   return map;
 }
