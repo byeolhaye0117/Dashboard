@@ -6,6 +6,7 @@
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { showPhone } from "@/lib/phone";
+import { WEEKDAYS, WEEKEND, daysText } from "@/lib/attendanceMeta";
 
 type Staff = {
   id: string;
@@ -23,6 +24,7 @@ type Staff = {
   outTime: string;
   restMin: string;
   restVary: boolean;
+  workDays: string;
 };
 
 type Named = { code: string; name: string };
@@ -389,6 +391,7 @@ function Detail({
     퇴근기준시각: item.outTime,
     휴게분: item.restMin,
     휴게변동: item.restVary,
+    근무요일: item.workDays,
   });
   const [picked, setPicked] = useState<string[]>(item.branches);
   const [msg, setMsg] = useState("");
@@ -533,6 +536,10 @@ function Detail({
                      onChange={(e) => setF({ ...f, 휴게분: e.target.value.replace(/[^0-9]/g, "") })} />
             </L>
           )}
+          <L label="근무 요일" full>
+            <DayPick value={f.근무요일} disabled={!editable}
+                     onChange={(v) => setF({ ...f, 근무요일: v })} />
+          </L>
           <L label="휴게 방식" full>
             <label className="chk">
               <input type="checkbox" checked={f.휴게변동} disabled={!editable}
@@ -552,6 +559,9 @@ function Detail({
         <p className="stat-note">
           출근·퇴근 시각을 넘겨 찍으면 <b>지각</b>, 이르게 퇴근하면 <b>조퇴</b>로 표시됩니다.
           비워두면 시각만 기록하고 아무 판정도 하지 않습니다.
+          <br />
+          근무 요일을 정하면 근태표에서 <b>원래 안 나오는 날</b>과
+          <b> 나와야 하는데 안 찍은 날</b>이 구분됩니다. 안 정하면 매일 나오는 것으로 봅니다.
         </p>
 
         {isSelf && (
@@ -624,6 +634,51 @@ function BranchPick({
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * 근무 요일 고르기
+ *
+ * 주중·주말이 제일 흔해서 단축 버튼을 먼저 놓는다.
+ * 그래도 화·목·토만 나오는 사람이 있어서 요일도 하나씩 누를 수 있게 둔다.
+ */
+function DayPick({ value, disabled, onChange }: {
+  value: string;
+  disabled: boolean;
+  onChange: (v: string) => void;
+}) {
+  /** 시트에 적히는 차례를 월요일부터로 맞춘다 — 사람이 읽는 차례다 */
+  const ORDER = ["월", "화", "수", "목", "금", "토", "일"];
+  const has = (d: string) => value.includes(d);
+  const toggle = (d: string) =>
+    onChange(ORDER.filter((x) => (x === d ? !has(x) : has(x))).join(""));
+
+  return (
+    <>
+      <div className="pick-row" style={{ marginBottom: 6 }}>
+        {ORDER.map((d) => (
+          <button key={d} type="button" disabled={disabled}
+                  className={`mini-tab day${has(d) ? " on" : ""}`}
+                  onClick={() => toggle(d)}>
+            {d}
+          </button>
+        ))}
+      </div>
+      <div className="pick-row">
+        <button type="button" className="mini-tab" disabled={disabled}
+                onClick={() => onChange(WEEKDAYS)}>주중만</button>
+        <button type="button" className="mini-tab" disabled={disabled}
+                onClick={() => onChange(WEEKEND)}>주말만</button>
+        <button type="button" className="mini-tab" disabled={disabled}
+                onClick={() => onChange(ORDER.join(""))}>매일</button>
+        <button type="button" className="mini-tab" disabled={disabled}
+                onClick={() => onChange("")}>안 정함</button>
+        <span className="dim" style={{ marginLeft: "auto", fontSize: 11.5, alignSelf: "center" }}>
+          {daysText(value)}
+        </span>
+      </div>
+    </>
   );
 }
 

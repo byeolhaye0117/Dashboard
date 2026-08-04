@@ -25,7 +25,7 @@ const SETS: Record<string, Job> = {
     tab: SHEET_T,
     headers: T_HEADERS,
     // 지각을 판정하려면 직원마다 기준 시각이 있어야 한다
-    extra: { tab: SHEET.직원, names: ["출근기준시각", "퇴근기준시각", "휴게분", "휴게변동"] },
+    extra: { tab: SHEET.직원, names: ["출근기준시각", "퇴근기준시각", "휴게분", "휴게변동", "근무요일"] },
   },
 };
 
