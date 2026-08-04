@@ -26,13 +26,14 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "근태를 쓸 수 없는 계정입니다." }, { status: 403 });
       }
 
+      const staff = await getStaffAll();
+      const me = staff.find((s) => s.id === session.staffId);
+
       if (action === "out") {
-        const r = await punchOut(session.staffId);
+        const r = await punchOut(session.staffId, me?.outTime ?? "");
         return NextResponse.json({ ok: true, ...r });
       }
 
-      const staff = await getStaffAll();
-      const me = staff.find((s) => s.id === session.staffId);
       const branch = session.branches[0] || me?.mainBranch || "";
       const r = await punchIn(session.staffId, branch, me?.baseTime ?? "");
       return NextResponse.json({ ok: true, ...r });

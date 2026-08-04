@@ -29,6 +29,9 @@ export type AdminStaff = {
   hasPassword: boolean;
   /** 임시 비밀번호 상태인가 */
   temp: boolean;
+  /** 근태 기준 시각 — 비어 있으면 지각·조퇴를 판정하지 않는다 */
+  baseTime: string;
+  outTime: string;
   rowNumber: number;
 };
 
@@ -74,6 +77,8 @@ export async function listStaffAdmin(): Promise<{
       accountOn: yes(r["계정사용"] || "Y"),
       hasPassword: Boolean((r[PW_COLUMN] ?? "").trim()),
       temp: yes(r[TEMP_COLUMN] ?? ""),
+      baseTime: (r["출근기준시각"] ?? "").trim(),
+      outTime: (r["퇴근기준시각"] ?? "").trim(),
       rowNumber: staffSheet.rowNumbers[i],
     });
   });
@@ -160,6 +165,8 @@ export async function patchStaff(
     재직상태?: string;
     계정사용?: boolean;
     담당지점?: string[];
+    출근기준시각?: string;
+    퇴근기준시각?: string;
   },
   byId: string
 ): Promise<void> {
@@ -175,6 +182,26 @@ export async function patchStaff(
   if (changes.주소속지점 !== undefined) merged["주소속지점"] = changes.주소속지점;
   if (changes.재직상태 !== undefined) merged["재직상태"] = changes.재직상태;
   if (changes.계정사용 !== undefined) merged["계정사용"] = changes.계정사용 ? "Y" : "N";
+
+  // 근태 기준 시각 — 빈 값으로 지우는 것도 뜻이 있으므로 그대로 쓴다.
+  // 시트에 칸이 없으면 조용히 사라지므로, 그냥 넘어가지 않고 알린다.
+  const times: Array<[string, string | undefined]> = [
+    ["출근기준시각", changes.출근기준시각],
+    ["퇴근기준시각", changes.퇴근기준시각],
+  ];
+  for (const [col, v] of times) {
+    if (v === undefined) continue;
+    if (!headers.includes(col)) {
+      if (v.trim()) {
+        throw new Error(
+          `직원 탭에 "${col}" 칸이 없어 저장할 수 없습니다. ` +
+            `근태 화면에서 「근태 탭 만들기」를 먼저 눌러주세요.`
+        );
+      }
+      continue;
+    }
+    merged[col] = v.trim();
+  }
 
   await updateRow(SHEET.직원, rowNumbers[i], headers, merged);
   if (changes.담당지점) await syncBranches(id, changes.담당지점, byId);
