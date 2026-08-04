@@ -82,7 +82,7 @@ export default function Client(p: Props) {
   const [adding, setAdding] = useState(false);
   const [onlyMine, setOnlyMine] = useState(false);
   const [showLate, setShowLate] = useState(false);
-  const [tab, setTab] = useState<"pt" | "group">("pt");
+  const [tab, setTab] = useState<"pt" | "group" | "board">("pt");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -269,9 +269,17 @@ export default function Client(p: Props) {
         <button className={`mini-tab${tab === "group" ? " on" : ""}`} onClick={() => setTab("group")}>
           그룹수업 보고
         </button>
+        {/* 남의 보고까지 볼 수 있는 사람 — 점장 · 대표 */}
+        {p.can.update && (
+          <button className={`mini-tab${tab === "board" ? " on" : ""}`} onClick={() => setTab("board")}>
+            보고 확인
+          </button>
+        )}
       </div>
 
-      {tab === "group" ? (
+      {tab === "board" ? (
+        <GroupBoard trainers={p.trainers} slotsOf={slotsOf} reported={reported} />
+      ) : tab === "group" ? (
         <GroupReport
           me={p.me}
           myBranch={p.myBranch}
@@ -553,6 +561,101 @@ function LessonBox(props: {
 }
 
 /* ── 수업 잡기 ─────────────────────────────── */
+
+/* ── 그룹수업 보고 확인 (점장 · 대표) ────────── */
+
+/**
+ * 올라온 보고를 한자리에서 본다
+ *
+ * 사진을 보려고 구글 드라이브를 따로 열게 하면, 파일 이름만 잔뜩 쌓인 폴더에서
+ * 누가 언제 올린 것인지 짚어내야 한다. 그건 확인이 아니라 일이다.
+ * 날짜 하나를 고르면 그날 누가 무엇을 했는지 한 화면에 뜨게 한다.
+ *
+ * 올라온 것보다 "안 올라온 것"이 더 중요하다. 그래서 보고 안 한 사람을 위에 세운다.
+ */
+function GroupBoard(props: {
+  trainers: Person[];
+  slotsOf: Map<string, string[]>;
+  reported: Map<string, { slots: string[]; photo: string }>;
+}) {
+  const nowDay = today();
+  const [day, setDay] = useState(nowDay);
+  const [zoom, setZoom] = useState("");
+
+  // 그룹수업 시간이 정해진 사람만 본다. 1:1 만 하는 사람은 보고할 것이 없다
+  const people = props.trainers.filter((t) => (props.slotsOf.get(t.id) ?? []).length > 0);
+  const rows = people.map((t) => ({ t, got: props.reported.get(`${t.id}|${day}`) }));
+  const done = rows.filter((r) => r.got).length;
+  const missing = rows.filter((r) => !r.got);
+
+  return (
+    <>
+      <div className="pick-row" style={{ marginBottom: 14 }}>
+        <button className="icon-btn" onClick={() => setDay(shiftDay(day, -1))} aria-label="어제">‹</button>
+        <input className="input" type="date" value={day} style={{ width: 148 }}
+               onChange={(e) => setDay(e.target.value || nowDay)} />
+        <button className="icon-btn" onClick={() => setDay(shiftDay(day, 1))} aria-label="내일">›</button>
+        {day !== nowDay && (
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setDay(nowDay)}>오늘</button>
+        )}
+      </div>
+
+      <p className="page-sub" style={{ margin: "0 0 12px" }}>
+        {korDate(day)} · 그룹수업 담당 {people.length}명 중 <b>{done}명</b> 보고
+      </p>
+
+      {people.length === 0 ? (
+        <div className="norow">그룹수업 시간이 정해진 직원이 없습니다</div>
+      ) : (
+        <>
+          {missing.length > 0 && day <= nowDay && (
+            <div className="banner">
+              <span className="lead"><Icon name="warn" size={18} /></span>
+              <div>
+                <b>아직 보고하지 않은 사람 {missing.length}명</b>
+                <p>{missing.map((r) => r.t.name).join(" · ")}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="lwrap">
+            {rows.map(({ t, got }) => (
+              <div className="jrow" key={t.id}>
+                <div className="jtop">
+                  <b>{t.name}</b>
+                  <span>
+                    {got
+                      ? `${got.slots.length}타임 · ${got.slots.join(" · ")}`
+                      : `맡은 타임 ${(props.slotsOf.get(t.id) ?? []).join(" · ")}`}
+                  </span>
+                </div>
+                {got ? (
+                  got.photo ? (
+                    <button className="thumb" onClick={() => setZoom(got.photo)}>
+                      <img src={`/api/lesson-photo?id=${got.photo}`} alt={`${t.name} 수업 후 사진`} />
+                      <span>눌러서 크게 보기</span>
+                    </button>
+                  ) : (
+                    <span className="pill bad">사진 없음</span>
+                  )
+                ) : (
+                  <span className="pill bad">아직 보고 안 함</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {zoom && (
+        <div className="modal-back" onClick={() => setZoom("")}>
+          <img className="zoom" src={`/api/lesson-photo?id=${zoom}`} alt="수업 후 사진"
+               onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+    </>
+  );
+}
 
 /* ── 그룹수업 보고 ─────────────────────────── */
 

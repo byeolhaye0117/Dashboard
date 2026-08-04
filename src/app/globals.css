@@ -996,6 +996,22 @@ i.s6 { background: var(--s6); }
   border: 1px solid var(--line); object-fit: contain; background: var(--bg);
 }
 
+/* 보고 확인 — 작게 보여주고 누르면 크게 */
+.thumb {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 0; border: 0; background: none; font: inherit; text-align: left;
+}
+.thumb img {
+  width: 84px; height: 62px; flex: 0 0 84px; object-fit: cover;
+  border-radius: 8px; border: 1px solid var(--line); background: var(--bg);
+}
+.thumb span { font-size: 11.5px; color: var(--muted); }
+.thumb:hover img { border-color: var(--ink-2); }
+.zoom {
+  max-width: min(92vw, 900px); max-height: 88vh; object-fit: contain;
+  border-radius: var(--r); background: var(--surface);
+}
+
 /* ── 목록에서 여러 명 고르기 ───────────────── */
 .pick-box {
   width: 16px; height: 16px; margin: 0; cursor: pointer;
