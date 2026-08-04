@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
+import { getStaffAll, getStaffBranches } from "@/lib/data";
 import { createLesson, setJoinState, patchLesson, softDeleteLesson, listLessons } from "@/lib/lessons";
 
 export const dynamic = "force-dynamic";
@@ -42,10 +43,22 @@ export async function POST(req: Request) {
       if (!mine.create) {
         return NextResponse.json({ error: "수업을 잡을 권한이 없습니다." }, { status: 403 });
       }
-      // 트레이너는 자기 수업만 잡는다. 남의 이름으로 잡으려면 수정 권한이 있어야 한다
+      /*
+        남의 수업을 "잡아주는" 것은 막지 않는다 — 데스크에서 대신 잡아주는 일은 정상 업무다.
+        막는 것은 남의 수업 "결과를 찍는" 쪽이다 (mark · patch). 그건 기록을 덮어쓰는 일이다.
+        대신 담당 지점 밖 사람을 넣는 것은 막는다. 화면이 보내는 값을 그대로 믿지 않는다.
+      */
       const trainer = body.트레이너사번 || session.staffId;
-      if (trainer !== session.staffId && !mine.update) {
-        return NextResponse.json({ error: "다른 트레이너 이름으로는 잡을 수 없습니다." }, { status: 403 });
+      if (trainer !== session.staffId) {
+        const [staff, branchMap] = await Promise.all([getStaffAll(), getStaffBranches()]);
+        const target = staff.find((s) => s.id === trainer && s.active);
+        if (!target) {
+          return NextResponse.json({ error: "없는 직원입니다." }, { status: 400 });
+        }
+        const where = [...(branchMap.get(trainer) ?? []), target.mainBranch].filter(Boolean);
+        if (session.scope !== "전체" && !where.some((b) => session.branches.includes(b))) {
+          return NextResponse.json({ error: "담당 지점 직원에게만 수업을 잡아줄 수 있습니다." }, { status: 403 });
+        }
       }
       const id = await createLesson(
         {
