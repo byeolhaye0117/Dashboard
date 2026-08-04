@@ -1,19 +1,32 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
-import { addColumns } from "@/lib/sheets";
+import { addColumns, createSheet } from "@/lib/sheets";
 import { REFUND_COLUMNS } from "@/lib/refund";
+import { SHEET_T, T_HEADERS } from "@/lib/attendanceMeta";
+import { SHEET } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
 /**
- * 시트에 모자란 칸을 만든다
+ * 시트에 모자란 칸·탭을 만든다
  *
  * 시트 구조를 바꾸는 일이라 대표(직원 관리 권한)만 쓸 수 있게 한다.
  * 아무 이름이나 만들 수 있게 두면 시트가 엉키므로, 미리 정해둔 묶음만 받는다.
  */
-const SETS: Record<string, { tab: string; names: string[] }> = {
-  환불: { tab: "결제", names: REFUND_COLUMNS },
+type Job =
+  | { kind: "columns"; tab: string; names: string[] }
+  | { kind: "tab"; tab: string; headers: string[]; extra?: { tab: string; names: string[] } };
+
+const SETS: Record<string, Job> = {
+  환불: { kind: "columns", tab: "결제", names: REFUND_COLUMNS },
+  근태: {
+    kind: "tab",
+    tab: SHEET_T,
+    headers: T_HEADERS,
+    // 지각을 판정하려면 직원마다 기준 시각이 있어야 한다
+    extra: { tab: SHEET.직원, names: ["출근기준시각"] },
+  },
 };
 
 export async function POST(req: Request) {
@@ -27,13 +40,22 @@ export async function POST(req: Request) {
 
   try {
     const { set } = await req.json();
-    const target = SETS[set];
-    if (!target) {
-      return NextResponse.json({ error: "만들 수 없는 칸입니다." }, { status: 400 });
+    const job = SETS[set];
+    if (!job) return NextResponse.json({ error: "만들 수 없는 칸입니다." }, { status: 400 });
+
+    if (job.kind === "columns") {
+      const added = await addColumns(job.tab, job.names);
+      return NextResponse.json({ ok: true, tab: job.tab, added });
     }
-    const added = await addColumns(target.tab, target.names);
-    return NextResponse.json({ ok: true, tab: target.tab, added });
+
+    const made = await createSheet(job.tab, job.headers);
+    const added = job.extra ? await addColumns(job.extra.tab, job.extra.names) : [];
+    return NextResponse.json({
+      ok: true,
+      tab: job.tab,
+      added: [...(made ? [`${job.tab} 탭`] : []), ...added],
+    });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? "칸을 만들지 못했습니다." }, { status: 500 });
+    return NextResponse.json({ error: e.message ?? "만들지 못했습니다." }, { status: 500 });
   }
 }

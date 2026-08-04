@@ -251,6 +251,41 @@ export async function addColumns(sheetName: string, names: string[]): Promise<st
   return add;
 }
 
+/**
+ * 탭을 새로 만들고 제목 줄을 넣는다
+ *
+ * 이미 있으면 아무것도 하지 않고 false 를 돌려준다.
+ * 두 번 눌러도 탭이 겹쳐 생기지 않는다.
+ */
+export async function createSheet(sheetName: string, headers: string[]): Promise<boolean> {
+  const names = await listSheetNames();
+  if (names.includes(sheetName)) return false;
+
+  await call(`:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({
+      requests: [
+        {
+          addSheet: {
+            properties: {
+              title: sheetName,
+              gridProperties: { rowCount: 1000, columnCount: Math.max(26, headers.length + 4) },
+            },
+          },
+        },
+      ],
+    }),
+  });
+
+  const to = columnLetter(headers.length - 1);
+  const range = encodeURIComponent(`${sheetName}!A1:${to}1`);
+  await call(`/values/${range}?valueInputOption=USER_ENTERED`, {
+    method: "PUT",
+    body: JSON.stringify({ values: [headers] }),
+  });
+  return true;
+}
+
 /** 시트 탭 이름 목록 */
 export async function listSheetNames(): Promise<string[]> {
   const data = await call(`?fields=sheets.properties.title`);
