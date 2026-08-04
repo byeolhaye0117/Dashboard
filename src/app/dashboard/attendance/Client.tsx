@@ -9,7 +9,9 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { today, korDate } from "@/lib/time";
-import { WORK_KINDS, KIND_MARK as MARK, toMinutes, hourText } from "@/lib/attendanceMeta";
+import {
+  WORK_KINDS, KIND_MARK as MARK, toMinutes, hourText, worksOn, daysText,
+} from "@/lib/attendanceMeta";
 
 type Row = {
   id: string;
@@ -32,6 +34,8 @@ type Person = {
   baseTime: string; outTime: string; restMin: string;
   /** 휴게가 날마다 다른 사람인가 */
   restVary: boolean;
+  /** 근무하는 요일 "월화수목금" — 비어 있으면 매일로 본다 */
+  workDays: string;
 };
 
 /**
@@ -169,6 +173,9 @@ export default function Client(p: Props) {
   /** 나는 휴게를 찍는 사람인가 */
   const vary = Boolean(meSelf?.restVary);
 
+  /** 오늘이 내 근무일인가 — 아니어도 찍는 것은 막지 않는다. 대타로 나오는 날이 있다 */
+  const offToday = worksOn(meSelf?.workDays ?? "", now);
+
   async function punch(action: "in" | "out" | "break-in" | "break-out", rest = 0) {
     setBusy(action);
     setMsg("");
@@ -246,7 +253,9 @@ export default function Client(p: Props) {
               : Number(meSelf?.restMin) > 0
                 ? ` · 휴게 ${meSelf?.restMin}분 자동`
                 : ""}
+            {meSelf?.workDays ? ` · ${daysText(meSelf.workDays)}` : ""}
           </span>
+          {!offToday && <span className="pill" style={{ marginTop: 6 }}>오늘은 근무일이 아닙니다</span>}
         </div>
 
         <div className="pk-time">
@@ -400,14 +409,19 @@ export default function Client(p: Props) {
           <tbody>
             {p.people.map((s) => (
               <tr key={s.id}>
-                <td className="sticky"><span className="nm">{s.name}</span></td>
+                <td className="sticky">
+                  <span className="nm">{s.name}</span>
+                  {s.workDays && <em className="wd">{daysText(s.workDays)}</em>}
+                </td>
                 {days.map((d) => {
                   const f = byKey[`${s.id}|${d}`];
                   const kind = f?.kind || "";
                   const twice = (f?.rounds.length ?? 0) > 1;
+                  // 원래 안 나오는 날은 빈 칸이 정상이다. "안 찍음"과 구분되어야 한다
+                  const offDay = !worksOn(s.workDays, d) && !kind;
                   return (
                     <td key={d}
-                        className={`cell k-${kind || "none"}${p.canEdit ? " hit" : ""}`}
+                        className={`cell k-${kind || "none"}${offDay ? " off-day" : ""}${p.canEdit ? " hit" : ""}`}
                         title={
                           f
                             ? [
@@ -421,10 +435,10 @@ export default function Client(p: Props) {
                               ]
                                 .filter(Boolean)
                                 .join("\n")
-                            : `${korDate(d)} ${s.name}\n기록 없음`
+                            : `${korDate(d)} ${s.name}\n${offDay ? "근무일이 아닙니다" : "기록 없음"}`
                         }
                         onClick={() => p.canEdit && setEdit({ 사번: s.id, 날짜: d })}>
-                      {MARK[kind] ?? ""}
+                      {MARK[kind] ?? (offDay ? "·" : "")}
                       {twice && <em className="twice">2</em>}
                     </td>
                   );

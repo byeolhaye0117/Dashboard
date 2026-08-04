@@ -35,6 +35,7 @@ export type AdminStaff = {
   outTime: string;
   restMin: string;
   restVary: boolean;
+  workDays: string;
   rowNumber: number;
 };
 
@@ -84,6 +85,7 @@ export async function listStaffAdmin(): Promise<{
       outTime: normalizeTime(r["퇴근기준시각"] ?? ""),
       restMin: (r["휴게분"] ?? "").trim(),
       restVary: yes(r["휴게변동"] ?? ""),
+      workDays: (r["근무요일"] ?? "").replace(/[^월화수목금토일]/g, ""),
       rowNumber: staffSheet.rowNumbers[i],
     });
   });
@@ -174,6 +176,7 @@ export async function patchStaff(
     퇴근기준시각?: string;
     휴게분?: string;
     휴게변동?: boolean;
+    근무요일?: string;
   },
   byId: string
 ): Promise<void> {
@@ -187,6 +190,7 @@ export async function patchStaff(
     ["퇴근기준시각", changes.퇴근기준시각],
     ["휴게분", changes.휴게분],
     ["휴게변동", changes.휴게변동 === undefined ? undefined : changes.휴게변동 ? "Y" : ""],
+    ["근무요일", changes.근무요일],
   ] as const;
 
   const pre = await readSheet(SHEET.직원);

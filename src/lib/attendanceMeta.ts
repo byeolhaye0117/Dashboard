@@ -26,6 +26,29 @@ export const T_HEADERS = [
   "등록일시", "등록자", "수정일시", "수정자", "삭제여부",
 ];
 
+/** 일요일이 0 — new Date().getDay() 와 자리를 맞춘다 */
+export const DAY_LETTERS = ["일", "월", "화", "수", "목", "금", "토"] as const;
+export const WEEKDAYS = "월화수목금";
+export const WEEKEND = "토일";
+
+/** "월화수목금" → 근무하는 요일인지 본다. 비어 있으면 "모르는 것"이라 다 근무일로 친다 */
+export function worksOn(days: string, dateStr: string): boolean {
+  if (!days.trim()) return true;
+  const d = new Date(`${dateStr}T00:00:00+09:00`);
+  if (Number.isNaN(d.getTime())) return true;
+  return days.includes(DAY_LETTERS[d.getDay()]);
+}
+
+/** "월화수목금" → "주중" 처럼 짧게 */
+export function daysText(days: string): string {
+  const d = days.trim();
+  if (!d) return "요일 정하지 않음";
+  if (d === WEEKDAYS) return "주중 (월~금)";
+  if (d === WEEKEND || d === "일토") return "주말 (토·일)";
+  if (DAY_LETTERS.every((x) => d.includes(x))) return "매일";
+  return DAY_LETTERS.filter((x) => d.includes(x)).join("·");
+}
+
 /** 근무구분을 한 글자로 — 달력 칸에 들어가야 한다 */
 export const KIND_MARK: Record<string, string> = {
   정상: "○", 지각: "지", 조퇴: "조", 결근: "결", 휴무: "휴", 연차: "연", 반차: "반",

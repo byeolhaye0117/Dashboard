@@ -45,6 +45,8 @@ export type Staff = {
   restMin: string;
   /** 휴게가 날마다 다른 사람인가 — 찍어서 남기는 쪽 */
   restVary: boolean;
+  /** 근무하는 요일 "월화수목금" — 비어 있으면 정하지 않은 것 */
+  workDays: string;
   /** 시트에서 이 직원이 몇 번째 줄인지 (비밀번호를 고칠 때 쓴다) */
   rowNumber: number;
 };
@@ -118,6 +120,7 @@ export async function getStaffAll(): Promise<Staff[]> {
       outTime: normalizeTime(r["퇴근기준시각"] ?? ""),
       restMin: (r["휴게분"] ?? "").trim(),
       restVary: yes(r["휴게변동"] ?? ""),
+      workDays: (r["근무요일"] ?? "").replace(/[^월화수목금토일]/g, ""),
       rowNumber: rowNumbers[i],
     });
   });
