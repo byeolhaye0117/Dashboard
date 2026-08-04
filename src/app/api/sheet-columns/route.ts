@@ -18,7 +18,11 @@ export const dynamic = "force-dynamic";
 type Job =
   | { kind: "columns"; tab: string; names: string[] }
   | { kind: "tab"; tab: string; headers: string[]; extra?: { tab: string; names: string[] } }
-  | { kind: "tabs"; tabs: { tab: string; headers: string[] }[] };
+  | {
+      kind: "tabs";
+      tabs: { tab: string; headers: string[] }[];
+      extra?: { tab: string; names: string[] };
+    };
 
 const SETS: Record<string, Job> = {
   환불: { kind: "columns", tab: "결제", names: REFUND_COLUMNS },
@@ -36,6 +40,8 @@ const SETS: Record<string, Job> = {
       { tab: SHEET_L, headers: L_HEADERS },
       { tab: SHEET_LA, headers: LA_HEADERS },
     ],
+    // 누가 수업을 맡는지는 직급이 아니라 사람마다 정한다
+    extra: { tab: SHEET.직원, names: ["트레이너"] },
   },
 };
 
@@ -65,6 +71,7 @@ export async function POST(req: Request) {
         if (made) added.push(`${t.tab} 탭`);
         else added.push(...(await addColumns(t.tab, t.headers)));
       }
+      if (job.extra) added.push(...(await addColumns(job.extra.tab, job.extra.names)));
       return NextResponse.json({ ok: true, tab: job.tabs.map((t) => t.tab).join(" · "), added });
     }
 

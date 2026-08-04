@@ -4,7 +4,7 @@
  * 권한은 시트의 `권한` 탭에서 읽는다. 코드에 박아넣지 않는다.
  * 대표님이 시트나 권한 설정 화면에서 바꾸면 즉시 반영된다.
  */
-import { getPermissions } from "./data";
+import { getPermissions, getStaffAll } from "./data";
 import type { Session } from "./session";
 import { MENUS, type MenuItem } from "./menuItems";
 
@@ -56,8 +56,29 @@ export async function abilitiesFor(roleCode: string): Promise<Map<string, Abilit
   return map;
 }
 
+/**
+ * 사람 한 명이 실제로 할 수 있는 것 — 직급 권한 + 그 사람에게 붙은 표시
+ *
+ * 수업을 맡는 사람은 직급으로 갈리지 않는다. 같은 직급에도 수업을 하는 사람과
+ * 안 하는 사람이 섞여 있다. 그래서 직원 관리에서 사람마다 「트레이너」를 체크하고,
+ * 체크된 사람에게 PT·수업을 열어준다.
+ *
+ * 더해주기만 하고 빼지 않는다. 직급으로 이미 열려 있는 것을 체크가 닫아버리면,
+ * 대표님이 권한 설정에서 정하신 것이 조용히 뒤집힌다.
+ * 남의 수업을 고치는 권한(수정·삭제)은 주지 않는다 — 그건 점장·대표 몫이다.
+ */
+export async function abilitiesForStaff(session: Session): Promise<Map<string, Ability>> {
+  const [ab, staff] = await Promise.all([abilitiesFor(session.roleCode), getStaffAll()]);
+  const me = staff.find((s) => s.id === session.staffId);
+  if (me?.trainer) {
+    const cur = ab.get("PT·수업") ?? NONE;
+    ab.set("PT·수업", { ...cur, view: true, create: true });
+  }
+  return ab;
+}
+
 export async function visibleMenus(session: Session): Promise<MenuItem[]> {
-  const ab = await abilitiesFor(session.roleCode);
+  const ab = await abilitiesForStaff(session);
   return MENUS.filter((m) => (ab.get(m.key) ?? NONE).view);
 }
 

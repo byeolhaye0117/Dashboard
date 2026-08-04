@@ -25,6 +25,8 @@ type Staff = {
   restMin: string;
   restVary: boolean;
   workDays: string;
+  /** 수업을 맡는 사람인가 — 직급과 별개로 사람마다 정한다 */
+  trainer: boolean;
 };
 
 type Named = { code: string; name: string };
@@ -392,6 +394,7 @@ function Detail({
     휴게분: item.restMin,
     휴게변동: item.restVary,
     근무요일: item.workDays,
+    트레이너: item.trainer,
   });
   const [picked, setPicked] = useState<string[]>(item.branches);
   const [msg, setMsg] = useState("");
@@ -516,6 +519,24 @@ function Detail({
           </L>
           <L label="담당 지점" full>
             <BranchPick branches={branches} picked={picked} onChange={setPicked} disabled={!editable} />
+          </L>
+        </div>
+
+        <h4 className="mini-title" style={{ marginTop: 20 }}>맡은 일</h4>
+        <div className="form-grid">
+          <L label="수업" full>
+            <label className="chk">
+              <input type="checkbox" checked={f.트레이너} disabled={!editable}
+                     onChange={(e) => setF({ ...f, 트레이너: e.target.checked })} />
+              <span>
+                <b>이 직원은 수업을 맡습니다 (트레이너)</b>
+                <em>
+                  체크하면 <b>PT · 수업</b> 메뉴를 쓸 수 있고, 시간표에 이 사람 줄이 생깁니다.
+                  직급과 상관없이 사람마다 정합니다. 남의 수업까지 고치는 것은 여전히
+                  점장 · 대표만 됩니다.
+                </em>
+              </span>
+            </label>
           </L>
         </div>
 
