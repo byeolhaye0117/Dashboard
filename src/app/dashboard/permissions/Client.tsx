@@ -10,7 +10,7 @@
  * 보기를 끄면 그 메뉴는 메뉴판에서 사라진다. 그래서 보기를 끄면 나머지도 같이 꺼진다.
  * 볼 수 없는 것을 고칠 수는 없기 때문이다.
  */
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 type Role = { code: string; name: string; scope: string };
 type Menu = { key: string; label: string; group: string };
@@ -174,8 +174,8 @@ export default function Client(p: Props) {
           </thead>
           <tbody>
             {groups.map((g) => (
-              <>
-                <tr key={g} className="sum-row">
+              <Fragment key={g}>
+                <tr className="sum-row">
                   <td colSpan={5}><span className="nm">{g}</span></td>
                 </tr>
                 {p.menus.filter((m) => m.group === g).map((m) => {
@@ -194,7 +194,7 @@ export default function Client(p: Props) {
                     </tr>
                   );
                 })}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>
