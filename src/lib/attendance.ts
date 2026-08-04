@@ -24,6 +24,7 @@ const T_COLS: ColumnSpec = {
   퇴근시각: { names: ["퇴근"] },
   근무구분: { names: ["구분", "근태구분"] },
   지각분: { names: ["지각(분)", "지각시간"] },
+  조퇴분: { names: ["조퇴(분)", "조퇴시간"] },
   메모: { names: ["비고"] },
   등록일시: { names: [] },
   등록자: { names: [] },
@@ -41,6 +42,7 @@ export type Attendance = {
   퇴근시각: string;
   근무구분: string;
   지각분: string;
+  조퇴분: string;
   메모: string;
   수정자: string;
 };
@@ -62,6 +64,7 @@ export async function listAttendance(): Promise<Attendance[]> {
       퇴근시각: get(r, cols, "퇴근시각"),
       근무구분: get(r, cols, "근무구분"),
       지각분: get(r, cols, "지각분"),
+      조퇴분: get(r, cols, "조퇴분"),
       메모: get(r, cols, "메모"),
       수정자: get(r, cols, "수정자"),
     });
@@ -157,8 +160,29 @@ export async function punchIn(
   return { time, kind, late };
 }
 
-/** 퇴근 찍기 — 출근 기록이 있어야 한다 */
-export async function punchOut(staffId: string): Promise<{ time: string }> {
+/**
+ * 일찍 갔는지 본다
+ *
+ * 기준 시각이 없으면 판정하지 않는다.
+ */
+export function judgeOut(punchOut: string, baseline: string): number {
+  const a = toMinutes(punchOut);
+  const b = toMinutes(baseline);
+  if (a === null || b === null || a >= b) return 0;
+  return b - a;
+}
+
+/**
+ * 퇴근 찍기 — 출근 기록이 있어야 한다
+ *
+ * 지각과 조퇴가 같은 날 겹칠 수 있다. 근무구분 칸은 하나뿐이라
+ * 더 무거운 쪽(지각)을 남기고, 분 단위는 두 칸에 각각 적어 둔다.
+ * 그래야 나중에 "지각이었는데 조퇴까지 했다"를 알 수 있다.
+ */
+export async function punchOut(
+  staffId: string,
+  outBaseline: string
+): Promise<{ time: string; early: number }> {
   const { headers, rows, rowNumbers } = await readSheet(SHEET_T);
   const cols = resolve(SHEET_T, headers, T_COLS);
   const day = today();
@@ -175,11 +199,23 @@ export async function punchOut(staffId: string): Promise<{ time: string }> {
 
   const stamp = now();
   const time = stamp.slice(11, 16);
+  const early = judgeOut(time, outBaseline);
+  const wasLate = get(rows[i], cols, "근무구분") === "지각";
+
   await updateRow(SHEET_T, rowNumbers[i], headers, {
     ...rows[i],
-    ...toSheetRow({ 퇴근시각: time, 수정일시: stamp, 수정자: staffId }, cols),
+    ...toSheetRow(
+      {
+        퇴근시각: time,
+        조퇴분: early > 0 ? String(early) : "",
+        근무구분: early > 0 && !wasLate ? "조퇴" : get(rows[i], cols, "근무구분"),
+        수정일시: stamp,
+        수정자: staffId,
+      },
+      cols
+    ),
   });
-  return { time };
+  return { time, early };
 }
 
 /**

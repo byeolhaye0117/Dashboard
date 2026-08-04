@@ -18,6 +18,9 @@ type Staff = {
   accountOn: boolean;
   hasPassword: boolean;
   temp: boolean;
+  /** 근태 기준 시각 — 비어 있으면 지각·조퇴를 판정하지 않는다 */
+  baseTime: string;
+  outTime: string;
 };
 
 type Named = { code: string; name: string };
@@ -380,6 +383,8 @@ function Detail({
     주소속지점: item.mainBranch,
     재직상태: item.status,
     계정사용: item.accountOn,
+    출근기준시각: item.baseTime,
+    퇴근기준시각: item.outTime,
   });
   const [picked, setPicked] = useState<string[]>(item.branches);
   const [msg, setMsg] = useState("");
@@ -506,6 +511,22 @@ function Detail({
             <BranchPick branches={branches} picked={picked} onChange={setPicked} disabled={!editable} />
           </L>
         </div>
+
+        <h4 className="mini-title" style={{ marginTop: 20 }}>근무 시각</h4>
+        <div className="form-grid">
+          <L label="출근">
+            <input className="input" type="time" value={f.출근기준시각} disabled={!editable}
+                   onChange={(e) => setF({ ...f, 출근기준시각: e.target.value })} />
+          </L>
+          <L label="퇴근">
+            <input className="input" type="time" value={f.퇴근기준시각} disabled={!editable}
+                   onChange={(e) => setF({ ...f, 퇴근기준시각: e.target.value })} />
+          </L>
+        </div>
+        <p className="stat-note">
+          이 시각을 넘겨 찍으면 <b>지각</b>, 이르게 퇴근하면 <b>조퇴</b>로 표시됩니다.
+          비워두면 시각만 기록하고 아무 판정도 하지 않습니다.
+        </p>
 
         {isSelf && (
           <p className="stat-note">
