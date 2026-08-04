@@ -4,6 +4,7 @@ import { abilitiesFor } from "@/lib/menu";
 import { addColumns, createSheet } from "@/lib/sheets";
 import { REFUND_COLUMNS } from "@/lib/refund";
 import { SHEET_T, T_HEADERS } from "@/lib/attendanceMeta";
+import { SHEET_L, SHEET_LA, L_HEADERS, LA_HEADERS } from "@/lib/lessonMeta";
 import { SHEET } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,8 @@ export const dynamic = "force-dynamic";
  */
 type Job =
   | { kind: "columns"; tab: string; names: string[] }
-  | { kind: "tab"; tab: string; headers: string[]; extra?: { tab: string; names: string[] } };
+  | { kind: "tab"; tab: string; headers: string[]; extra?: { tab: string; names: string[] } }
+  | { kind: "tabs"; tabs: { tab: string; headers: string[] }[] };
 
 const SETS: Record<string, Job> = {
   환불: { kind: "columns", tab: "결제", names: REFUND_COLUMNS },
@@ -26,6 +28,14 @@ const SETS: Record<string, Job> = {
     headers: T_HEADERS,
     // 지각을 판정하려면 직원마다 기준 시각이 있어야 한다
     extra: { tab: SHEET.직원, names: ["출근기준시각", "퇴근기준시각", "휴게분", "휴게변동", "근무요일"] },
+  },
+  // 수업 한 줄에 참석 여러 줄이 매달린다. 둘은 항상 같이 있어야 한다
+  수업: {
+    kind: "tabs",
+    tabs: [
+      { tab: SHEET_L, headers: L_HEADERS },
+      { tab: SHEET_LA, headers: LA_HEADERS },
+    ],
   },
 };
 
@@ -46,6 +56,16 @@ export async function POST(req: Request) {
     if (job.kind === "columns") {
       const added = await addColumns(job.tab, job.names);
       return NextResponse.json({ ok: true, tab: job.tab, added });
+    }
+
+    if (job.kind === "tabs") {
+      const added: string[] = [];
+      for (const t of job.tabs) {
+        const made = await createSheet(t.tab, t.headers);
+        if (made) added.push(`${t.tab} 탭`);
+        else added.push(...(await addColumns(t.tab, t.headers)));
+      }
+      return NextResponse.json({ ok: true, tab: job.tabs.map((t) => t.tab).join(" · "), added });
     }
 
     // 탭이 이미 있으면 모자란 칸만 채운다. 예전에 만든 탭도 이걸로 따라온다
