@@ -978,6 +978,23 @@ i.s6 { background: var(--s6); }
 .banner p { margin: 3px 0 0; color: var(--ink-2); font-size: 12.5px; }
 .banner .lead { color: var(--warn); flex: 0 0 18px; margin-top: 1px; }
 
+/* ── 목록에서 여러 명 고르기 ───────────────── */
+.pick-box {
+  width: 16px; height: 16px; margin: 0; cursor: pointer;
+  accent-color: var(--ink); vertical-align: middle;
+}
+/* 고른 줄 — 파랑 계열로 둔다. 붉은 기가 돌면 "잘못된 줄"로 읽힌다 */
+table.grid tr.is-picked > td { background: color-mix(in srgb, var(--s1) 9%, transparent); }
+
+/* 켜야 열리는 묶음 */
+.bulk-sec {
+  margin-top: 10px; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--bg);
+}
+.bulk-sec.on { background: var(--surface); border-color: var(--ink-2); }
+.bulk-sec .bulk-body { margin-top: 12px; }
+.bulk-sec .stat-note { margin-top: 8px; }
+
 /* ── 수업 시간표 ─────────────────────────── */
 .tt-wrap {
   overflow-x: auto; background: var(--surface);
@@ -1493,6 +1510,13 @@ table.cal td.cell .twice {
   border: 1px solid var(--line); border-radius: var(--r);
 }
 .save-bar .dim { flex: 1; font-size: 12.5px; }
+/* 왼쪽 글이 남는 자리를 먹고, 단추는 제 너비만 쓴다.
+   btn-primary 는 원래 화면 너비를 채우는 단추라 그대로 두면 띠를 통째로 삼킨다 */
+.save-bar > span { flex: 1; font-size: 12.5px; }
+.save-bar > button {
+  flex: 0 0 auto; width: auto; height: 40px; padding: 0 18px;
+  font-size: 13.5px; white-space: nowrap;
+}
 .perm-head .presets .mini-tab { white-space: nowrap; flex: 0 0 auto; }
 
 /* 근태표 : 원래 안 나오는 날 */

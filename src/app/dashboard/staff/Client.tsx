@@ -53,6 +53,9 @@ export default function Client(p: Props) {
   const [openNew, setOpenNew] = useState(false);
   const [detail, setDetail] = useState<Staff | null>(null);
   const [issued, setIssued] = useState<{ name: string; password: string } | null>(null);
+  /** 목록에서 고른 사람들 — 한 번에 바꾸기용 */
+  const [picked, setPicked] = useState<string[]>([]);
+  const [bulk, setBulk] = useState(false);
 
   const roleName = (c: string) => p.roles.find((r) => r.code === c)?.name ?? c;
   const branchName = (c: string) => p.branches.find((b) => b.code === c)?.name ?? c;
@@ -73,6 +76,19 @@ export default function Client(p: Props) {
       return true;
     });
   }, [p.items, tab, q]);
+
+  /** 지금 필터에 걸린 사람 중 고른 사람 — 필터를 바꿔도 고른 것은 남는다 */
+  const shown = list.map((s) => s.id);
+  const allOn = shown.length > 0 && shown.every((id) => picked.includes(id));
+
+  function toggleOne(id: string) {
+    setPicked((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]));
+  }
+  function toggleAll() {
+    setPicked((v) =>
+      allOn ? v.filter((id) => !shown.includes(id)) : [...new Set([...v, ...shown])]
+    );
+  }
 
   async function issue(id: string) {
     const res = await fetch("/api/staff/password", {
@@ -178,6 +194,12 @@ export default function Client(p: Props) {
           <table className="grid">
             <thead>
               <tr>
+                {p.can.update && (
+                  <th style={{ width: 34 }}>
+                    <input type="checkbox" className="pick-box" checked={allOn}
+                           onChange={toggleAll} aria-label="보이는 직원 모두 고르기" />
+                  </th>
+                )}
                 <th>이름</th>
                 <th>직급</th>
                 <th>소속</th>
@@ -189,7 +211,15 @@ export default function Client(p: Props) {
             </thead>
             <tbody>
               {list.map((s) => (
-                <tr key={s.id} onClick={() => setDetail(s)}>
+                <tr key={s.id} onClick={() => setDetail(s)}
+                    className={picked.includes(s.id) ? "is-picked" : ""}>
+                  {p.can.update && (
+                    // 고르는 칸을 눌렀을 때 상세가 열리면 안 된다
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" className="pick-box" checked={picked.includes(s.id)}
+                             onChange={() => toggleOne(s.id)} aria-label={`${s.name} 고르기`} />
+                    </td>
+                  )}
                   <td className="strong">
                     {s.name}
                     {s.id === p.me && <span className="auto-tag">본인</span>}
@@ -221,6 +251,29 @@ export default function Client(p: Props) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {p.can.update && picked.length > 0 && (
+        <div className="save-bar">
+          <span>
+            <b>{picked.length}명</b> 골랐습니다
+          </span>
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setPicked([])}>
+            고른 것 지우기
+          </button>
+          <button className="btn-primary" style={{ marginTop: 0 }} onClick={() => setBulk(true)}>
+            한 번에 바꾸기
+          </button>
+        </div>
+      )}
+
+      {bulk && (
+        <BulkForm
+          names={picked.map((id) => p.items.find((s) => s.id === id)?.name ?? id)}
+          ids={picked}
+          branches={p.branches}
+          onClose={() => setBulk(false)}
+        />
       )}
 
       {issued && <IssuedBox {...issued} onClose={() => setIssued(null)} />}
@@ -628,6 +681,231 @@ function Detail({
 }
 
 /* ── 담당 지점 고르기 ──────────────────────── */
+/**
+ * 여러 명을 한 번에 바꾸기
+ *
+ * 항목마다 「이 항목 바꾸기」를 켠 것만 보낸다.
+ * 화면에 보이는 값을 전부 보내면, 손대지 않은 칸이 빈 값으로 덮어써진다.
+ * 여러 명을 한꺼번에 다루는 자리라 그 사고가 여러 명분으로 커진다.
+ *
+ * 직급은 여기 없다. 여러 명의 권한이 한 번에 바뀌는 것은 되돌리기 어려워서,
+ * 직급은 한 명씩 열어 바꾸게 두었다.
+ */
+function BulkForm({ names, ids, branches, onClose }: {
+  names: string[];
+  ids: string[];
+  branches: Named[];
+  onClose: () => void;
+}) {
+  const [on, setOn] = useState({ 트레이너: false, 근무: false, 지점: false, 상태: false });
+  const [f, setF] = useState({
+    트레이너: true,
+    출근기준시각: "",
+    퇴근기준시각: "",
+    휴게분: "",
+    휴게변동: false,
+    근무요일: "",
+    주소속지점: "",
+    담당지점: [] as string[],
+    재직상태: "재직중",
+    계정사용: true,
+  });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [result, setResult] = useState<{ done: string[]; failed: { name: string; why: string }[] } | null>(null);
+
+  const nothing = !on.트레이너 && !on.근무 && !on.지점 && !on.상태;
+
+  async function save() {
+    if (nothing) return setMsg("바꿀 항목을 하나 이상 켜주세요.");
+    setBusy(true);
+    setMsg("");
+
+    const changes: Record<string, any> = {};
+    if (on.트레이너) changes.트레이너 = f.트레이너;
+    if (on.근무) {
+      changes.출근기준시각 = f.출근기준시각;
+      changes.퇴근기준시각 = f.퇴근기준시각;
+      changes.휴게변동 = f.휴게변동;
+      changes.휴게분 = f.휴게변동 ? "" : f.휴게분;
+      changes.근무요일 = f.근무요일;
+    }
+    if (on.지점) {
+      if (f.주소속지점) changes.주소속지점 = f.주소속지점;
+      changes.담당지점 = f.담당지점;
+    }
+    if (on.상태) {
+      changes.재직상태 = f.재직상태;
+      changes.계정사용 = f.계정사용;
+    }
+
+    try {
+      const res = await fetch("/api/staff/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, changes }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "저장하지 못했습니다.");
+      setResult({ done: data.done ?? [], failed: data.failed ?? [] });
+      if ((data.failed ?? []).length === 0) setTimeout(() => location.reload(), 900);
+    } catch (e: any) {
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <div className="modal-back" onClick={() => location.reload()}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <h3>{result.done.length}명을 바꿨습니다</h3>
+          {result.done.length > 0 && (
+            <p className="page-sub" style={{ margin: "0 0 12px" }}>{result.done.join(" · ")}</p>
+          )}
+          {result.failed.length > 0 && (
+            <>
+              <div className="alert-bad" style={{ lineHeight: 1.7 }}>
+                <b>{result.failed.length}명은 바뀌지 않았습니다</b>
+              </div>
+              <div className="lwrap" style={{ marginTop: 10 }}>
+                {result.failed.map((x) => (
+                  <div className="jrow" key={x.name}>
+                    <div className="jtop"><b>{x.name}</b><span>{x.why}</span></div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="modal-actions">
+            <button className="btn-primary" style={{ marginTop: 0 }} onClick={() => location.reload()}>
+              확인
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{ids.length}명 한 번에 바꾸기</h3>
+        <p className="page-sub" style={{ margin: "0 0 4px" }}>{names.join(" · ")}</p>
+        <p className="stat-note" style={{ marginTop: 8 }}>
+          <b>켠 항목만</b> 바뀝니다. 끈 항목은 사람마다 지금 값 그대로 둡니다.
+          직급은 여기서 못 바꿉니다 — 여러 명의 권한이 한 번에 바뀌면 되돌리기 어렵습니다.
+        </p>
+
+        <BulkSection label="수업 (트레이너)" on={on.트레이너}
+                     onToggle={(v) => setOn({ ...on, 트레이너: v })}>
+          <div className="pick-row">
+            <button className={`mini-tab${f.트레이너 ? " on" : ""}`}
+                    onClick={() => setF({ ...f, 트레이너: true })}>트레이너로 켜기</button>
+            <button className={`mini-tab${f.트레이너 ? "" : " on"}`}
+                    onClick={() => setF({ ...f, 트레이너: false })}>끄기</button>
+          </div>
+        </BulkSection>
+
+        <BulkSection label="근무 시각 · 휴게 · 요일" on={on.근무}
+                     onToggle={(v) => setOn({ ...on, 근무: v })}>
+          <div className="form-grid">
+            <L label="출근">
+              <input className="input" type="time" value={f.출근기준시각}
+                     onChange={(e) => setF({ ...f, 출근기준시각: e.target.value })} />
+            </L>
+            <L label="퇴근">
+              <input className="input" type="time" value={f.퇴근기준시각}
+                     onChange={(e) => setF({ ...f, 퇴근기준시각: e.target.value })} />
+            </L>
+            {!f.휴게변동 && (
+              <L label="휴게 (분)">
+                <input className="input" inputMode="numeric" placeholder="0" value={f.휴게분}
+                       onChange={(e) => setF({ ...f, 휴게분: e.target.value.replace(/[^0-9]/g, "") })} />
+              </L>
+            )}
+            <L label="근무 요일" full>
+              <DayPick value={f.근무요일} onChange={(v) => setF({ ...f, 근무요일: v })} />
+            </L>
+            <L label="휴게 방식" full>
+              <label className="chk">
+                <input type="checkbox" checked={f.휴게변동}
+                       onChange={(e) => setF({ ...f, 휴게변동: e.target.checked })} />
+                <span><b>휴게 시간이 날마다 다릅니다</b></span>
+              </label>
+            </L>
+          </div>
+        </BulkSection>
+
+        <BulkSection label="지점" on={on.지점} onToggle={(v) => setOn({ ...on, 지점: v })}>
+          <div className="form-grid">
+            <L label="주 소속" full>
+              <select className="select" value={f.주소속지점}
+                      onChange={(e) => setF({ ...f, 주소속지점: e.target.value })}>
+                <option value="">바꾸지 않음</option>
+                {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+              </select>
+            </L>
+            <L label="담당 지점" full>
+              <BranchPick branches={branches} picked={f.담당지점}
+                          onChange={(v) => setF({ ...f, 담당지점: v })} />
+            </L>
+          </div>
+          <p className="stat-note">담당 지점은 <b>고른 것으로 덮어씁니다.</b> 지금 담당하던 지점은 사라집니다.</p>
+        </BulkSection>
+
+        <BulkSection label="재직 상태 · 계정" on={on.상태} onToggle={(v) => setOn({ ...on, 상태: v })}>
+          <div className="form-grid">
+            <L label="재직 상태">
+              <select className="select" value={f.재직상태}
+                      onChange={(e) => setF({ ...f, 재직상태: e.target.value })}>
+                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </L>
+            <L label="계정 사용">
+              <select className="select" value={f.계정사용 ? "Y" : "N"}
+                      onChange={(e) => setF({ ...f, 계정사용: e.target.value === "Y" })}>
+                <option value="Y">사용</option>
+                <option value="N">중지</option>
+              </select>
+            </L>
+          </div>
+          <p className="stat-note">본인 계정과 마지막 대표 계정은 서버에서 막습니다.</p>
+        </BulkSection>
+
+        {msg && <div className="alert-bad" style={{ marginTop: 12 }}>{msg}</div>}
+
+        <div className="modal-actions">
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={onClose}>취소</button>
+          <button className="btn-primary" style={{ marginTop: 0 }} disabled={busy || nothing}
+                  onClick={save}>
+            {busy ? "저장 중…" : `${ids.length}명 저장`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 켜야 열리는 묶음 — 끄면 그 항목은 아예 보내지 않는다 */
+function BulkSection({ label, on, onToggle, children }: {
+  label: string;
+  on: boolean;
+  onToggle: (v: boolean) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`bulk-sec${on ? " on" : ""}`}>
+      <label className="chk">
+        <input type="checkbox" checked={on} onChange={(e) => onToggle(e.target.checked)} />
+        <span><b>{label}</b></span>
+      </label>
+      {on && <div className="bulk-body">{children}</div>}
+    </div>
+  );
+}
+
 function BranchPick({
   branches, picked, onChange, disabled,
 }: {
@@ -666,7 +944,7 @@ function BranchPick({
  */
 function DayPick({ value, disabled, onChange }: {
   value: string;
-  disabled: boolean;
+  disabled?: boolean;
   onChange: (v: string) => void;
 }) {
   /** 시트에 적히는 차례를 월요일부터로 맞춘다 — 사람이 읽는 차례다 */
