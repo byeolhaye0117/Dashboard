@@ -7,11 +7,13 @@
  * 회차 차감은 "수업"이 아니라 "참석"에서 일어난다.
  * 그룹수업은 한 수업에서도 온 사람과 안 온 사람이 갈리기 때문이다.
  */
-import { readSheet, appendRow, appendRows, updateRow } from "./sheets";
+import { readSheet, appendRow, appendRows, updateRow, addColumns } from "./sheets";
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now } from "./time";
-import { patchTicket, listTickets } from "./members";
-import { SHEET_L, SHEET_LA, usesCount, normalizeTime, KIND_PT } from "./lessonMeta";
+import { patchTicket, listTickets, listMembers } from "./members";
+import { getProducts } from "./data";
+import { readProduct } from "./productMeta";
+import { SHEET_L, SHEET_LA, usesCount, normalizeTime, toMinutes, KIND_PT } from "./lessonMeta";
 
 export { SHEET_L, SHEET_LA } from "./lessonMeta";
 
@@ -42,6 +44,11 @@ const LA_COLS: ColumnSpec = {
   진행상태: { names: ["상태", "출결"] },
   차감회차: { names: ["차감", "사용회차"] },
   메모: { names: ["비고"] },
+  판매트레이너사번: { names: ["판매자", "판매트레이너"] },
+  이용권금액: { names: ["결제금액"] },
+  총회차: { names: ["이용권총회차"] },
+  결제회차: { names: ["상품결제회차"] },
+  완료일시: { names: ["완료시각"] },
   등록일시: { names: [] },
   등록자: { names: [] },
   수정일시: { names: [] },
@@ -71,6 +78,13 @@ export type Join = {
   진행상태: string;
   차감회차: number;
   메모: string;
+  /** 이 이용권을 판 사람 — 수업을 한 사람과 다를 수 있다 (대타) */
+  판매트레이너사번: string;
+  /** 완료로 찍는 순간의 이용권 값. 나중에 가격이 바뀌어도 지난 정산은 안 흔들린다 */
+  이용권금액: number;
+  총회차: number;
+  결제회차: number;
+  완료일시: string;
 };
 
 const int = (v: string, d = 0) => {
@@ -125,10 +139,75 @@ export async function listLessons(): Promise<{ lessons: Lesson[]; joins: Join[] 
       진행상태: get(r, ac, "진행상태") || "예정",
       차감회차: int(get(r, ac, "차감회차")),
       메모: get(r, ac, "메모"),
+      판매트레이너사번: get(r, ac, "판매트레이너사번"),
+      이용권금액: int(get(r, ac, "이용권금액")),
+      총회차: int(get(r, ac, "총회차")),
+      결제회차: int(get(r, ac, "결제회차")),
+      완료일시: get(r, ac, "완료일시"),
     });
   });
 
   return { lessons, joins };
+}
+
+/**
+ * 두 수업이 시간이 겹치는가
+ *
+ * 끝시각과 다음 시작시각이 같은 것은 겹친 것이 아니다 (10:00~11:00 과 11:00~12:00).
+ * 시각이 안 적힌 수업은 겹침을 따지지 않는다 — 모르는 것을 막으면 아무것도 못 넣는다.
+ */
+function overlaps(aFrom: string, aTo: string, bFrom: string, bTo: string): boolean {
+  const a1 = toMinutes(aFrom);
+  const b1 = toMinutes(bFrom);
+  if (a1 === null || b1 === null) return false;
+  const a2 = toMinutes(aTo) ?? a1 + 1;
+  const b2 = toMinutes(bTo) ?? b1 + 1;
+  return a1 < b2 && b1 < a2;
+}
+
+/**
+ * 같은 시간에 두 번 잡히는 것을 막는다
+ *
+ * 정산은 "수업 한 줄 = 실제로 있었던 수업 하나"를 믿고 센다.
+ * 겹친 줄을 그냥 두면 없던 수업이 회차와 수당으로 잡힌다. 넣을 때 막는 편이
+ * 나중에 찾아 지우는 것보다 훨씬 싸다.
+ *
+ * skipId 는 자기 자신 — 시간을 옮길 때 자기와 겹친다고 막으면 안 된다.
+ */
+async function checkClash(
+  next: { 트레이너사번: string; 날짜: string; 시작시각: string; 종료시각: string },
+  members: string[],
+  skipId: string,
+  nameOf: Map<string, string>
+): Promise<void> {
+  const { lessons, joins } = await listLessons();
+  const sameDay = lessons.filter(
+    (l) => l.날짜 === next.날짜 && l.id !== skipId && l.진행상태 !== "취소"
+  );
+
+  const hit = sameDay.filter((l) =>
+    overlaps(next.시작시각, next.종료시각, l.시작시각, l.종료시각)
+  );
+  if (hit.length === 0) return;
+
+  const mine = hit.find((l) => l.트레이너사번 === next.트레이너사번);
+  if (mine) {
+    throw new Error(
+      `이 트레이너는 ${mine.시작시각}~${mine.종료시각} 에 이미 수업이 있습니다. 시간을 겹쳐 잡을 수 없습니다.`
+    );
+  }
+
+  const busy = new Set(members);
+  for (const l of hit) {
+    for (const j of joins) {
+      if (j.수업번호 !== l.id) continue;
+      if (j.진행상태 === "취소") continue;
+      if (!busy.has(j.회원번호)) continue;
+      throw new Error(
+        `${nameOf.get(j.회원번호) ?? j.회원번호} 님은 ${l.시작시각}~${l.종료시각} 에 이미 다른 수업이 있습니다.`
+      );
+    }
+  }
 }
 
 export type NewLesson = {
@@ -175,6 +254,18 @@ export async function createLesson(input: NewLesson, byId: string): Promise<stri
     }
   });
 
+  await checkClash(
+    {
+      트레이너사번: input.트레이너사번,
+      날짜: input.날짜,
+      시작시각: input.시작시각,
+      종료시각: input.종료시각,
+    },
+    input.members.map((m) => m.회원번호),
+    "",
+    await memberNames()
+  );
+
   const l = await readSheet(SHEET_L);
   const lc = resolve(SHEET_L, l.headers, L_COLS);
   const id = nextId("L", 6, l.rows.map((r) => get(r, lc, "수업번호")));
@@ -195,12 +286,16 @@ export async function createLesson(input: NewLesson, byId: string): Promise<stri
     ...stamp,
   }, lc));
 
-  const a = await readSheet(SHEET_LA);
+  const preA = await readSheet(SHEET_LA);
+  const grewA = await ensurePayColumns(preA.headers);
+  const a = grewA ? await readSheet(SHEET_LA) : preA;
   const ac = resolve(SHEET_LA, a.headers, LA_COLS);
   // 한 번에 여러 줄을 넣으므로 번호를 미리 세어둔다 (LA000007, LA000008 …)
   const seed = nextId("LA", 6, a.rows.map((r) => get(r, ac, "참석번호")));
   const base = Number(seed.slice(2));
   await appendRows(SHEET_LA, a.headers, input.members.map((m, i) => {
+    // 판 사람은 잡을 때 박아둔다. 나중에 이용권의 담당이 바뀌어도 지난 정산은 안 흔들린다
+    const t = byTicket.get(m.이용권번호);
     return toSheetRow({
       참석번호: "LA" + String(base + i).padStart(6, "0"),
       수업번호: id,
@@ -209,6 +304,7 @@ export async function createLesson(input: NewLesson, byId: string): Promise<stri
       진행상태: "예정",
       차감회차: "0",
       메모: "",
+      판매트레이너사번: t?.담당트레이너사번 ?? "",
       ...stamp,
     }, ac);
   }));
@@ -223,7 +319,9 @@ export async function createLesson(input: NewLesson, byId: string): Promise<stri
  * 되돌리면 정확히 그만큼만 돌려준다. 잘못 찍어도 되돌릴 수 있다.
  */
 export async function setJoinState(joinId: string, state: string, byId: string): Promise<void> {
-  const a = await readSheet(SHEET_LA);
+  const pre = await readSheet(SHEET_LA);
+  const grew = await ensurePayColumns(pre.headers);
+  const a = grew ? await readSheet(SHEET_LA) : pre;
   const ac = resolve(SHEET_LA, a.headers, LA_COLS);
   const i = a.rows.findIndex((r) => get(r, ac, "참석번호") === joinId);
   if (i < 0) throw new Error("해당 참석 기록을 찾지 못했습니다.");
@@ -234,6 +332,16 @@ export async function setJoinState(joinId: string, state: string, byId: string):
   const should = usesCount(state) ? 1 : 0;
   const delta = should - already;
 
+  /*
+   * 수업료를 계산할 때 쓸 값을 완료로 찍는 순간에 박아둔다
+   *
+   * 계산할 때 이용권을 다시 읽으면, 그 사이에 가격이 바뀌거나 이용권이 지워졌을 때
+   * 지난달 정산 결과가 조용히 달라진다. 정산은 "그때 그랬다"가 남아야 한다.
+   * 단가를 여기서 계산하지 않고 재료(금액 · 총회차 · 결제회차)만 남기는 이유는,
+   * 서비스 회차를 단가에 넣을지 아직 정하지 않았기 때문이다. 어느 쪽으로 정하든
+   * 이 세 값이면 나중에 계산할 수 있다.
+   */
+  const snap: Record<string, string> = {};
   if (delta !== 0 && ticket) {
     const tickets = await listTickets();
     const t = tickets.find((x) => x.id === ticket);
@@ -243,6 +351,21 @@ export async function setJoinState(joinId: string, state: string, byId: string):
       throw new Error("남은 횟수가 없어 완료로 바꿀 수 없습니다. 이용권을 먼저 확인해주세요.");
     }
     await patchTicket(ticket, { 잔여횟수: String(Math.max(0, left - delta)) }, byId);
+
+    if (should > 0) {
+      const products = await getProducts();
+      const p = products.find((x) => x.code === t.상품코드);
+      const meta = p ? readProduct(p) : null;
+      snap.이용권금액 = String(int(t.금액));
+      snap.총회차 = String(int(t.총횟수) || meta?.count || 0);
+      // 결제회차 = 돈을 낸 만큼. 서비스로 얹어준 회차는 뺀다
+      snap.결제회차 = String(payCount(p) || int(t.총횟수) || 0);
+      snap.완료일시 = now();
+      if (!get(row, ac, "판매트레이너사번")) snap.판매트레이너사번 = t.담당트레이너사번 ?? "";
+    } else {
+      // 되돌리면 그때 박아둔 값도 지운다. 남겨두면 안 한 수업이 정산에 잡힌다
+      snap.완료일시 = "";
+    }
   }
 
   await updateRow(SHEET_LA, a.rowNumbers[i], a.headers, {
@@ -250,10 +373,42 @@ export async function setJoinState(joinId: string, state: string, byId: string):
     ...toSheetRow({
       진행상태: state,
       차감회차: String(should),
+      ...snap,
       수정일시: now(),
       수정자: byId,
     }, ac),
   });
+}
+
+/** 상품에서 "돈 낸 회차"를 꺼낸다. 못 찾으면 0 */
+function payCount(product: any): number {
+  if (!product) return 0;
+  const meta = readProduct(product);
+  const paid = Number((product["결제횟수"] ?? "").toString().replace(/[^0-9]/g, ""));
+  if (Number.isFinite(paid) && paid > 0) return paid;
+  return meta.count;
+}
+
+/**
+ * 정산에 쓰는 칸이 없으면 만든다
+ *
+ * 이 칸들은 뒤늦게 생긴 것이라, 먼저 만든 시트에는 없다. 없는 칸에 적으면
+ * 조용히 사라진다 — 저장은 된 것처럼 보이는데 정산할 때 값이 비어 있다.
+ * 돈이 걸린 값이라 조용히 잃는 쪽이 제일 나쁘다.
+ */
+const PAY_COLUMNS = ["판매트레이너사번", "이용권금액", "총회차", "결제회차", "완료일시"];
+
+async function ensurePayColumns(headers: string[]): Promise<boolean> {
+  const missing = PAY_COLUMNS.filter((c) => !headers.includes(c));
+  if (missing.length === 0) return false;
+  await addColumns(SHEET_LA, missing);
+  return true;
+}
+
+/** 겹침을 알릴 때 회원 이름을 쓰려면 이름표가 필요하다 */
+async function memberNames(): Promise<Map<string, string>> {
+  const { items } = await listMembers();
+  return new Map(items.map((m) => [m.id, m.이름]));
 }
 
 /** 수업 자체를 고친다 (시간 옮기기 · 메모 · 취소) */
@@ -270,6 +425,24 @@ export async function patchLesson(
   const next = { ...changes };
   if (next.시작시각) next.시작시각 = normalizeTime(next.시작시각);
   if (next.종료시각) next.종료시각 = normalizeTime(next.종료시각);
+
+  // 시간을 옮길 때도 겹침을 본다. 잡을 때만 막으면 옮겨서 겹치게 만들 수 있다
+  const moved = next.날짜 || next.시작시각 || next.종료시각 || next.트레이너사번;
+  if (moved) {
+    const cur = l.rows[i];
+    const { joins } = await listLessons();
+    await checkClash(
+      {
+        트레이너사번: next.트레이너사번 || get(cur, lc, "트레이너사번"),
+        날짜: (next.날짜 || get(cur, lc, "날짜")).slice(0, 10),
+        시작시각: next.시작시각 || normalizeTime(get(cur, lc, "시작시각")),
+        종료시각: next.종료시각 || normalizeTime(get(cur, lc, "종료시각")),
+      },
+      joins.filter((j) => j.수업번호 === id && j.진행상태 !== "취소").map((j) => j.회원번호),
+      id,
+      await memberNames()
+    );
+  }
 
   await updateRow(SHEET_L, l.rowNumbers[i], l.headers, {
     ...l.rows[i],
