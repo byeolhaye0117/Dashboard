@@ -21,6 +21,7 @@ type Staff = {
   /** 근태 기준 시각 — 비어 있으면 지각·조퇴를 판정하지 않는다 */
   baseTime: string;
   outTime: string;
+  restMin: string;
 };
 
 type Named = { code: string; name: string };
@@ -385,6 +386,7 @@ function Detail({
     계정사용: item.accountOn,
     출근기준시각: item.baseTime,
     퇴근기준시각: item.outTime,
+    휴게분: item.restMin,
   });
   const [picked, setPicked] = useState<string[]>(item.branches);
   const [msg, setMsg] = useState("");
@@ -522,10 +524,18 @@ function Detail({
             <input className="input" type="time" value={f.퇴근기준시각} disabled={!editable}
                    onChange={(e) => setF({ ...f, 퇴근기준시각: e.target.value })} />
           </L>
+          <L label="휴게 (분)">
+            <input className="input" inputMode="numeric" placeholder="0" value={f.휴게분}
+                   disabled={!editable}
+                   onChange={(e) => setF({ ...f, 휴게분: e.target.value.replace(/[^0-9]/g, "") })} />
+          </L>
         </div>
         <p className="stat-note">
           이 시각을 넘겨 찍으면 <b>지각</b>, 이르게 퇴근하면 <b>조퇴</b>로 표시됩니다.
           비워두면 시각만 기록하고 아무 판정도 하지 않습니다.
+          <br />
+          휴게는 일한 시간에서 자동으로 뺍니다. 날마다 다른 분은 비워두고
+          근태 화면에서 <b>휴게 시작 · 끝</b>을 찍으면 그 값이 우선합니다.
         </p>
 
         {isSelf && (

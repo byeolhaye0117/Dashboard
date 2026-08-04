@@ -1285,3 +1285,15 @@ table.grid .late { color: var(--bad); font-weight: 800; }
   font-size: 11px; color: var(--muted);
   font-variant-numeric: tabular-nums; letter-spacing: .02em;
 }
+
+/* 근태 : 휴게 버튼과 회차 표시 */
+.btn-ghost.tall { height: 48px; padding: 0 18px; border-radius: var(--r); }
+.pk-act { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pk-time { flex-wrap: wrap; gap: 16px 22px; }
+.pk-time > div b { font-size: 17px; white-space: nowrap; }
+
+/* 하루에 두 번 나온 날 */
+table.cal td.cell .twice {
+  display: inline-block; margin-left: 1px; vertical-align: super;
+  font-size: 8.5px; font-style: normal; color: var(--muted); font-weight: 800;
+}

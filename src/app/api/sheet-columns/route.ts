@@ -25,7 +25,7 @@ const SETS: Record<string, Job> = {
     tab: SHEET_T,
     headers: T_HEADERS,
     // 지각을 판정하려면 직원마다 기준 시각이 있어야 한다
-    extra: { tab: SHEET.직원, names: ["출근기준시각", "퇴근기준시각"] },
+    extra: { tab: SHEET.직원, names: ["출근기준시각", "퇴근기준시각", "휴게분"] },
   },
 };
 
@@ -48,12 +48,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, tab: job.tab, added });
     }
 
+    // 탭이 이미 있으면 모자란 칸만 채운다. 예전에 만든 탭도 이걸로 따라온다
     const made = await createSheet(job.tab, job.headers);
+    const grown = made ? [] : await addColumns(job.tab, job.headers);
     const added = job.extra ? await addColumns(job.extra.tab, job.extra.names) : [];
     return NextResponse.json({
       ok: true,
       tab: job.tab,
-      added: [...(made ? [`${job.tab} 탭`] : []), ...added],
+      added: [...(made ? [`${job.tab} 탭`] : grown), ...added],
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "만들지 못했습니다." }, { status: 500 });

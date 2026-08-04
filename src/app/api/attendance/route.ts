@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import { getStaffAll, getStaffBranches } from "@/lib/data";
-import { punchIn, punchOut, patchAttendance } from "@/lib/attendance";
+import { punchIn, punchOut, breakToggle, patchAttendance } from "@/lib/attendance";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const action = body.action as string;
 
-    if (action === "in" || action === "out") {
+    if (action === "in" || action === "out" || action === "break-in" || action === "break-out") {
       const ab = await abilitiesFor(session.roleCode);
       if (!ab.get("근태")?.view) {
         return NextResponse.json({ error: "근태를 쓸 수 없는 계정입니다." }, { status: 403 });
@@ -28,6 +28,11 @@ export async function POST(req: Request) {
 
       const staff = await getStaffAll();
       const me = staff.find((s) => s.id === session.staffId);
+
+      if (action === "break-in" || action === "break-out") {
+        const r = await breakToggle(session.staffId, action === "break-in");
+        return NextResponse.json({ ok: true, ...r });
+      }
 
       if (action === "out") {
         const r = await punchOut(session.staffId, me?.outTime ?? "");
@@ -45,7 +50,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "근태를 고칠 권한이 없습니다." }, { status: 403 });
       }
 
-      const { 사번, 날짜, changes } = body;
+      const { 사번, 날짜, 회차, changes } = body;
       if (!사번 || !날짜) {
         return NextResponse.json({ error: "직원과 날짜가 필요합니다." }, { status: 400 });
       }
@@ -62,7 +67,7 @@ export async function POST(req: Request) {
       }
 
       await patchAttendance(
-        { 사번, 날짜, 지점코드: where[0] ?? "" },
+        { 사번, 날짜, 지점코드: where[0] ?? "", 회차: Number(회차) || 1 },
         changes ?? {},
         session.staffId
       );

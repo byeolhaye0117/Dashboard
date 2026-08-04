@@ -32,6 +32,7 @@ export type AdminStaff = {
   /** 근태 기준 시각 — 비어 있으면 지각·조퇴를 판정하지 않는다 */
   baseTime: string;
   outTime: string;
+  restMin: string;
   rowNumber: number;
 };
 
@@ -79,6 +80,7 @@ export async function listStaffAdmin(): Promise<{
       temp: yes(r[TEMP_COLUMN] ?? ""),
       baseTime: (r["출근기준시각"] ?? "").trim(),
       outTime: (r["퇴근기준시각"] ?? "").trim(),
+      restMin: (r["휴게분"] ?? "").trim(),
       rowNumber: staffSheet.rowNumbers[i],
     });
   });
@@ -167,6 +169,7 @@ export async function patchStaff(
     담당지점?: string[];
     출근기준시각?: string;
     퇴근기준시각?: string;
+    휴게분?: string;
   },
   byId: string
 ): Promise<void> {
@@ -188,6 +191,7 @@ export async function patchStaff(
   const times: Array<[string, string | undefined]> = [
     ["출근기준시각", changes.출근기준시각],
     ["퇴근기준시각", changes.퇴근기준시각],
+    ["휴게분", changes.휴게분],
   ];
   for (const [col, v] of times) {
     if (v === undefined) continue;

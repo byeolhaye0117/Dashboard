@@ -40,6 +40,8 @@ export type Staff = {
   baseTime: string;
   /** 퇴근 기준 시각 "18:00" — 비어 있으면 조퇴 판정을 하지 않는다 */
   outTime: string;
+  /** 고정 휴게 분 — 그날 찍은 휴게가 없을 때만 이 값을 뺀다 */
+  restMin: string;
   /** 시트에서 이 직원이 몇 번째 줄인지 (비밀번호를 고칠 때 쓴다) */
   rowNumber: number;
 };
@@ -111,6 +113,7 @@ export async function getStaffAll(): Promise<Staff[]> {
       active: yes(r["계정사용"] || "Y") && (r["재직상태"] ?? "재직중") === "재직중",
       baseTime: (r["출근기준시각"] ?? "").trim(),
       outTime: (r["퇴근기준시각"] ?? "").trim(),
+      restMin: (r["휴게분"] ?? "").trim(),
       rowNumber: rowNumbers[i],
     });
   });

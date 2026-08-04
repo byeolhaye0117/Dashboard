@@ -66,6 +66,7 @@ export async function POST(req: Request) {
         담당지점: Array.isArray(c.담당지점) ? c.담당지점.map(String) : undefined,
         출근기준시각: c.출근기준시각 === undefined ? undefined : String(c.출근기준시각),
         퇴근기준시각: c.퇴근기준시각 === undefined ? undefined : String(c.퇴근기준시각),
+        휴게분: c.휴게분 === undefined ? undefined : String(c.휴게분),
       },
       g.session.staffId
     );
