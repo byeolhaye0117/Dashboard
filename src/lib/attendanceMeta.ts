@@ -31,14 +31,37 @@ export const KIND_MARK: Record<string, string> = {
   정상: "○", 지각: "지", 조퇴: "조", 결근: "결", 휴무: "휴", 연차: "연", 반차: "반",
 };
 
+/**
+ * 시각을 "HH:MM" 한 가지 모양으로 맞춘다
+ *
+ * 구글 시트는 06:00 을 시각 값으로 바꿔버려서, 읽을 때 "오전 6:00:00" 이나
+ * "6:00:00 AM" 처럼 돌아온다. 그대로 두면 시각 입력칸이 못 읽어 빈칸으로 보이고,
+ * 쓰는 분 눈에는 값이 사라진 것처럼 된다. 어떤 모양으로 오든 여기서 되돌린다.
+ */
+export function normalizeTime(v: string): string {
+  const raw = (v ?? "").trim();
+  if (!raw) return "";
+
+  const pm = /오후|PM/i.test(raw);
+  const am = /오전|AM/i.test(raw);
+  const m = raw.match(/(\d{1,2}):(\d{2})/);
+  if (!m) return "";
+
+  let h = Number(m[1]);
+  const i = Number(m[2]);
+  if (!Number.isFinite(h) || i > 59) return "";
+  if (pm && h < 12) h += 12;
+  if (am && h === 12) h = 0;
+  if (h > 23) return "";
+
+  return `${String(h).padStart(2, "0")}:${String(i).padStart(2, "0")}`;
+}
+
 /** "09:30" → 570분. 못 읽으면 null */
 export function toMinutes(hhmm: string): number | null {
-  const m = (hhmm ?? "").trim().match(/^(\d{1,2}):(\d{2})/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const i = Number(m[2]);
-  if (h > 23 || i > 59) return null;
-  return h * 60 + i;
+  const t = normalizeTime(hhmm);
+  if (!t) return null;
+  return Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 }
 
 /** 90 → "1시간 30분" */

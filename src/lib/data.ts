@@ -4,6 +4,7 @@
  * 화면 코드는 시트 구조를 몰라도 되도록, 여기서만 시트 이름과 칸 이름을 다룬다.
  */
 import { readSheet, alive, Row } from "./sheets";
+import { normalizeTime } from "./attendanceMeta";
 
 export const SHEET = {
   지점: "지점",
@@ -111,8 +112,8 @@ export async function getStaffAll(): Promise<Staff[]> {
       temp: yes(r["비밀번호임시"] ?? ""),
       status: r["재직상태"] ?? "재직중",
       active: yes(r["계정사용"] || "Y") && (r["재직상태"] ?? "재직중") === "재직중",
-      baseTime: (r["출근기준시각"] ?? "").trim(),
-      outTime: (r["퇴근기준시각"] ?? "").trim(),
+      baseTime: normalizeTime(r["출근기준시각"] ?? ""),
+      outTime: normalizeTime(r["퇴근기준시각"] ?? ""),
       restMin: (r["휴게분"] ?? "").trim(),
       rowNumber: rowNumbers[i],
     });
