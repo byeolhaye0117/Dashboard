@@ -6,7 +6,7 @@
  */
 import bcrypt from "bcryptjs";
 import { randomInt } from "node:crypto";
-import { readSheet, appendRow, updateRow, updateCell, type Row } from "./sheets";
+import { readSheet, appendRow, updateRow, updateCell, addColumns, type Row } from "./sheets";
 import { SHEET } from "./data";
 import { now } from "./time";
 import { formatPhone } from "./phone";
@@ -173,7 +173,25 @@ export async function patchStaff(
   },
   byId: string
 ): Promise<void> {
-  const { headers, rows, rowNumbers } = await readSheet(SHEET.직원);
+  /*
+   * 근태 기준 시각·휴게 칸은 뒤늦게 생긴 것이라, 예전에 만든 시트에는 없다.
+   * 없다고 저장을 막으면 쓰는 사람이 "어느 버튼을 눌러야 하는지"를 알아야 한다.
+   * 그건 우리 사정이지 그분 사정이 아니다. 값을 적어야 할 때 칸을 직접 만든다.
+   */
+  const wanted = [
+    ["출근기준시각", changes.출근기준시각],
+    ["퇴근기준시각", changes.퇴근기준시각],
+    ["휴게분", changes.휴게분],
+  ] as const;
+
+  const pre = await readSheet(SHEET.직원);
+  const missing = wanted
+    .filter(([col, v]) => v !== undefined && !pre.headers.includes(col))
+    .map(([col]) => col);
+  if (missing.length > 0) await addColumns(SHEET.직원, missing);
+
+  const { headers, rows, rowNumbers } =
+    missing.length > 0 ? await readSheet(SHEET.직원) : pre;
   const i = rows.findIndex((r) => r["사번"] === id);
   if (i < 0) throw new Error("해당 직원을 찾지 못했습니다.");
 
@@ -186,26 +204,10 @@ export async function patchStaff(
   if (changes.재직상태 !== undefined) merged["재직상태"] = changes.재직상태;
   if (changes.계정사용 !== undefined) merged["계정사용"] = changes.계정사용 ? "Y" : "N";
 
-  // 근태 기준 시각 — 빈 값으로 지우는 것도 뜻이 있으므로 그대로 쓴다.
-  // 시트에 칸이 없으면 조용히 사라지므로, 그냥 넘어가지 않고 알린다.
-  const times: Array<[string, string | undefined]> = [
-    ["출근기준시각", changes.출근기준시각],
-    ["퇴근기준시각", changes.퇴근기준시각],
-    ["휴게분", changes.휴게분],
-  ];
-  for (const [col, v] of times) {
-    if (v === undefined) continue;
-    if (!headers.includes(col)) {
-      if (v.trim()) {
-        throw new Error(
-          `직원 탭에 "${col}" 칸이 없어 저장할 수 없습니다. ` +
-            `근태 화면에서 「근태 탭 만들기」를 먼저 눌러주세요.`
-        );
-      }
-      continue;
-    }
-    merged[col] = v.trim();
-  }
+  // 근태 기준 시각 — 빈 값으로 지우는 것도 뜻이 있으므로 그대로 쓴다
+  wanted.forEach(([col, v]) => {
+    if (v !== undefined && headers.includes(col)) merged[col] = v.trim();
+  });
 
   await updateRow(SHEET.직원, rowNumbers[i], headers, merged);
   if (changes.담당지점) await syncBranches(id, changes.담당지점, byId);
