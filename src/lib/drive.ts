@@ -50,27 +50,59 @@ let folderId: string | null = null;
 export async function photoFolder(): Promise<string> {
   if (folderId) return folderId;
 
-  const q = encodeURIComponent(
-    `name = '${PHOTO_FOLDER}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
-  );
-  const res = await fetch(`${API}/files?q=${q}&fields=files(id,name)&pageSize=5`, {
-    headers: { Authorization: `Bearer ${await token()}` },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw new Error(`구글 드라이브를 읽지 못했습니다. (${res.status})`);
+  const t = await token();
+  const FOLDER = "mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+
+  async function find(where: string): Promise<any> {
+    const res = await fetch(
+      `${API}/files?q=${encodeURIComponent(where)}&fields=files(id,name)&pageSize=10`,
+      { headers: { Authorization: `Bearer ${t}` }, cache: "no-store" }
+    );
+    if (!res.ok) throw explain(res.status, await res.text());
+    return (await res.json()).files ?? [];
   }
-  const data = await res.json();
-  const hit = (data.files ?? [])[0];
-  if (!hit) {
+
+  // 이름을 정확히 맞춘 것을 먼저 찾고, 없으면 비슷한 이름까지 본다.
+  // 폴더 이름에 날짜나 지점명을 덧붙이는 일이 흔해서, 그 정도는 알아서 찾아준다
+  let hits = await find(`name = '${PHOTO_FOLDER}' and ${FOLDER}`);
+  if (hits.length === 0) hits = await find(`name contains '${PHOTO_FOLDER}' and ${FOLDER}`);
+
+  if (hits.length === 0) {
+    // 공유할 주소를 화면에 같이 띄운다. 이걸 찾으러 다른 곳을 뒤지게 하면 안 된다
     throw new Error(
       `구글 드라이브에 「${PHOTO_FOLDER}」 폴더가 없습니다. ` +
-        `드라이브에서 이 이름으로 폴더를 만들고, 시트를 공유하셨던 것처럼 ` +
-        `대시보드 계정에 편집자로 공유해주세요.`
+        `드라이브에서 이 이름으로 폴더를 만들고, 아래 주소를 편집자로 공유해주세요.\n` +
+        (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? "(계정 주소를 읽지 못했습니다)")
     );
   }
-  folderId = hit.id;
-  return hit.id;
+  folderId = hits[0].id;
+  return hits[0].id;
+}
+
+/**
+ * 구글이 보낸 오류를 사람이 읽을 수 있는 말로 바꾼다
+ *
+ * 드라이브 기능이 꺼져 있을 때가 제일 흔한데, 구글이 주는 문장은 영문 한 문단이라
+ * 무엇을 눌러야 하는지 알 수가 없다. 눌러야 할 곳을 대신 적어준다.
+ */
+function explain(status: number, body: string): Error {
+  if (status === 403 && /has not been used|is disabled|SERVICE_DISABLED/i.test(body)) {
+    return new Error(
+      "구글 클라우드에서 드라이브 기능이 아직 켜져 있지 않습니다. " +
+        "console.cloud.google.com/apis/library/drive.googleapis.com 에 들어가 " +
+        "「사용」을 눌러주세요. 켜고 나서 1~2분 뒤에 다시 시도하시면 됩니다."
+    );
+  }
+  if (status === 403) {
+    return new Error(
+      "구글 드라이브에 접근할 권한이 없습니다. 폴더 공유에서 대시보드 계정을 " +
+        "뷰어가 아니라 편집자로 바꿔주세요."
+    );
+  }
+  if (status === 401) {
+    return new Error("구글 인증에 실패했습니다. 서비스 계정 정보를 확인해주세요.");
+  }
+  return new Error(`구글 드라이브 요청 실패 (${status}): ${body.slice(0, 200)}`);
 }
 
 /** 폴더가 준비됐는지만 본다 — 화면에서 안내를 띄울지 정할 때 쓴다 */
@@ -117,9 +149,7 @@ export async function uploadPhoto(
     },
     body,
   });
-  if (!res.ok) {
-    throw new Error(`사진을 올리지 못했습니다. (${res.status}) ${(await res.text()).slice(0, 160)}`);
-  }
+  if (!res.ok) throw explain(res.status, await res.text());
   const data = await res.json();
   return data.id as string;
 }

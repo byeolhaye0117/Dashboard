@@ -697,7 +697,10 @@ function GroupReport(props: {
               <div className="setup" style={{ marginBottom: 0 }}>
                 <div>
                   <b>사진을 올릴 폴더가 아직 없습니다</b>
-                  <p>{props.photoProblem}</p>
+                  {/* 줄바꿈이 그대로 보여야 계정 주소가 한 줄로 떨어진다 */}
+                  <p style={{ whiteSpace: "pre-line", wordBreak: "break-all" }}>
+                    {props.photoProblem}
+                  </p>
                 </div>
               </div>
             ) : photo ? (
