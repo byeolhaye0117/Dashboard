@@ -531,6 +531,70 @@ table.t2 { min-width: 640px; }
 }
 .lfoot b { color: var(--ink); font-size: 15px; letter-spacing: -.02em; }
 
+/* ── 근태 : 오늘 나 ───────────────────────
+   출근길에 오래 붙잡지 않는다. 버튼 하나가 크게 보여야 한다. */
+.punch {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  margin-top: 12px; padding: 18px 22px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+}
+.pk-me { flex: 1; min-width: 180px; }
+.pk-me .lb { display: block; font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.pk-me .nm { display: block; margin-top: 2px; font-size: 20px; font-weight: 800; letter-spacing: -.03em; }
+.pk-me .base { display: block; margin-top: 3px; font-size: 11.5px; color: var(--muted); }
+
+.pk-time { display: flex; align-items: center; gap: 22px; }
+.pk-time > div span { display: block; font-size: 11px; color: var(--muted); font-weight: 700; }
+.pk-time > div b {
+  display: block; margin-top: 1px; font-size: 22px; font-weight: 800;
+  letter-spacing: -.03em; color: var(--muted);
+}
+.pk-time > div b.on { color: var(--ink); }
+
+.pk-act .done { font-size: 13px; color: var(--good); font-weight: 700; }
+.btn-dark.big { height: 48px; padding: 0 30px; font-size: 15px; border-radius: var(--r); }
+
+/* ── 근태 : 한 달 격자 ────────────────────
+   빠진 칸이 눈에 띄어야 "누가 안 찍었나"를 바로 안다. */
+table.cal th.dcol {
+  padding: 8px 0 6px; text-align: center; width: 26px;
+}
+table.cal th.dcol span { display: block; font-size: 11px; color: var(--ink-2); font-weight: 700; }
+table.cal th.dcol em { display: block; font-style: normal; font-size: 9.5px; color: var(--muted); }
+table.cal th.dcol.sun span, table.cal th.dcol.sun em { color: var(--bad); }
+table.cal th.dcol.sat span, table.cal th.dcol.sat em { color: var(--s1); }
+
+table.cal td.cell {
+  padding: 0; height: 30px; width: 26px; text-align: center;
+  font-size: 12px; font-weight: 700; color: var(--ink-2);
+  border-left: 1px solid var(--line-soft);
+}
+table.cal td.cell.hit { cursor: pointer; }
+table.cal td.cell.hit:hover { outline: 2px solid var(--ink-2); outline-offset: -2px; }
+table.cal tbody tr:hover td { background: none; }
+
+/* 자리를 지키되 눈에 안 띄게 — 기록 없는 날 */
+.k-none { color: var(--line); }
+.k-정상 { color: var(--muted); }
+.k-지각 { background: var(--bad-soft); color: var(--bad); }
+.k-조퇴 { background: var(--warn-soft); color: var(--warn); }
+.k-결근 { background: var(--bad-soft); color: var(--bad); }
+.k-휴무 { background: var(--surface-3); color: var(--muted); }
+.k-연차 { background: var(--good-soft); color: var(--good); }
+.k-반차 { background: var(--good-soft); color: var(--good); }
+
+/* 이름 칸은 가로로 밀려도 붙어 있어야 한다 */
+table.cal .sticky {
+  position: sticky; left: 0; z-index: 1;
+  background: var(--surface); min-width: 74px;
+}
+table.cal thead .sticky { background: var(--surface); }
+
+.legrow .km {
+  display: inline-grid; place-items: center; width: 17px; height: 17px;
+  border-radius: 4px; font-size: 10.5px; font-weight: 700; font-style: normal;
+}
+
 /* ── 시트에 칸이 없을 때 안내 ─────────────── */
 .setup {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
