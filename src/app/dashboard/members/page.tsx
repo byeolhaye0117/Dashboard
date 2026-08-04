@@ -13,10 +13,15 @@ import { readProduct } from "@/lib/productMeta";
 import { listConsultations } from "@/lib/consultations";
 import Shell from "../Shell";
 import Client from "./Client";
+import { guard } from "../guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function MembersPage() {
+  return guard("회원", body);
+}
+
+async function body() {
   const session = await readSession();
   if (!session) redirect("/");
 

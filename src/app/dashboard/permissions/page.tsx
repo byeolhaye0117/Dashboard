@@ -10,10 +10,15 @@ import { visibleMenus, abilitiesFor, MENUS } from "@/lib/menu";
 import { getBranches, getRoles, getPermissions, getStaffAll } from "@/lib/data";
 import Shell from "../Shell";
 import Client from "./Client";
+import { guard } from "../guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function PermissionsPage() {
+  return guard("권한 설정", body);
+}
+
+async function body() {
   const session = await readSession();
   if (!session) redirect("/");
 

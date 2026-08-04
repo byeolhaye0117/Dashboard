@@ -11,10 +11,15 @@ import { getBranches, getRoles } from "@/lib/data";
 import { listStaffAdmin } from "@/lib/staffAdmin";
 import Shell from "../Shell";
 import Client from "./Client";
+import { guard } from "../guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function StaffPage() {
+  return guard("직원 관리", body);
+}
+
+async function body() {
   const session = await readSession();
   if (!session) redirect("/");
 

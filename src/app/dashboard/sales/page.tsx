@@ -15,10 +15,15 @@ import { listConsultations } from "@/lib/consultations";
 import { readProduct } from "@/lib/productMeta";
 import Shell from "../Shell";
 import Client from "./Client";
+import { guard } from "../guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function SalesPage() {
+  return guard("매출", body);
+}
+
+async function body() {
   const session = await readSession();
   if (!session) redirect("/");
 
