@@ -1034,6 +1034,11 @@ table.grid tr.is-picked > td { background: color-mix(in srgb, var(--s1) 9%, tran
 .tt-item.wait { border-color: color-mix(in srgb, var(--s1) 38%, transparent); }
 .tt-item.wait .nm { color: var(--s1); }
 .tt-item.done { border-color: color-mix(in srgb, var(--s3) 38%, transparent); }
+/* 날짜가 지났는데 아직 안 찍은 수업 — 손이 가야 하는 칸이다 */
+.tt-item.late {
+  border-color: var(--warn); background: var(--warn-soft);
+}
+.tt-item.late .nm, .tt-item.late .mk { color: var(--warn); }
 .tt-item.gone { opacity: .5; text-decoration: line-through; }
 .tt-item:hover { border-color: var(--ink-2); }
 
@@ -1054,6 +1059,11 @@ table.grid tr.is-picked > td { background: color-mix(in srgb, var(--s1) 9%, tran
 .mk-btn:disabled { opacity: .45; cursor: not-allowed; }
 .mk-btn:not(:disabled):hover { border-color: var(--ink-2); }
 .mk-btn.on { color: #fff; border-color: transparent; font-weight: 700; }
+/* 상태 표시가 아니라 "이걸 눌러라" 인 단추 — 밀린 수업 목록에서 쓴다 */
+.mk-btn.go {
+  background: var(--s3); color: #fff; border-color: transparent; font-weight: 700;
+}
+.mk-btn.go:not(:disabled):hover { opacity: .9; border-color: transparent; }
 .mk-btn.wait.on { background: var(--s1); }
 .mk-btn.done.on { background: var(--s3); }
 .mk-btn.miss.on { background: var(--s2); }

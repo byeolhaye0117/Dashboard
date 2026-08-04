@@ -166,6 +166,32 @@ export async function updateRow(
   });
 }
 
+/**
+ * 여러 줄을 한 번에 다시 쓴다
+ *
+ * 줄마다 따로 부르면 8명짜리 수업 하나를 완료 처리하는 데 요청이 열몇 번 나간다.
+ * 화면이 멈춘 것처럼 느려지고, 중간에 끊기면 절반만 처리된 채로 남는다.
+ * 한 번에 보내면 요청 한 번이고, 되거나 안 되거나 둘 중 하나다.
+ */
+export async function updateRows(
+  sheetName: string,
+  headers: string[],
+  items: { rowNumber: number; row: Row }[]
+) {
+  if (items.length === 0) return;
+  const last = columnLetter(headers.length - 1);
+  await call(`/values:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({
+      valueInputOption: "USER_ENTERED",
+      data: items.map(({ rowNumber, row }) => ({
+        range: `${sheetName}!A${rowNumber}:${last}${rowNumber}`,
+        values: [headers.map((h) => row[h] ?? "")],
+      })),
+    }),
+  });
+}
+
 /** 특정 줄의 특정 칸 하나를 고친다 */
 export async function updateCell(
   sheetName: string,

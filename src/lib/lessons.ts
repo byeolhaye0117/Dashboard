@@ -7,10 +7,10 @@
  * 회차 차감은 "수업"이 아니라 "참석"에서 일어난다.
  * 그룹수업은 한 수업에서도 온 사람과 안 온 사람이 갈리기 때문이다.
  */
-import { readSheet, appendRow, appendRows, updateRow, addColumns } from "./sheets";
+import { readSheet, appendRow, appendRows, updateRow, updateRows, addColumns } from "./sheets";
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now } from "./time";
-import { patchTicket, listTickets, listMembers } from "./members";
+import { patchTicket, listTickets, listMembers, bumpTicketCounts } from "./members";
 import { getProducts } from "./data";
 import { readProduct } from "./productMeta";
 import { SHEET_L, SHEET_LA, usesCount, normalizeTime, toMinutes, KIND_PT } from "./lessonMeta";
@@ -409,6 +409,87 @@ async function ensurePayColumns(headers: string[]): Promise<boolean> {
 async function memberNames(): Promise<Map<string, string>> {
   const { items } = await listMembers();
   return new Map(items.map((m) => [m.id, m.이름]));
+}
+
+/**
+ * 수업 한 타임을 통째로 완료 처리한다
+ *
+ * 그룹수업은 참석자가 여럿이라 한 명씩 찍으면 손이 너무 많이 간다.
+ * 「수업 완료」 한 번으로 아직 안 찍은 사람을 전부 완료로 만든다.
+ * 안 온 사람이 있으면 그 사람만 따로 노쇼로 바꾸면 된다.
+ *
+ * 이미 노쇼·취소로 찍어둔 사람은 건드리지 않는다. 먼저 손으로 정한 것을
+ * 나중에 누른 단추가 덮으면, 찍어둔 사람 입장에서는 값이 멋대로 바뀐 것이다.
+ *
+ * 처리한 사람 수를 돌려준다.
+ */
+export async function completeLesson(id: string, byId: string): Promise<number> {
+  const pre = await readSheet(SHEET_LA);
+  const grew = await ensurePayColumns(pre.headers);
+  const a = grew ? await readSheet(SHEET_LA) : pre;
+  const ac = resolve(SHEET_LA, a.headers, LA_COLS);
+
+  const targets: { i: number; ticket: string }[] = [];
+  a.rows.forEach((r, i) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    if (get(r, ac, "수업번호") !== id) return;
+    if ((get(r, ac, "진행상태") || "예정") !== "예정") return;
+    targets.push({ i, ticket: get(r, ac, "이용권번호") });
+  });
+
+  if (targets.length > 0) {
+    const [tickets, products] = await Promise.all([listTickets(), getProducts()]);
+    const byTicket = new Map(tickets.map((t) => [t.id, t]));
+    const stamp = now();
+
+    // 남은 횟수가 없는 사람은 빼고 간다. 여기서 통째로 막으면 나머지도 못 찍는다
+    const ok = targets.filter(({ ticket }) => {
+      if (!ticket) return true;
+      const t = byTicket.get(ticket);
+      return t ? int(t.잔여횟수) > 0 : false;
+    });
+    if (ok.length === 0) {
+      throw new Error("남은 횟수가 있는 참석자가 없습니다. 이용권을 먼저 확인해주세요.");
+    }
+
+    await bumpTicketCounts(
+      ok.filter((x) => x.ticket).map((x) => ({ id: x.ticket, delta: 1 })),
+      byId
+    );
+
+    await updateRows(
+      SHEET_LA,
+      a.headers,
+      ok.map(({ i, ticket }) => {
+        const t = byTicket.get(ticket);
+        const p = t ? products.find((x) => x.code === t.상품코드) : null;
+        return {
+          rowNumber: a.rowNumbers[i],
+          row: {
+            ...a.rows[i],
+            ...toSheetRow(
+              {
+                진행상태: "완료",
+                차감회차: ticket ? "1" : "0",
+                이용권금액: String(int(t?.금액 ?? "")),
+                총회차: String(int(t?.총횟수 ?? "")),
+                결제회차: String(payCount(p) || int(t?.총횟수 ?? "")),
+                완료일시: stamp,
+                판매트레이너사번:
+                  get(a.rows[i], ac, "판매트레이너사번") || t?.담당트레이너사번 || "",
+                수정일시: stamp,
+                수정자: byId,
+              },
+              ac
+            ),
+          },
+        };
+      })
+    );
+  }
+
+  await patchLesson(id, { 진행상태: "완료" }, byId);
+  return targets.length;
 }
 
 /** 수업 자체를 고친다 (시간 옮기기 · 메모 · 취소) */

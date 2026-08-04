@@ -8,6 +8,8 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffAll, getProducts, getRoles } from "@/lib/data";
+import { listLessons } from "@/lib/lessons";
+import { today } from "@/lib/time";
 import Icon from "@/components/Icon";
 import Shell from "./Shell";
 import { guard } from "./guard";
@@ -39,6 +41,26 @@ async function body() {
   const selling = products.filter((p) => p["서비스상품"] !== "Y").length;
   const service = products.length - selling;
 
+  /*
+   * 밀린 수업이 있으면 홈에서 먼저 알린다
+   *
+   * PT·수업 화면에만 띄우면, 그 화면에 안 들어가는 날은 계속 밀린다.
+   * 수업 탭이 아직 없을 수도 있으므로 실패해도 홈은 그대로 열려야 한다.
+   */
+  let lateCount = 0;
+  if (ab.get("PT·수업")?.view) {
+    try {
+      const { lessons, joins } = await listLessons();
+      const day = today();
+      const waiting = new Set(joins.filter((j) => j.진행상태 === "예정").map((j) => j.수업번호));
+      lateCount = lessons.filter(
+        (l) => l.날짜 < day && l.진행상태 !== "취소" && waiting.has(l.id)
+      ).length;
+    } catch {
+      lateCount = 0;
+    }
+  }
+
   const hour = new Date().getHours();
   const greet = hour < 11 ? "좋은 아침입니다" : hour < 18 ? "안녕하세요" : "수고 많으셨습니다";
 
@@ -52,6 +74,21 @@ async function body() {
             <b>비밀번호를 바꿔주세요</b>
             <p>지금은 최초 임시 비밀번호로 들어오셨습니다. 왼쪽 아래 또는 오른쪽 위 이름 → 비밀번호 변경에서 바꾸시면 됩니다.</p>
           </div>
+        </div>
+      )}
+
+      {lateCount > 0 && (
+        <div className="banner">
+          <span className="lead"><Icon name="warn" size={18} /></span>
+          <div>
+            <b>지난 수업 {lateCount}건이 아직 처리되지 않았습니다</b>
+            <p>
+              완료로 찍지 않으면 회차가 빠지지 않아, 회원의 남은 횟수가 실제보다 많아 보입니다.
+            </p>
+          </div>
+          <a className="btn-dark" href="/dashboard/lessons" style={{ whiteSpace: "nowrap" }}>
+            처리하러 가기
+          </a>
         </div>
       )}
 
