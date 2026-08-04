@@ -30,6 +30,8 @@ type Row = {
 type Person = {
   id: string; name: string; branch: string;
   baseTime: string; outTime: string; restMin: string;
+  /** 휴게가 날마다 다른 사람인가 */
+  restVary: boolean;
 };
 
 /**
@@ -38,7 +40,7 @@ type Person = {
  * 한 줄이 한 번의 근무 구간이라 하루가 여러 줄일 수 있다.
  * 일한 시간에서 휴게를 뺀다. 그날 찍은 휴게가 없으면 직원의 고정 휴게분을 쓴다.
  */
-function foldDay(list: Row[], restMin: string) {
+function foldDay(list: Row[], restMin: string, vary: boolean) {
   const rounds = list.slice().sort((a, b) => a.회차 - b.회차);
   const gross = rounds.reduce((s, r) => {
     const a = toMinutes(r.출근시각);
@@ -46,9 +48,9 @@ function foldDay(list: Row[], restMin: string) {
     return s + (a !== null && b !== null && b > a ? b - a : 0);
   }, 0);
   const punched = rounds.reduce((s, r) => s + (Number(r.휴게분) || 0), 0);
-  const fixed = Number(restMin) || 0;
+  const fixedMin = vary ? 0 : Number(restMin) || 0;
   // 찍은 휴게가 있으면 그걸 쓴다. 없으면 고정분. 둘 다 없으면 0
-  const rest = punched > 0 ? punched : gross > 0 ? fixed : 0;
+  const rest = punched > 0 ? punched : gross > 0 ? fixedMin : 0;
   const head = rounds[0];
   const openRest = rounds.find((r) => r.휴게시작)?.휴게시작 ?? "";
   return {
@@ -111,7 +113,7 @@ export default function Client(p: Props) {
   }, []);
 
   const days = useMemo(() => daysOf(month), [month]);
-  const restOf = (id: string) => p.people.find((x) => x.id === id)?.restMin ?? "";
+  const personOf = (id: string) => p.people.find((x) => x.id === id);
 
   /** 사람·날짜별로 하루치를 묶어 둔다 — 하루가 여러 줄일 수 있다 */
   const byKey = useMemo(() => {
@@ -119,7 +121,8 @@ export default function Client(p: Props) {
     p.rows.forEach((r) => (bag[`${r.사번}|${r.날짜}`] ??= []).push(r));
     const m: Record<string, ReturnType<typeof foldDay>> = {};
     Object.entries(bag).forEach(([k, list]) => {
-      m[k] = foldDay(list, restOf(k.split("|")[0]));
+      const who = personOf(k.split("|")[0]);
+      m[k] = foldDay(list, who?.restMin ?? "", Boolean(who?.restVary));
     });
     return m;
   }, [p.rows, p.people]);
@@ -133,7 +136,9 @@ export default function Client(p: Props) {
     p.rows
       .filter((r) => r.사번 === p.me && r.날짜.startsWith(month))
       .forEach((r) => (bag[r.날짜] ??= []).push(r));
-    const folds = Object.values(bag).map((list) => foldDay(list, meSelf?.restMin ?? ""));
+    const folds = Object.values(bag).map((list) =>
+      foldDay(list, meSelf?.restMin ?? "", Boolean(meSelf?.restVary))
+    );
     const count = (k: string) => folds.filter((f) => f.kind === k).length;
     return {
       지각: count("지각"),
@@ -160,6 +165,9 @@ export default function Client(p: Props) {
    * 정말 못 쉰 날도 있는데 퇴근을 막으면 거짓 기록을 만들게 된다.
    */
   const needRest = Boolean(meToday && meToday.rest === 0 && meToday.gross >= 240);
+
+  /** 나는 휴게를 찍는 사람인가 */
+  const vary = Boolean(meSelf?.restVary);
 
   async function punch(action: "in" | "out" | "break-in" | "break-out", rest = 0) {
     setBusy(action);
@@ -231,9 +239,13 @@ export default function Client(p: Props) {
           <b className="nm">{meSelf?.name ?? ""}</b>
           <span className="base">
             {meSelf?.baseTime || meSelf?.outTime
-              ? `기준 ${meSelf?.baseTime || "—"} ~ ${meSelf?.outTime || "—"}` +
-                (Number(meSelf?.restMin) > 0 ? ` · 휴게 ${meSelf?.restMin}분` : "")
+              ? `기준 ${meSelf?.baseTime || "—"} ~ ${meSelf?.outTime || "—"}`
               : "기준 시각 없음 · 지각·조퇴는 표시되지 않습니다"}
+            {vary
+              ? " · 휴게는 찍는 대로"
+              : Number(meSelf?.restMin) > 0
+                ? ` · 휴게 ${meSelf?.restMin}분 자동`
+                : ""}
           </span>
         </div>
 
@@ -269,13 +281,16 @@ export default function Client(p: Props) {
         <div className="pk-act">
           {meToday?.working ? (
             <>
-              <button className={meToday.resting ? "btn-dark big" : "btn-rest big"}
-                      onClick={() => punch(meToday.resting ? "break-out" : "break-in")}
-                      disabled={Boolean(busy)}>
-                {meToday.resting ? "휴게 끝내고 복귀" : "휴게 시작"}
-              </button>
+              {/* 휴게 버튼은 날마다 다른 사람에게만 — 안 눌러도 되는 버튼은 실수를 부른다 */}
+              {vary && (
+                <button className={meToday.resting ? "btn-dark big" : "btn-rest big"}
+                        onClick={() => punch(meToday.resting ? "break-out" : "break-in")}
+                        disabled={Boolean(busy)}>
+                  {meToday.resting ? "휴게 끝내고 복귀" : "휴게 시작"}
+                </button>
+              )}
               {!meToday.resting && (
-                <button className="btn-ghost tall"
+                <button className={vary ? "btn-ghost tall" : "btn-dark big"}
                         onClick={() => (needRest ? setConfirmOut(true) : punch("out"))}
                         disabled={Boolean(busy)}>
                   {busy === "out" ? "찍는 중…" : "퇴근"}
@@ -290,23 +305,30 @@ export default function Client(p: Props) {
         </div>
       </div>
 
-      {/* 오늘 휴게가 어떻게 쌓였는지 — 카드 밑에 한 줄 */}
-      {meToday?.started && (
-        <div className="rest-strip">
-          {meToday.fixed ? (
-            <span>휴게 <b>{meSelf?.restMin}분</b>이 일한 시간에서 자동으로 빠집니다</span>
-          ) : meToday.punched > 0 ? (
+      {/* 오늘 휴게 — 출근 전에도 어떤 방식인지 알 수 있어야 한다 */}
+      <div className={`rest-strip${vary ? " vary" : ""}`}>
+        {vary ? (
+          Number(meToday?.punched) > 0 ? (
             <span>
-              오늘 휴게 <b>{hourText(meToday.punched)}</b>
-              {meToday.resting && " · 지금 쉬는 중"}
+              오늘 휴게 <b>{hourText(meToday!.punched)}</b>
+              {meToday?.resting && " · 지금 쉬는 중"}
             </span>
           ) : (
-            <span>오늘 휴게 <b>없음</b> · 쉬실 때 「휴게 시작」을 눌러주세요</span>
-          )}
-          <span className="spacer" />
-          <span className="dim">{meToday.spans || (Number(meSelf?.restMin) > 0 ? "직원 관리에서 바꿉니다" : "")}</span>
-        </div>
-      )}
+            <span>
+              오늘 휴게 <b>없음</b>
+              {meToday?.working ? " · 쉬실 때 「휴게 시작」을 눌러주세요" : ""}
+            </span>
+          )
+        ) : Number(meSelf?.restMin) > 0 ? (
+          <span>휴게 <b>{meSelf?.restMin}분</b>이 일한 시간에서 매일 자동으로 빠집니다</span>
+        ) : (
+          <span>휴게 <b>없음</b>으로 되어 있습니다</span>
+        )}
+        <span className="spacer" />
+        <span className="dim">
+          {vary ? meToday?.spans || "휴게 시작 · 끝을 찍는 사람" : "직원 관리에서 바꿉니다"}
+        </span>
+      </div>
 
       {/* 오래 일했는데 휴게가 없을 때 — 막지 않고 알린다 */}
       {confirmOut && (

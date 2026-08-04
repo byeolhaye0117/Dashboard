@@ -43,6 +43,8 @@ export type Staff = {
   outTime: string;
   /** 고정 휴게 분 — 그날 찍은 휴게가 없을 때만 이 값을 뺀다 */
   restMin: string;
+  /** 휴게가 날마다 다른 사람인가 — 찍어서 남기는 쪽 */
+  restVary: boolean;
   /** 시트에서 이 직원이 몇 번째 줄인지 (비밀번호를 고칠 때 쓴다) */
   rowNumber: number;
 };
@@ -115,6 +117,7 @@ export async function getStaffAll(): Promise<Staff[]> {
       baseTime: normalizeTime(r["출근기준시각"] ?? ""),
       outTime: normalizeTime(r["퇴근기준시각"] ?? ""),
       restMin: (r["휴게분"] ?? "").trim(),
+      restVary: yes(r["휴게변동"] ?? ""),
       rowNumber: rowNumbers[i],
     });
   });
