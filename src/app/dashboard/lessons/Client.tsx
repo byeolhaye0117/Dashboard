@@ -82,7 +82,8 @@ export default function Client(p: Props) {
   const [adding, setAdding] = useState(false);
   const [onlyMine, setOnlyMine] = useState(false);
   const [showLate, setShowLate] = useState(false);
-  const [tab, setTab] = useState<"pt" | "group" | "board">("pt");
+  const [tab, setTab] = useState<"sched" | "pt" | "group">("sched");
+  const [sub, setSub] = useState<"do" | "check">("do");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -121,9 +122,9 @@ export default function Client(p: Props) {
     return rows;
   }, [p.lessons, joinsOf, now, onlyMine, p.me]);
 
+  /** 시간표에 그릴 것 — 1:1 과 그룹수업을 같이 본다 */
   const dayList = useMemo(
     () => p.lessons
-      .filter((l) => l.수업구분 !== KIND_GROUP)
       .filter((l) => l.날짜 === day)
       .filter((l) => !onlyMine || l.트레이너사번 === p.me)
       .sort((a, b) => (a.시작시각 || "").localeCompare(b.시작시각 || "")),
@@ -240,6 +241,9 @@ export default function Client(p: Props) {
     );
   }
 
+  /** 1:1 보고 화면에서 다루는 그날 수업 — 그룹은 따로 보고한다 */
+  const ptDay = dayList.filter((l) => l.수업구분 !== KIND_GROUP);
+
   const [lo, hi] = dayRange(dayList);
   const hours = Array.from({ length: hi - lo }, (_, i) => lo + i);
   const openLesson = dayList.find((l) => l.id === open);
@@ -263,33 +267,47 @@ export default function Client(p: Props) {
       </div>
 
       <div className="pick-row" style={{ marginBottom: 14 }}>
+        <button className={`mini-tab${tab === "sched" ? " on" : ""}`} onClick={() => setTab("sched")}>
+          시간표
+        </button>
         <button className={`mini-tab${tab === "pt" ? " on" : ""}`} onClick={() => setTab("pt")}>
-          1:1 PT 시간표
+          1:1 PT 보고
         </button>
         <button className={`mini-tab${tab === "group" ? " on" : ""}`} onClick={() => setTab("group")}>
           그룹수업 보고
         </button>
-        {/* 남의 보고까지 볼 수 있는 사람 — 점장 · 대표 */}
-        {p.can.update && (
-          <button className={`mini-tab${tab === "board" ? " on" : ""}`} onClick={() => setTab("board")}>
-            보고 확인
-          </button>
-        )}
       </div>
 
-      {tab === "board" ? (
-        <GroupBoard trainers={p.trainers} slotsOf={slotsOf} reported={reported} />
-      ) : tab === "group" ? (
-        <GroupReport
-          me={p.me}
-          myBranch={p.myBranch}
-          trainers={p.trainers}
-          slotsOf={slotsOf}
-          reported={reported}
-          canPickOther={p.can.update}
-          photoProblem={p.photoProblem}
-          onDone={() => location.reload()}
-        />
+      {/* 보고 안에서 「보고하기」와 「보고 확인」을 오간다.
+          확인은 남의 보고까지 볼 수 있는 사람 — 점장 · 대표에게만 보인다 */}
+      {tab !== "sched" && p.can.update && (
+        <div className="pick-row" style={{ marginBottom: 14 }}>
+          <button className={`mini-tab${sub === "do" ? " on" : ""}`} onClick={() => setSub("do")}>
+            보고하기
+          </button>
+          <button className={`mini-tab${sub === "check" ? " on" : ""}`} onClick={() => setSub("check")}>
+            보고 확인
+          </button>
+        </div>
+      )}
+
+      {tab === "group" ? (
+        sub === "check" && p.can.update ? (
+          <GroupBoard trainers={p.trainers} slotsOf={slotsOf} reported={reported} />
+        ) : (
+          <GroupReport
+            me={p.me}
+            myBranch={p.myBranch}
+            trainers={p.trainers}
+            slotsOf={slotsOf}
+            reported={reported}
+            canPickOther={p.can.update}
+            photoProblem={p.photoProblem}
+            onDone={() => location.reload()}
+          />
+        )
+      ) : tab === "pt" && sub === "check" && p.can.update ? (
+        <PtBoard day={day} trainers={p.trainers} lessons={p.lessons} joinsOf={joinsOf} />
       ) : (
       <>
       <div className="pick-row">
@@ -356,6 +374,8 @@ export default function Client(p: Props) {
 
       <p className="page-sub" style={{ margin: "2px 0 12px" }}>{korDate(day)}</p>
 
+      {tab === "sched" ? (
+        <>
       {columns.length === 0 ? (
         <div className="norow">이 날에 잡힌 수업이 없습니다</div>
       ) : (
@@ -385,23 +405,31 @@ export default function Client(p: Props) {
                         const js = joinsOf.get(l.id) ?? [];
                         const done = js.filter((j) => j.진행상태 === "완료").length;
                         const settled = js.every((j) => j.진행상태 !== "예정");
-                        // 날짜가 지났는데 안 찍은 것은 눈에 띄어야 한다
+                        /*
+                          그룹수업은 참석자를 따로 적지 않는다. 보고로 올라온 것이므로
+                          이미 끝난 일이고, 회차 수가 아니라 사진이 올라왔는지가 관심사다.
+                        */
+                        const group = l.수업구분 === KIND_GROUP;
                         const tone =
                           l.진행상태 === "취소" ? "gone"
-                            : settled ? "done"
-                              : l.날짜 < now ? "late"
-                                : "wait";
+                            : group ? "done"
+                              : settled ? "done"
+                                : l.날짜 < now ? "late"
+                                  : "wait";
                         return (
-                          <button className={`tt-item ${tone}`} key={l.id} onClick={() => setOpen(l.id)}>
+                          <button className={`tt-item ${tone}`} key={l.id}
+                                  onClick={() => !group && setOpen(l.id)}>
                             <span className="tm">{l.시작시각}</span>
                             <span className="nm">
-                              {l.수업구분 === KIND_GROUP
-                                ? `${productName.get(l.상품코드) ?? "그룹수업"} ${js.length}명`
+                              {group
+                                ? productName.get(l.상품코드) || "그룹수업"
                                 : memberName.get(js[0]?.회원번호) ?? "회원 미지정"}
                             </span>
-                            {settled
-                              ? <span className="mk">{done}회 완료</span>
-                              : l.날짜 < now && <span className="mk">아직 안 찍음</span>}
+                            {group
+                              ? <span className="mk">{l.사진파일 ? "보고 · 사진" : "보고"}</span>
+                              : settled
+                                ? <span className="mk">{done}회 완료</span>
+                                : l.날짜 < now && <span className="mk">아직 안 찍음</span>}
                           </button>
                         );
                       })}
@@ -412,6 +440,21 @@ export default function Client(p: Props) {
             ))}
           </div>
         </div>
+      )}
+        </>
+      ) : (
+        <PtReport
+          list={ptDay}
+          joinsOf={joinsOf}
+          memberName={memberName}
+          trainers={p.trainers}
+          me={p.me}
+          canEditOther={p.can.update}
+          busy={busy}
+          onMark={(수업번호, 참석번호, 상태) => send({ action: "mark", 수업번호, 참석번호, 상태 })}
+          onCompleteAll={(수업번호) => send({ action: "complete", 수업번호 })}
+          onOpen={(id) => setOpen(id)}
+        />
       )}
       </>
       )}
@@ -561,6 +604,162 @@ function LessonBox(props: {
 }
 
 /* ── 수업 잡기 ─────────────────────────────── */
+
+/* ── 1:1 PT 보고 ───────────────────────────── */
+
+/**
+ * 그날 1:1 수업을 목록으로 놓고 결과를 찍는다
+ *
+ * 시간표는 "누가 언제 비어 있나"를 보는 자리고, 여기는 "무엇을 아직 안 찍었나"를
+ * 처리하는 자리다. 같은 자료라도 하는 일이 다르면 모양이 달라야 한다.
+ * 특히 휴대폰에서는 시간표 칸을 정확히 누르기가 어렵다.
+ */
+function PtReport(props: {
+  list: Lesson[];
+  joinsOf: Map<string, Join[]>;
+  memberName: Map<string, string>;
+  trainers: Person[];
+  me: string;
+  canEditOther: boolean;
+  busy: boolean;
+  onMark: (lessonId: string, joinId: string, state: string) => void;
+  onCompleteAll: (lessonId: string) => void;
+  onOpen: (lessonId: string) => void;
+}) {
+  const nameOf = new Map(props.trainers.map((t) => [t.id, t.name]));
+  if (props.list.length === 0) {
+    return <div className="norow">이 날에 잡힌 1:1 PT가 없습니다</div>;
+  }
+
+  return (
+    <div className="lwrap">
+      {props.list.map((l) => {
+        const js = props.joinsOf.get(l.id) ?? [];
+        const waiting = js.filter((j) => j.진행상태 === "예정");
+        const mine = l.트레이너사번 === props.me || props.canEditOther;
+        const one = js[0];
+        return (
+          <div className="jrow" key={l.id}>
+            <div className="jtop">
+              <b>{l.시작시각}{l.종료시각 ? `–${l.종료시각}` : ""}</b>
+              <span>
+                {nameOf.get(l.트레이너사번) ?? l.트레이너사번}
+                {" · "}
+                {props.memberName.get(one?.회원번호) ?? "회원 미지정"}
+                {waiting.length === 0 && ` · ${js.map((j) => j.진행상태).join(" · ")}`}
+              </span>
+            </div>
+            {waiting.length === 0 ? (
+              <button className="mk-btn" onClick={() => props.onOpen(l.id)}>
+                고치기
+              </button>
+            ) : (
+              <div className="mk-row">
+                {JOIN_STATES.filter((x) => x !== "예정").map((st) => (
+                  <button key={st} className={`mk-btn ${STATE_TONE[st]}${st === "완료" ? " go" : ""}`}
+                          disabled={!mine || props.busy}
+                          onClick={() =>
+                            st === "완료" && waiting.length > 1
+                              ? props.onCompleteAll(l.id)
+                              : props.onMark(l.id, waiting[0].id, st)
+                          }>
+                    {st}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * 1:1 보고 확인 — 그날 누가 몇 건을 찍었고 무엇이 남았나
+ *
+ * 그룹수업 확인과 같은 생각이다. 안 찍은 것이 먼저 보여야 한다.
+ */
+function PtBoard(props: {
+  day: string;
+  trainers: Person[];
+  lessons: Lesson[];
+  joinsOf: Map<string, Join[]>;
+}) {
+  const [day, setDay] = useState(props.day);
+  const nowDay = today();
+
+  const rows = props.trainers.map((t) => {
+    const mine = props.lessons.filter(
+      (l) => l.수업구분 !== KIND_GROUP && l.날짜 === day && l.트레이너사번 === t.id
+    );
+    let done = 0;
+    let miss = 0;
+    let waiting = 0;
+    mine.forEach((l) =>
+      (props.joinsOf.get(l.id) ?? []).forEach((j) => {
+        if (j.진행상태 === "완료") done += 1;
+        else if (j.진행상태 === "노쇼") miss += 1;
+        else if (j.진행상태 === "예정") waiting += 1;
+      })
+    );
+    return { t, total: mine.length, done, miss, waiting };
+  }).filter((r) => r.total > 0);
+
+  const left = rows.reduce((n, r) => n + r.waiting, 0);
+
+  return (
+    <>
+      <div className="pick-row" style={{ marginBottom: 14 }}>
+        <button className="icon-btn" onClick={() => setDay(shiftDay(day, -1))} aria-label="어제">‹</button>
+        <input className="input" type="date" value={day} style={{ width: 148 }}
+               onChange={(e) => setDay(e.target.value || nowDay)} />
+        <button className="icon-btn" onClick={() => setDay(shiftDay(day, 1))} aria-label="내일">›</button>
+        {day !== nowDay && (
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setDay(nowDay)}>오늘</button>
+        )}
+      </div>
+
+      <p className="page-sub" style={{ margin: "0 0 12px" }}>
+        {korDate(day)} · 1:1 PT {rows.reduce((n, r) => n + r.total, 0)}건
+      </p>
+
+      {rows.length === 0 ? (
+        <div className="norow">이 날에 잡힌 1:1 PT가 없습니다</div>
+      ) : (
+        <>
+          {left > 0 && day <= nowDay && (
+            <div className="banner">
+              <span className="lead"><Icon name="warn" size={18} /></span>
+              <div>
+                <b>아직 찍지 않은 수업 {left}건</b>
+                <p>
+                  {rows.filter((r) => r.waiting > 0).map((r) => `${r.t.name} ${r.waiting}건`).join(" · ")}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="lwrap">
+            {rows.map((r) => (
+              <div className="jrow" key={r.t.id}>
+                <div className="jtop">
+                  <b>{r.t.name}</b>
+                  <span>{r.total}건 잡힘</span>
+                </div>
+                <div className="pick-row">
+                  <span className="pill good">완료 {r.done}</span>
+                  {r.miss > 0 && <span className="pill">노쇼 {r.miss}</span>}
+                  {r.waiting > 0 && <span className="pill bad">아직 {r.waiting}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
 
 /* ── 그룹수업 보고 확인 (점장 · 대표) ────────── */
 
