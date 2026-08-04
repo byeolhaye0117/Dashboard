@@ -77,6 +77,7 @@ export default function Client(p: Props) {
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [onlyMine, setOnlyMine] = useState(false);
+  const [showLate, setShowLate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -97,6 +98,22 @@ export default function Client(p: Props) {
     });
     return map;
   }, [p.joins]);
+
+  /**
+   * 밀린 수업 — 날짜는 지났는데 아직 안 찍은 것
+   *
+   * 안 찍으면 회차가 안 빠지고 회원의 남은 횟수가 실제보다 많아 보인다.
+   * 시간이 지날수록 기억이 흐려져 고치기 어려워지므로 눈에 띄게 알린다.
+   */
+  const late = useMemo(() => {
+    const rows = p.lessons
+      .filter((l) => l.날짜 < now && l.진행상태 !== "취소")
+      .filter((l) => !onlyMine || l.트레이너사번 === p.me)
+      .map((l) => ({ lesson: l, waiting: (joinsOf.get(l.id) ?? []).filter((j) => j.진행상태 === "예정") }))
+      .filter((x) => x.waiting.length > 0);
+    rows.sort((a, b) => (a.lesson.날짜 + a.lesson.시작시각).localeCompare(b.lesson.날짜 + b.lesson.시작시각));
+    return rows;
+  }, [p.lessons, joinsOf, now, onlyMine, p.me]);
 
   const dayList = useMemo(
     () => p.lessons
@@ -233,6 +250,55 @@ export default function Client(p: Props) {
 
       {msg && <div className="alert-bad" style={{ marginBottom: 14 }}>{msg}</div>}
 
+      {late.length > 0 && (
+        <div className="banner">
+          <span className="lead"><Icon name="warn" size={18} /></span>
+          <div>
+            <b>
+              지난 수업 {late.length}건이 아직 처리되지 않았습니다
+              {" · "}
+              {late.reduce((n, x) => n + x.waiting.length, 0)}명
+            </b>
+            <p>
+              완료로 찍지 않으면 회차가 빠지지 않아, 회원의 남은 횟수가 실제보다 많아 보입니다.
+              아래에서 바로 처리하실 수 있습니다.
+            </p>
+          </div>
+          <button className="btn-dark" onClick={() => setShowLate((v) => !v)}
+                  style={{ whiteSpace: "nowrap" }}>
+            {showLate ? "접기" : "지금 처리하기"}
+          </button>
+        </div>
+      )}
+
+      {showLate && late.length > 0 && (
+        <div className="lwrap" style={{ marginBottom: 18 }}>
+          {late.map(({ lesson: l, waiting }) => (
+            <div className="jrow" key={l.id}>
+              <div className="jtop">
+                <b>{korDate(l.날짜)} {l.시작시각}</b>
+                <span>
+                  {p.trainers.find((t) => t.id === l.트레이너사번)?.name ?? l.트레이너사번}
+                  {" · "}
+                  {l.수업구분 === KIND_GROUP
+                    ? `${productName.get(l.상품코드) ?? "그룹수업"} ${waiting.length}명`
+                    : memberName.get(waiting[0]?.회원번호) ?? ""}
+                </span>
+              </div>
+              <div className="mk-row">
+                <button className="mk-btn go" disabled={busy}
+                        onClick={() => send({ action: "complete", 수업번호: l.id })}>
+                  {waiting.length > 1 ? `전원 완료 (${waiting.length}명)` : "완료"}
+                </button>
+                <button className="mk-btn" disabled={busy} onClick={() => setOpen(l.id)}>
+                  한 명씩 정하기
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <p className="page-sub" style={{ margin: "2px 0 12px" }}>{korDate(day)}</p>
 
       {columns.length === 0 ? (
@@ -264,7 +330,12 @@ export default function Client(p: Props) {
                         const js = joinsOf.get(l.id) ?? [];
                         const done = js.filter((j) => j.진행상태 === "완료").length;
                         const settled = js.every((j) => j.진행상태 !== "예정");
-                        const tone = l.진행상태 === "취소" ? "gone" : settled ? "done" : "wait";
+                        // 날짜가 지났는데 안 찍은 것은 눈에 띄어야 한다
+                        const tone =
+                          l.진행상태 === "취소" ? "gone"
+                            : settled ? "done"
+                              : l.날짜 < now ? "late"
+                                : "wait";
                         return (
                           <button className={`tt-item ${tone}`} key={l.id} onClick={() => setOpen(l.id)}>
                             <span className="tm">{l.시작시각}</span>
@@ -273,7 +344,9 @@ export default function Client(p: Props) {
                                 ? `${productName.get(l.상품코드) ?? "그룹수업"} ${js.length}명`
                                 : memberName.get(js[0]?.회원번호) ?? "회원 미지정"}
                             </span>
-                            {settled && <span className="mk">{done}회 완료</span>}
+                            {settled
+                              ? <span className="mk">{done}회 완료</span>
+                              : l.날짜 < now && <span className="mk">아직 안 찍음</span>}
                           </button>
                         );
                       })}
@@ -298,6 +371,7 @@ export default function Client(p: Props) {
           canRemove={p.can.remove || p.can.update}
           busy={busy}
           onMark={(참석번호, 상태) => send({ action: "mark", 수업번호: openLesson.id, 참석번호, 상태 })}
+          onCompleteAll={() => send({ action: "complete", 수업번호: openLesson.id })}
           onDelete={() => send({ action: "delete", 수업번호: openLesson.id })}
           onClose={() => setOpen(null)}
         />
@@ -335,12 +409,14 @@ function LessonBox(props: {
   canRemove: boolean;
   busy: boolean;
   onMark: (joinId: string, state: string) => void;
+  onCompleteAll: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
   const l = props.lesson;
   const [confirming, setConfirming] = useState(false);
   const left = new Map(props.tickets.map((t) => [t.id, t]));
+  const waiting = props.joins.filter((j) => j.진행상태 === "예정").length;
 
   return (
     <div className="modal-back" onClick={props.onClose}>
@@ -389,9 +465,21 @@ function LessonBox(props: {
           })}
         </div>
 
+        {waiting > 0 && props.canEdit && (
+          <button className="btn-primary" style={{ marginTop: 14 }} disabled={props.busy}
+                  onClick={props.onCompleteAll}>
+            {props.busy
+              ? "처리 중…"
+              : waiting > 1
+                ? `수업 완료 — ${waiting}명 한 번에`
+                : "수업 완료"}
+          </button>
+        )}
+
         <p className="page-sub" style={{ margin: "12px 0 0" }}>
           <b>완료</b>로 찍을 때만 회차가 1 빠집니다. 노쇼·취소는 회차가 그대로입니다.
           잘못 찍었으면 다시 눌러 되돌릴 수 있습니다.
+          {waiting > 1 && " 「수업 완료」는 아직 안 찍은 사람만 완료로 바꿉니다 — 이미 노쇼로 찍은 사람은 그대로 둡니다."}
         </p>
 
         <div className="modal-actions">

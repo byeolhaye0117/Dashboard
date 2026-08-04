@@ -6,7 +6,7 @@
  *
  * 시트 칸 이름이 조금 달라도 되도록 columns.ts 로 이어준다.
  */
-import { readSheet, appendRow, appendRows, updateRow, type Row } from "./sheets";
+import { readSheet, appendRow, appendRows, updateRow, updateRows, type Row } from "./sheets";
 import { resolve, toSheetRow, get, type ColumnMap, type ColumnSpec } from "./columns";
 import { now, today } from "./time";
 import { formatPhone } from "./phone";
@@ -651,6 +651,41 @@ export async function patchTicket(
   staffId: string
 ): Promise<void> {
   await patchOne(SHEET_V, V_COLS, "이용권번호", id, changes, staffId);
+}
+
+/**
+ * 여러 이용권의 잔여횟수를 한 번에 고친다
+ *
+ * 그룹수업 한 타임을 완료 처리하면 참석자 수만큼 이용권이 움직인다.
+ * 하나씩 고치면 요청이 그만큼 나가서 느리고, 중간에 끊기면 일부만 빠진다.
+ * delta 가 양수면 빼고, 음수면 되돌려준다.
+ */
+export async function bumpTicketCounts(
+  moves: { id: string; delta: number }[],
+  staffId: string
+): Promise<void> {
+  if (moves.length === 0) return;
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_V);
+  const cols = resolve(SHEET_V, headers, V_COLS);
+  const stamp = now();
+
+  const items: { rowNumber: number; row: Row }[] = [];
+  moves.forEach(({ id, delta }) => {
+    const i = rows.findIndex((r) => get(r, cols, "이용권번호") === id);
+    if (i < 0) return;
+    const left = won(get(rows[i], cols, "잔여횟수"));
+    items.push({
+      rowNumber: rowNumbers[i],
+      row: {
+        ...rows[i],
+        ...toSheetRow(
+          { 잔여횟수: String(Math.max(0, left - delta)), 수정일시: stamp, 수정자: staffId },
+          cols
+        ),
+      },
+    });
+  });
+  await updateRows(SHEET_V, headers, items);
 }
 
 /** 이용권 지우기 — 잘못 넣은 줄을 되돌릴 때 */

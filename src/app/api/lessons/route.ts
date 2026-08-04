@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesForStaff } from "@/lib/menu";
 import { getStaffAll, getStaffBranches } from "@/lib/data";
-import { createLesson, setJoinState, patchLesson, softDeleteLesson, listLessons } from "@/lib/lessons";
+import {
+  createLesson, setJoinState, patchLesson, softDeleteLesson, listLessons, completeLesson,
+} from "@/lib/lessons";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +89,15 @@ export async function POST(req: Request) {
       if (no) return NextResponse.json({ error: no }, { status: 403 });
       await setJoinState(참석번호, 상태, session.staffId);
       return NextResponse.json({ ok: true });
+    }
+
+    if (action === "complete") {
+      const { 수업번호 } = body;
+      if (!수업번호) return NextResponse.json({ error: "수업번호가 필요합니다." }, { status: 400 });
+      const no = await allowed(수업번호);
+      if (no) return NextResponse.json({ error: no }, { status: 403 });
+      const n = await completeLesson(수업번호, session.staffId);
+      return NextResponse.json({ ok: true, count: n });
     }
 
     if (action === "patch") {
