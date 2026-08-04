@@ -7,7 +7,7 @@
  * 그 아래는 이 달 한 장 — 날짜 × 직원 격자로 한 달을 통째로 본다.
  * 빠진 칸이 눈에 띄어야 "누가 안 찍었나"를 바로 안다.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { today, korDate } from "@/lib/time";
 import { WORK_KINDS, KIND_MARK as MARK, toMinutes, hourText } from "@/lib/attendanceMeta";
 
@@ -21,6 +21,7 @@ type Row = {
   퇴근시각: string;
   휴게시작: string;
   휴게분: string;
+  휴게내역: string;
   근무구분: string;
   지각분: string;
   조퇴분: string;
@@ -49,14 +50,21 @@ function foldDay(list: Row[], restMin: string) {
   // 찍은 휴게가 있으면 그걸 쓴다. 없으면 고정분. 둘 다 없으면 0
   const rest = punched > 0 ? punched : gross > 0 ? fixed : 0;
   const head = rounds[0];
+  const openRest = rounds.find((r) => r.휴게시작)?.휴게시작 ?? "";
   return {
     rounds,
     head,
     kind: head?.근무구분 ?? "",
     gross,
     rest,
+    /** 찍어서 쌓인 휴게 (고정분은 뺀 값) */
+    punched,
+    /** 고정 휴게분을 쓰고 있는가 */
+    fixed: punched === 0 && rest > 0,
+    spans: rounds.map((r) => r.휴게내역).filter(Boolean).join(" · "),
+    openRest,
     net: Math.max(0, gross - rest),
-    resting: rounds.some((r) => r.휴게시작),
+    resting: Boolean(openRest),
     working: rounds.some((r) => r.출근시각 && !r.퇴근시각),
     started: rounds.some((r) => r.출근시각),
   };
@@ -93,6 +101,14 @@ export default function Client(p: Props) {
   const [edit, setEdit] = useState<{ 사번: string; 날짜: string } | null>(null);
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
+  /** 휴게 중일 때 "몇 분째"를 흐르게 하려고 1분마다 다시 그린다 */
+  const [tick, setTick] = useState(0);
+  const [confirmOut, setConfirmOut] = useState(false);
+
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   const days = useMemo(() => daysOf(month), [month]);
   const restOf = (id: string) => p.people.find((x) => x.id === id)?.restMin ?? "";
@@ -129,14 +145,31 @@ export default function Client(p: Props) {
     };
   }, [p.rows, p.me, month, meSelf]);
 
-  async function punch(action: "in" | "out" | "break-in" | "break-out") {
+  /** 휴게를 몇 분째 하고 있는지 — 1분마다 다시 센다 */
+  const restingFor = useMemo(() => {
+    if (!meToday?.openRest) return 0;
+    const from = toMinutes(meToday.openRest);
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    return from === null ? 0 : Math.max(0, nowMin - from);
+  }, [meToday?.openRest, tick]);
+
+  /**
+   * 휴게 없이 오래 일했는가
+   *
+   * 근로기준법은 4시간 일하면 30분 쉬게 한다. 막지는 않고 물어만 본다.
+   * 정말 못 쉰 날도 있는데 퇴근을 막으면 거짓 기록을 만들게 된다.
+   */
+  const needRest = Boolean(meToday && meToday.rest === 0 && meToday.gross >= 240);
+
+  async function punch(action: "in" | "out" | "break-in" | "break-out", rest = 0) {
     setBusy(action);
     setMsg("");
+    setConfirmOut(false);
     try {
       const res = await fetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, rest }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "찍지 못했습니다.");
@@ -228,20 +261,26 @@ export default function Client(p: Props) {
               {Number(meToday.head?.지각분) > 0 ? `${meToday.head?.지각분}분 지각` : "지각"}
             </span>
           )}
-          {meToday?.resting && <span className="pill warn">휴게 중</span>}
+          {meToday?.resting && (
+            <span className="pill warn">휴게 중 {restingFor}분째</span>
+          )}
         </div>
 
         <div className="pk-act">
           {meToday?.working ? (
             <>
-              <button className="btn-ghost tall"
+              <button className={meToday.resting ? "btn-dark big" : "btn-rest big"}
                       onClick={() => punch(meToday.resting ? "break-out" : "break-in")}
                       disabled={Boolean(busy)}>
-                {meToday.resting ? "휴게 끝" : "휴게 시작"}
+                {meToday.resting ? "휴게 끝내고 복귀" : "휴게 시작"}
               </button>
-              <button className="btn-dark big" onClick={() => punch("out")} disabled={Boolean(busy)}>
-                {busy === "out" ? "찍는 중…" : "퇴근"}
-              </button>
+              {!meToday.resting && (
+                <button className="btn-ghost tall"
+                        onClick={() => (needRest ? setConfirmOut(true) : punch("out"))}
+                        disabled={Boolean(busy)}>
+                  {busy === "out" ? "찍는 중…" : "퇴근"}
+                </button>
+              )}
             </>
           ) : (
             <button className="btn-dark big" onClick={() => punch("in")} disabled={Boolean(busy)}>
@@ -250,6 +289,41 @@ export default function Client(p: Props) {
           )}
         </div>
       </div>
+
+      {/* 오늘 휴게가 어떻게 쌓였는지 — 카드 밑에 한 줄 */}
+      {meToday?.started && (
+        <div className="rest-strip">
+          {meToday.fixed ? (
+            <span>휴게 <b>{meSelf?.restMin}분</b>이 일한 시간에서 자동으로 빠집니다</span>
+          ) : meToday.punched > 0 ? (
+            <span>
+              오늘 휴게 <b>{hourText(meToday.punched)}</b>
+              {meToday.resting && " · 지금 쉬는 중"}
+            </span>
+          ) : (
+            <span>오늘 휴게 <b>없음</b> · 쉬실 때 「휴게 시작」을 눌러주세요</span>
+          )}
+          <span className="spacer" />
+          <span className="dim">{meToday.spans || (Number(meSelf?.restMin) > 0 ? "직원 관리에서 바꿉니다" : "")}</span>
+        </div>
+      )}
+
+      {/* 오래 일했는데 휴게가 없을 때 — 막지 않고 알린다 */}
+      {confirmOut && (
+        <div className="warnbox">
+          <div>
+            <b>{hourText(meToday?.gross ?? 0)}을 일했는데 휴게 기록이 없습니다.</b>
+            <p>쉬셨다면 휴게를 적어주세요. 정말 못 쉬셨다면 그대로 퇴근하셔도 됩니다.</p>
+          </div>
+          <span className="spacer" />
+          <button className="btn-ghost" onClick={() => punch("out", 30)} disabled={Boolean(busy)}>
+            휴게 30분 적고 퇴근
+          </button>
+          <button className="btn-dark" onClick={() => punch("out")} disabled={Boolean(busy)}>
+            그대로 퇴근
+          </button>
+        </div>
+      )}
 
       {msg && <div className="alert-bad">{msg}</div>}
 

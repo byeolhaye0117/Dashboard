@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       }
 
       if (action === "out") {
-        const r = await punchOut(session.staffId, me?.outTime ?? "");
+        const r = await punchOut(session.staffId, me?.outTime ?? "", Number(body.rest) || 0);
         return NextResponse.json({ ok: true, ...r });
       }
 
