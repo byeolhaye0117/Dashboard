@@ -289,7 +289,7 @@ export default function Client(p: Props) {
           members={p.members}
           tickets={p.tickets}
           products={p.products}
-          canPickTrainer={p.can.update}
+          canPickTrainer={p.can.create}
           busy={busy}
           onSave={(payload) => send({ action: "create", ...payload })}
           onClose={() => setAdding(false)}
