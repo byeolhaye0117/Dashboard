@@ -1,5 +1,6 @@
 "use client";
 
+import Modal from "@/components/Modal";
 /**
  * 상담 목록 · 등록 · 진행 상태 관리
  */
@@ -392,90 +393,88 @@ function NewForm({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>상담 접수</h3>
-        <p className="modal-lead">
-          이름과 연락처만 있으면 됩니다. 나머지는 나중에 알게 되면 수정에서 채우시면 됩니다.
-        </p>
+    <Modal onClose={onClose} label="상담 접수" size="wide">
+      <h3>상담 접수</h3>
+      <p className="modal-lead">
+        이름과 연락처만 있으면 됩니다. 나머지는 나중에 알게 되면 수정에서 채우시면 됩니다.
+      </p>
 
-        <div className="form-grid">
-          <L label="이름" req>
-            <input className="input" value={f["이름"] ?? ""} onChange={(e) => set("이름", e.target.value)} />
-          </L>
-          <L label="연락처" req>
-            <input className="input" inputMode="tel" placeholder="010-0000-0000"
-                   value={f["전화번호"] ?? ""} onChange={(e) => set("전화번호", e.target.value)} />
-          </L>
-          <L label="상담일">
-            <input className="input" type="date" value={f["상담날짜"] ?? ""}
-                   onChange={(e) => set("상담날짜", e.target.value)} />
-          </L>
-          <L label="지점">
-            <select className="input" value={f["지점코드"] ?? ""} onChange={(e) => set("지점코드", e.target.value)}>
-              {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
-            </select>
-          </L>
-          <L label="문의 채널" req>
-            <select className="input" value={f["문의채널"] ?? ""} onChange={(e) => set("문의채널", e.target.value)}>
-              <option value="">선택</option>
-              {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </L>
-          <Sel label="문의유형" k="문의유형" f={f} set={set} opts={options["문의유형"]} />
-          <L label="진행 상태">
-            <select className="input" value={f["진행상태"] ?? "신규"} onChange={(e) => set("진행상태", e.target.value)}>
-              {STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
-            </select>
-          </L>
-          <L label="담당자">
-            <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => set("상담자사번", e.target.value)}>
-              {counselors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </L>
-          {f["진행상태"] === "미등록" && (
-            <L label="미등록 사유" full>
-              <ReasonPick
-                value={f["미등록사유"] ?? ""}
-                onChange={(v) => set("미등록사유", v)}
-                detail={f["메모"] ?? ""}
-                onDetail={(v) => set("메모", v)}
-                extra={options["미등록사유"]}
-              />
-            </L>
-          )}
-          <Sel label="성별" k="성별" f={f} set={set} opts={options["성별"]} />
-          <Sel label="나이대" k="나이대" f={f} set={set} opts={options["나이대"]} />
-          <L label="방문 약속 일시" full>
-            <input
-              className="input"
-              type="datetime-local"
-              value={f["약속일시"] ?? ""}
-              onChange={(e) => {
-                set("약속일시", e.target.value);
-                // 약속을 잡으면 상태도 같이 올려준다. 원하면 다시 바꿀 수 있다
-                if (e.target.value && (f["진행상태"] === "예약" || !f["진행상태"])) {
-                  set("진행상태", "약속전환");
-                }
-              }}
+      <div className="form-grid">
+        <L label="이름" req>
+          <input className="input" value={f["이름"] ?? ""} onChange={(e) => set("이름", e.target.value)} />
+        </L>
+        <L label="연락처" req>
+          <input className="input" inputMode="tel" placeholder="010-0000-0000"
+                 value={f["전화번호"] ?? ""} onChange={(e) => set("전화번호", e.target.value)} />
+        </L>
+        <L label="상담일">
+          <input className="input" type="date" value={f["상담날짜"] ?? ""}
+                 onChange={(e) => set("상담날짜", e.target.value)} />
+        </L>
+        <L label="지점">
+          <select className="input" value={f["지점코드"] ?? ""} onChange={(e) => set("지점코드", e.target.value)}>
+            {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+          </select>
+        </L>
+        <L label="문의 채널" req>
+          <select className="input" value={f["문의채널"] ?? ""} onChange={(e) => set("문의채널", e.target.value)}>
+            <option value="">선택</option>
+            {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </L>
+        <Sel label="문의유형" k="문의유형" f={f} set={set} opts={options["문의유형"]} />
+        <L label="진행 상태">
+          <select className="input" value={f["진행상태"] ?? "신규"} onChange={(e) => set("진행상태", e.target.value)}>
+            {STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
+          </select>
+        </L>
+        <L label="담당자">
+          <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => set("상담자사번", e.target.value)}>
+            {counselors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </L>
+        {f["진행상태"] === "미등록" && (
+          <L label="미등록 사유" full>
+            <ReasonPick
+              value={f["미등록사유"] ?? ""}
+              onChange={(v) => set("미등록사유", v)}
+              detail={f["메모"] ?? ""}
+              onDetail={(v) => set("메모", v)}
+              extra={options["미등록사유"]}
             />
           </L>
-          <L label="문의 내용" full>
-            <textarea className="input area" rows={3} value={f["문의내용"] ?? ""}
-                      onChange={(e) => set("문의내용", e.target.value)} />
-          </L>
-        </div>
-
-        {msg && <div className="alert-bad">{msg}</div>}
-
-        <div className="modal-actions">
-          <button className="btn-ghost" onClick={onClose}>취소</button>
-          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
-            {busy ? "저장 중…" : "저장"}
-          </button>
-        </div>
+        )}
+        <Sel label="성별" k="성별" f={f} set={set} opts={options["성별"]} />
+        <Sel label="나이대" k="나이대" f={f} set={set} opts={options["나이대"]} />
+        <L label="방문 약속 일시" full>
+          <input
+            className="input"
+            type="datetime-local"
+            value={f["약속일시"] ?? ""}
+            onChange={(e) => {
+              set("약속일시", e.target.value);
+              // 약속을 잡으면 상태도 같이 올려준다. 원하면 다시 바꿀 수 있다
+              if (e.target.value && (f["진행상태"] === "예약" || !f["진행상태"])) {
+                set("진행상태", "약속전환");
+              }
+            }}
+          />
+        </L>
+        <L label="문의 내용" full>
+          <textarea className="input area" rows={3} value={f["문의내용"] ?? ""}
+                    onChange={(e) => set("문의내용", e.target.value)} />
+        </L>
       </div>
-    </div>
+
+      {msg && <div className="alert-bad">{msg}</div>}
+
+      <div className="modal-actions">
+        <button className="btn-ghost" onClick={onClose}>취소</button>
+        <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+          {busy ? "저장 중…" : "저장"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -591,196 +590,194 @@ function Detail({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <div className="detail-head">
-          <div>
-            <h3 style={{ margin: 0 }}>{item["이름"]}</h3>
-            <span className="dim num">{showPhone(item["전화번호"])}</span>
-          </div>
-          <span className={`pill ${STAGE_TONE[stageNow(item)] ?? ""}`}>{stageNow(item)}</span>
+    <Modal onClose={onClose} label="상담 상세" size="wide">
+      <div className="detail-head">
+        <div>
+          <h3 style={{ margin: 0 }}>{item["이름"]}</h3>
+          <span className="dim num">{showPhone(item["전화번호"])}</span>
         </div>
+        <span className={`pill ${STAGE_TONE[stageNow(item)] ?? ""}`}>{stageNow(item)}</span>
+      </div>
 
-        {isAutoFail(item) && (
-          <div className="alert-soft">
-            약속 날짜가 지난 달인데 결론이 입력되지 않아 <b>미등록</b>으로 마감된 건입니다.
-            실제로 등록하셨다면 아래에서 등록으로 바꿔주세요.
-          </div>
-        )}
-        {needsResult(item) && (
-          <div className="alert-soft">
-            약속 날짜가 지났습니다. 등록 또는 미등록을 아래에서 정해주세요.
-            이번 달 안에 등록하시면 등록으로 인정됩니다.
-          </div>
-        )}
+      {isAutoFail(item) && (
+        <div className="alert-soft">
+          약속 날짜가 지난 달인데 결론이 입력되지 않아 <b>미등록</b>으로 마감된 건입니다.
+          실제로 등록하셨다면 아래에서 등록으로 바꿔주세요.
+        </div>
+      )}
+      {needsResult(item) && (
+        <div className="alert-soft">
+          약속 날짜가 지났습니다. 등록 또는 미등록을 아래에서 정해주세요.
+          이번 달 안에 등록하시면 등록으로 인정됩니다.
+        </div>
+      )}
 
-        {editing ? (
-          <>
-            <div className="form-grid">
-              <L label="이름" req>
-                <input className="input" value={f["이름"] ?? ""} onChange={(e) => setV("이름", e.target.value)} />
-              </L>
-              <L label="연락처" req>
-                <input className="input" inputMode="tel" value={f["전화번호"] ?? ""}
-                       onChange={(e) => setV("전화번호", e.target.value)} />
-              </L>
-              <L label="상담일">
-                <input className="input" type="date" value={(f["상담날짜"] ?? "").slice(0, 10)}
-                       onChange={(e) => setV("상담날짜", e.target.value)} />
-              </L>
-              <L label="담당자">
-                <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => setV("상담자사번", e.target.value)}>
-                  {Object.entries(staffNames).map(([id, nm]) => (
-                    <option key={id} value={id}>{nm}</option>
-                  ))}
-                </select>
-              </L>
-              <L label="문의 채널">
-                <select className="input" value={f["문의채널"] || f["방문경로"] || ""}
-                        onChange={(e) => setV("문의채널", e.target.value)}>
-                  <option value="">선택</option>
-                  {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </L>
-              <Sel label="문의유형" k="문의유형" f={f} set={setV} opts={options["문의유형"]} />
-              <Sel label="성별" k="성별" f={f} set={setV} opts={options["성별"]} />
-              <Sel label="나이대" k="나이대" f={f} set={setV} opts={options["나이대"]} />
-              <L label="방문 약속 일시" full>
-                <input className="input" type="datetime-local" value={f["약속일시"] ?? ""}
-                       onChange={(e) => setV("약속일시", e.target.value)} />
-              </L>
-              <L label="문의 내용" full>
-                <textarea className="input area" rows={3} value={f["문의내용"] ?? ""}
-                          onChange={(e) => setV("문의내용", e.target.value)} />
-              </L>
-              <L label="메모" full>
-                <textarea className="input area" rows={2} value={f["메모"] ?? ""}
-                          onChange={(e) => setV("메모", e.target.value)} />
-              </L>
-            </div>
-
-            {msg && <div className="alert-bad">{msg}</div>}
-
-            <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => { setEditing(false); setF({ ...item }); setMsg(""); }}>
-                취소
-              </button>
-              <button className="btn-primary" style={{ marginTop: 0 }} onClick={saveEdit} disabled={busy}>
-                {busy ? "저장 중…" : "저장"}
-              </button>
-            </div>
-          </>
-        ) : (
+      {editing ? (
         <>
-        <dl className="kv">
-          <Kv k="상담일" v={korDate(item["상담날짜"])} />
-          <Kv k="지점" v={branchName} />
-          <Kv k="문의 채널" v={chan(item)} />
-          <Kv k="문의유형" v={item["문의유형"]} />
-          <Kv k="성별 · 나이" v={[item["성별"], item["나이대"]].filter(Boolean).join(" · ")} />
-          <Kv k="담당자" v={staffNames[item["상담자사번"]] ?? "-"} />
-          <Kv k="접수자" v={staffNames[item["접수자사번"]] ?? "-"} />
-          <Kv k="방문 약속" v={item["약속일시"]?.replace("T", " ")} />
-          <Kv
-            k={isNoShowReason(item["미등록사유"]) ? "미방문 사유" : "미등록 사유"}
-            v={item["미등록사유"]}
-          />
-        </dl>
-
-        {item["문의내용"] && (
-          <div className="quote">{item["문의내용"]}</div>
-        )}
-
-        <h4 className="mini-title">연락 이력 {activities.length > 0 && `(${activities.length})`}</h4>
-        {activities.length === 0 ? (
-          <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>아직 기록이 없습니다.</p>
-        ) : (
-          <ul className="timeline">
-            {activities
-              .slice()
-              .sort((a, b) => (b["일시"] ?? "").localeCompare(a["일시"] ?? ""))
-              .map((a) => (
-                <li key={a["활동번호"]}>
-                  <span className="pill">{a["활동종류"]}</span>
-                  <span className="tl-body">{a["내용"]}</span>
-                  <span className="tl-meta num">
-                    {(a["일시"] ?? "").slice(5, 16)} · {staffNames[a["처리직원사번"]] ?? ""}
-                  </span>
-                </li>
-              ))}
-          </ul>
-        )}
-
-        {canUpdate && (
-          <>
-            <h4 className="mini-title">연락 기록 추가</h4>
-            <div className="inline-form">
-              <select className="input" style={{ maxWidth: 110 }} value={kind} onChange={(e) => setKind(e.target.value)}>
-                {(options["상담활동종류"] ?? ["전화", "문자", "방문", "메모"]).map((k) => (
-                  <option key={k} value={k}>{k}</option>
+          <div className="form-grid">
+            <L label="이름" req>
+              <input className="input" value={f["이름"] ?? ""} onChange={(e) => setV("이름", e.target.value)} />
+            </L>
+            <L label="연락처" req>
+              <input className="input" inputMode="tel" value={f["전화번호"] ?? ""}
+                     onChange={(e) => setV("전화번호", e.target.value)} />
+            </L>
+            <L label="상담일">
+              <input className="input" type="date" value={(f["상담날짜"] ?? "").slice(0, 10)}
+                     onChange={(e) => setV("상담날짜", e.target.value)} />
+            </L>
+            <L label="담당자">
+              <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => setV("상담자사번", e.target.value)}>
+                {Object.entries(staffNames).map(([id, nm]) => (
+                  <option key={id} value={id}>{nm}</option>
                 ))}
               </select>
-              <input className="input" placeholder="무슨 얘기를 했는지 적어주세요"
-                     value={content} onChange={(e) => setContent(e.target.value)} />
-              <button className="btn-ghost" onClick={saveActivity} disabled={busy}>추가</button>
-            </div>
-
-            <h4 className="mini-title">진행 상태 바꾸기</h4>
-            <div className="inline-form">
-              <select className="input" style={{ maxWidth: 130 }} value={stage} onChange={(e) => setStage(e.target.value)}>
-                {STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </L>
+            <L label="문의 채널">
+              <select className="input" value={f["문의채널"] || f["방문경로"] || ""}
+                      onChange={(e) => setV("문의채널", e.target.value)}>
+                <option value="">선택</option>
+                {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-              <input className="input" type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} />
-              <button className="btn-ghost" onClick={saveStage} disabled={busy}>저장</button>
-            </div>
-            {stage === "미등록" && (
-              <ReasonPick
-                value={reason}
-                onChange={setReason}
-                detail={reasonMemo}
-                onDetail={setReasonMemo}
-                extra={options["미등록사유"]}
-              />
-            )}
-          </>
-        )}
-
-        {msg && <div className="alert-bad">{msg}</div>}
-
-        {confirmDel ? (
-          <div className="confirm-box">
-            <b>이 상담을 삭제할까요?</b>
-            <p>
-              {item["이름"]} · {showPhone(item["전화번호"])}
-              <br />
-              목록에서 사라집니다. 시트에는 기록이 남아 있어 되살릴 수 있습니다.
-            </p>
-            <div className="modal-actions" style={{ marginTop: 12 }}>
-              <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
-              <button className="btn-danger" onClick={remove} disabled={busy}>
-                {busy ? "삭제 중…" : "삭제"}
-              </button>
-            </div>
+            </L>
+            <Sel label="문의유형" k="문의유형" f={f} set={setV} opts={options["문의유형"]} />
+            <Sel label="성별" k="성별" f={f} set={setV} opts={options["성별"]} />
+            <Sel label="나이대" k="나이대" f={f} set={setV} opts={options["나이대"]} />
+            <L label="방문 약속 일시" full>
+              <input className="input" type="datetime-local" value={f["약속일시"] ?? ""}
+                     onChange={(e) => setV("약속일시", e.target.value)} />
+            </L>
+            <L label="문의 내용" full>
+              <textarea className="input area" rows={3} value={f["문의내용"] ?? ""}
+                        onChange={(e) => setV("문의내용", e.target.value)} />
+            </L>
+            <L label="메모" full>
+              <textarea className="input area" rows={2} value={f["메모"] ?? ""}
+                        onChange={(e) => setV("메모", e.target.value)} />
+            </L>
           </div>
-        ) : (
+
+          {msg && <div className="alert-bad">{msg}</div>}
+
           <div className="modal-actions">
-            {canRemove && (
-              <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>
-                삭제
-              </button>
-            )}
-            {canUpdate && (
-              <button className="btn-ghost" onClick={() => { setEditing(true); setMsg(""); }}>
-                수정
-              </button>
-            )}
-            <button className="btn-ghost" onClick={onClose}>닫기</button>
+            <button className="btn-ghost" onClick={() => { setEditing(false); setF({ ...item }); setMsg(""); }}>
+              취소
+            </button>
+            <button className="btn-primary" style={{ marginTop: 0 }} onClick={saveEdit} disabled={busy}>
+              {busy ? "저장 중…" : "저장"}
+            </button>
           </div>
-        )}
         </>
-        )}
-      </div>
-    </div>
+      ) : (
+      <>
+      <dl className="kv">
+        <Kv k="상담일" v={korDate(item["상담날짜"])} />
+        <Kv k="지점" v={branchName} />
+        <Kv k="문의 채널" v={chan(item)} />
+        <Kv k="문의유형" v={item["문의유형"]} />
+        <Kv k="성별 · 나이" v={[item["성별"], item["나이대"]].filter(Boolean).join(" · ")} />
+        <Kv k="담당자" v={staffNames[item["상담자사번"]] ?? "-"} />
+        <Kv k="접수자" v={staffNames[item["접수자사번"]] ?? "-"} />
+        <Kv k="방문 약속" v={item["약속일시"]?.replace("T", " ")} />
+        <Kv
+          k={isNoShowReason(item["미등록사유"]) ? "미방문 사유" : "미등록 사유"}
+          v={item["미등록사유"]}
+        />
+      </dl>
+
+      {item["문의내용"] && (
+        <div className="quote">{item["문의내용"]}</div>
+      )}
+
+      <h4 className="mini-title">연락 이력 {activities.length > 0 && `(${activities.length})`}</h4>
+      {activities.length === 0 ? (
+        <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>아직 기록이 없습니다.</p>
+      ) : (
+        <ul className="timeline">
+          {activities
+            .slice()
+            .sort((a, b) => (b["일시"] ?? "").localeCompare(a["일시"] ?? ""))
+            .map((a) => (
+              <li key={a["활동번호"]}>
+                <span className="pill">{a["활동종류"]}</span>
+                <span className="tl-body">{a["내용"]}</span>
+                <span className="tl-meta num">
+                  {(a["일시"] ?? "").slice(5, 16)} · {staffNames[a["처리직원사번"]] ?? ""}
+                </span>
+              </li>
+            ))}
+        </ul>
+      )}
+
+      {canUpdate && (
+        <>
+          <h4 className="mini-title">연락 기록 추가</h4>
+          <div className="inline-form">
+            <select className="input" style={{ maxWidth: 110 }} value={kind} onChange={(e) => setKind(e.target.value)}>
+              {(options["상담활동종류"] ?? ["전화", "문자", "방문", "메모"]).map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+            <input className="input" placeholder="무슨 얘기를 했는지 적어주세요"
+                   value={content} onChange={(e) => setContent(e.target.value)} />
+            <button className="btn-ghost" onClick={saveActivity} disabled={busy}>추가</button>
+          </div>
+
+          <h4 className="mini-title">진행 상태 바꾸기</h4>
+          <div className="inline-form">
+            <select className="input" style={{ maxWidth: 130 }} value={stage} onChange={(e) => setStage(e.target.value)}>
+              {STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <input className="input" type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} />
+            <button className="btn-ghost" onClick={saveStage} disabled={busy}>저장</button>
+          </div>
+          {stage === "미등록" && (
+            <ReasonPick
+              value={reason}
+              onChange={setReason}
+              detail={reasonMemo}
+              onDetail={setReasonMemo}
+              extra={options["미등록사유"]}
+            />
+          )}
+        </>
+      )}
+
+      {msg && <div className="alert-bad">{msg}</div>}
+
+      {confirmDel ? (
+        <div className="confirm-box">
+          <b>이 상담을 삭제할까요?</b>
+          <p>
+            {item["이름"]} · {showPhone(item["전화번호"])}
+            <br />
+            목록에서 사라집니다. 시트에는 기록이 남아 있어 되살릴 수 있습니다.
+          </p>
+          <div className="modal-actions" style={{ marginTop: 12 }}>
+            <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
+            <button className="btn-danger" onClick={remove} disabled={busy}>
+              {busy ? "삭제 중…" : "삭제"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="modal-actions">
+          {canRemove && (
+            <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>
+              삭제
+            </button>
+          )}
+          {canUpdate && (
+            <button className="btn-ghost" onClick={() => { setEditing(true); setMsg(""); }}>
+              수정
+            </button>
+          )}
+          <button className="btn-ghost" onClick={onClose}>닫기</button>
+        </div>
+      )}
+      </>
+      )}
+    </Modal>
   );
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Modal from "@/components/Modal";
 /**
  * 직원 목록 · 계정 발급 · 담당 지점 배정
  */
@@ -255,30 +256,28 @@ function IssuedBox({ name, password, onClose }: { name: string; password: string
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{name}님 비밀번호</h3>
-        <p className="modal-lead">
-          아래 비밀번호를 본인에게 알려주세요. <b>이 창을 닫으면 다시 볼 수 없습니다.</b>{" "}
-          잊어버리셔도 괜찮습니다 — 언제든 새로 발급하시면 됩니다.
-        </p>
+    <Modal onClose={onClose} label="직원 비밀번호 발급">
+      <h3>{name}님 비밀번호</h3>
+      <p className="modal-lead">
+        아래 비밀번호를 본인에게 알려주세요. <b>이 창을 닫으면 다시 볼 수 없습니다.</b>{" "}
+        잊어버리셔도 괜찮습니다 — 언제든 새로 발급하시면 됩니다.
+      </p>
 
-        <div className="pw-show">
-          <span className="pw-val num">{password}</span>
-          <button className="btn-ghost" onClick={copy}>{copied ? "복사됨" : "복사"}</button>
-        </div>
-
-        <p className="modal-lead" style={{ marginTop: 12 }}>
-          이 비밀번호로 바로 로그인됩니다. 직원은 스스로 바꿀 수 없으니,
-          바꿔야 할 일이 생기면 이 화면에서 새로 발급해주세요.
-          발급하는 순간 이전 비밀번호는 통하지 않습니다.
-        </p>
-
-        <div className="modal-actions">
-          <button className="btn-primary" style={{ marginTop: 0 }} onClick={onClose}>확인했습니다</button>
-        </div>
+      <div className="pw-show">
+        <span className="pw-val num">{password}</span>
+        <button className="btn-ghost" onClick={copy}>{copied ? "복사됨" : "복사"}</button>
       </div>
-    </div>
+
+      <p className="modal-lead" style={{ marginTop: 12 }}>
+        이 비밀번호로 바로 로그인됩니다. 직원은 스스로 바꿀 수 없으니,
+        바꿔야 할 일이 생기면 이 화면에서 새로 발급해주세요.
+        발급하는 순간 이전 비밀번호는 통하지 않습니다.
+      </p>
+
+      <div className="modal-actions">
+        <button className="btn-primary" style={{ marginTop: 0 }} onClick={onClose}>확인했습니다</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -317,46 +316,44 @@ function StaffForm({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>직원 추가</h3>
-        <p className="modal-lead">
-          먼저 사람만 등록됩니다. 비밀번호는 목록에서 이름을 눌러 따로 발급하시면 됩니다.
-        </p>
+    <Modal onClose={onClose} label="직원 추가" size="wide">
+      <h3>직원 추가</h3>
+      <p className="modal-lead">
+        먼저 사람만 등록됩니다. 비밀번호는 목록에서 이름을 눌러 따로 발급하시면 됩니다.
+      </p>
 
-        <div className="form-grid">
-          <L label="이름" req>
-            <input className="input" value={f["이름"] ?? ""} onChange={(e) => set("이름", e.target.value)} />
-          </L>
-          <L label="휴대폰" req>
-            <input className="input" inputMode="tel" placeholder="010-0000-0000"
-                   value={f["휴대폰"] ?? ""} onChange={(e) => set("휴대폰", e.target.value)} />
-          </L>
-          <L label="직급">
-            <select className="input" value={f["직급코드"] ?? ""} onChange={(e) => set("직급코드", e.target.value)}>
-              {pickable.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
-            </select>
-          </L>
-          <L label="소속 지점">
-            <select className="input" value={f["주소속지점"] ?? ""} onChange={(e) => set("주소속지점", e.target.value)}>
-              {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
-            </select>
-          </L>
-          <L label="담당 지점" full>
-            <BranchPick branches={branches} picked={picked} onChange={setPicked} />
-          </L>
-        </div>
-
-        {msg && <div className="alert-bad">{msg}</div>}
-
-        <div className="modal-actions">
-          <button className="btn-ghost" onClick={onClose}>취소</button>
-          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
-            {busy ? "저장 중…" : "저장"}
-          </button>
-        </div>
+      <div className="form-grid">
+        <L label="이름" req>
+          <input className="input" value={f["이름"] ?? ""} onChange={(e) => set("이름", e.target.value)} />
+        </L>
+        <L label="휴대폰" req>
+          <input className="input" inputMode="tel" placeholder="010-0000-0000"
+                 value={f["휴대폰"] ?? ""} onChange={(e) => set("휴대폰", e.target.value)} />
+        </L>
+        <L label="직급">
+          <select className="input" value={f["직급코드"] ?? ""} onChange={(e) => set("직급코드", e.target.value)}>
+            {pickable.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
+          </select>
+        </L>
+        <L label="소속 지점">
+          <select className="input" value={f["주소속지점"] ?? ""} onChange={(e) => set("주소속지점", e.target.value)}>
+            {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+          </select>
+        </L>
+        <L label="담당 지점" full>
+          <BranchPick branches={branches} picked={picked} onChange={setPicked} />
+        </L>
       </div>
-    </div>
+
+      {msg && <div className="alert-bad">{msg}</div>}
+
+      <div className="modal-actions">
+        <button className="btn-ghost" onClick={onClose}>취소</button>
+        <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+          {busy ? "저장 중…" : "저장"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -419,133 +416,131 @@ function Detail({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <div className="detail-head">
-          <div>
-            <h3 style={{ margin: 0 }}>{item.name}</h3>
-            <span className="dim num">사번 {item.id}</span>
-          </div>
-          {item.hasPassword ? (
-            <span className="pill good">사용 중</span>
-          ) : (
-            <span className="pill bad">발급 대기</span>
-          )}
+    <Modal onClose={onClose} label="직원 상세" size="wide">
+      <div className="detail-head">
+        <div>
+          <h3 style={{ margin: 0 }}>{item.name}</h3>
+          <span className="dim num">사번 {item.id}</span>
         </div>
-
-        {lockedRole && (
-          <div className="alert-soft">대표 계정입니다. 대표 본인만 바꿀 수 있습니다.</div>
-        )}
-
-        {can.update && !lockedRole && (
-          <>
-            <h4 className="mini-title">로그인 비밀번호</h4>
-            {confirmPw ? (
-              <div className="confirm-box">
-                <b>{item.name}님의 비밀번호를 새로 발급할까요?</b>
-                <p>
-                  지금 쓰던 비밀번호는 즉시 통하지 않게 됩니다.
-                  새 비밀번호는 발급 직후 한 번만 화면에 나오니, 본인에게 바로 알려주세요.
-                </p>
-                <div className="modal-actions" style={{ marginTop: 12 }}>
-                  <button className="btn-ghost" onClick={() => setConfirmPw(false)}>그만두기</button>
-                  <button className="btn-primary" style={{ marginTop: 0 }} onClick={onIssue}>발급</button>
-                </div>
-              </div>
-            ) : (
-              <div className="inline-form">
-                <span className="dim" style={{ fontSize: 12.5, flex: 1 }}>
-                  {item.hasPassword
-                    ? "비밀번호는 암호로 저장되어 있어 대표님도 볼 수 없습니다. 직원이 잊어버렸다면 새로 발급해주세요."
-                    : "아직 비밀번호가 없어 이 직원은 로그인할 수 없습니다."}
-                </span>
-                <button className="btn-dark" onClick={() => setConfirmPw(true)}>
-                  {item.hasPassword ? "새로 발급" : "비밀번호 발급"}
-                </button>
-              </div>
-            )}
-          </>
-        )}
-
-        <h4 className="mini-title">직원 정보</h4>
-        <div className="form-grid">
-          <L label="이름">
-            <input className="input" value={f.이름} disabled={!editable}
-                   onChange={(e) => setF({ ...f, 이름: e.target.value })} />
-          </L>
-          <L label="휴대폰">
-            <input className="input" inputMode="tel" value={f.휴대폰} disabled={!editable}
-                   onChange={(e) => setF({ ...f, 휴대폰: e.target.value })} />
-          </L>
-          <L label="직급">
-            <select className="input" value={f.직급코드} disabled={!editable || isSelf}
-                    onChange={(e) => setF({ ...f, 직급코드: e.target.value })}>
-              {pickable.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
-            </select>
-          </L>
-          <L label="소속 지점">
-            <select className="input" value={f.주소속지점} disabled={!editable}
-                    onChange={(e) => setF({ ...f, 주소속지점: e.target.value })}>
-              {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
-            </select>
-          </L>
-          <L label="재직 상태">
-            <select className="input" value={f.재직상태} disabled={!editable || isSelf}
-                    onChange={(e) => setF({ ...f, 재직상태: e.target.value })}>
-              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </L>
-          <L label="계정 사용">
-            <select className="input" value={f.계정사용 ? "Y" : "N"} disabled={!editable || isSelf}
-                    onChange={(e) => setF({ ...f, 계정사용: e.target.value === "Y" })}>
-              <option value="Y">사용 (로그인 가능)</option>
-              <option value="N">중지 (로그인 막음)</option>
-            </select>
-          </L>
-          <L label="담당 지점" full>
-            <BranchPick branches={branches} picked={picked} onChange={setPicked} disabled={!editable} />
-          </L>
-        </div>
-
-        {isSelf && (
-          <p className="stat-note">
-            본인 계정입니다. 스스로 갇히는 일이 없도록 직급 · 재직 상태 · 계정 사용은 바꿀 수 없습니다.
-          </p>
-        )}
-
-        {msg && <div className="alert-bad">{msg}</div>}
-
-        {confirmDel ? (
-          <div className="confirm-box">
-            <b>{item.name}님을 목록에서 지울까요?</b>
-            <p>
-              지난 상담 · 매출 기록은 그대로 남습니다. 시트에서도 줄을 지우지 않고
-              삭제 표시만 하므로 되살릴 수 있습니다.
-              <br />
-              잠깐 쉬는 경우라면 지우지 말고 <b>재직 상태를 휴직</b>으로 바꾸는 편이 낫습니다.
-            </p>
-            <div className="modal-actions" style={{ marginTop: 12 }}>
-              <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
-              <button className="btn-danger" onClick={remove} disabled={busy}>
-                {busy ? "처리 중…" : "지우기"}
-              </button>
-            </div>
-          </div>
+        {item.hasPassword ? (
+          <span className="pill good">사용 중</span>
         ) : (
-          <div className="modal-actions">
-            {can.remove && !isSelf && !lockedRole && (
-              <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>지우기</button>
-            )}
-            <button className="btn-ghost" onClick={onClose}>닫기</button>
-            {editable && (
-              <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
-                {busy ? "저장 중…" : "저장"}
-              </button>
-            )}
-          </div>
+          <span className="pill bad">발급 대기</span>
         )}
       </div>
-    </div>
+
+      {lockedRole && (
+        <div className="alert-soft">대표 계정입니다. 대표 본인만 바꿀 수 있습니다.</div>
+      )}
+
+      {can.update && !lockedRole && (
+        <>
+          <h4 className="mini-title">로그인 비밀번호</h4>
+          {confirmPw ? (
+            <div className="confirm-box">
+              <b>{item.name}님의 비밀번호를 새로 발급할까요?</b>
+              <p>
+                지금 쓰던 비밀번호는 즉시 통하지 않게 됩니다.
+                새 비밀번호는 발급 직후 한 번만 화면에 나오니, 본인에게 바로 알려주세요.
+              </p>
+              <div className="modal-actions" style={{ marginTop: 12 }}>
+                <button className="btn-ghost" onClick={() => setConfirmPw(false)}>그만두기</button>
+                <button className="btn-primary" style={{ marginTop: 0 }} onClick={onIssue}>발급</button>
+              </div>
+            </div>
+          ) : (
+            <div className="inline-form">
+              <span className="dim" style={{ fontSize: 12.5, flex: 1 }}>
+                {item.hasPassword
+                  ? "비밀번호는 암호로 저장되어 있어 대표님도 볼 수 없습니다. 직원이 잊어버렸다면 새로 발급해주세요."
+                  : "아직 비밀번호가 없어 이 직원은 로그인할 수 없습니다."}
+              </span>
+              <button className="btn-dark" onClick={() => setConfirmPw(true)}>
+                {item.hasPassword ? "새로 발급" : "비밀번호 발급"}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      <h4 className="mini-title">직원 정보</h4>
+      <div className="form-grid">
+        <L label="이름">
+          <input className="input" value={f.이름} disabled={!editable}
+                 onChange={(e) => setF({ ...f, 이름: e.target.value })} />
+        </L>
+        <L label="휴대폰">
+          <input className="input" inputMode="tel" value={f.휴대폰} disabled={!editable}
+                 onChange={(e) => setF({ ...f, 휴대폰: e.target.value })} />
+        </L>
+        <L label="직급">
+          <select className="input" value={f.직급코드} disabled={!editable || isSelf}
+                  onChange={(e) => setF({ ...f, 직급코드: e.target.value })}>
+            {pickable.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
+          </select>
+        </L>
+        <L label="소속 지점">
+          <select className="input" value={f.주소속지점} disabled={!editable}
+                  onChange={(e) => setF({ ...f, 주소속지점: e.target.value })}>
+            {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+          </select>
+        </L>
+        <L label="재직 상태">
+          <select className="input" value={f.재직상태} disabled={!editable || isSelf}
+                  onChange={(e) => setF({ ...f, 재직상태: e.target.value })}>
+            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </L>
+        <L label="계정 사용">
+          <select className="input" value={f.계정사용 ? "Y" : "N"} disabled={!editable || isSelf}
+                  onChange={(e) => setF({ ...f, 계정사용: e.target.value === "Y" })}>
+            <option value="Y">사용 (로그인 가능)</option>
+            <option value="N">중지 (로그인 막음)</option>
+          </select>
+        </L>
+        <L label="담당 지점" full>
+          <BranchPick branches={branches} picked={picked} onChange={setPicked} disabled={!editable} />
+        </L>
+      </div>
+
+      {isSelf && (
+        <p className="stat-note">
+          본인 계정입니다. 스스로 갇히는 일이 없도록 직급 · 재직 상태 · 계정 사용은 바꿀 수 없습니다.
+        </p>
+      )}
+
+      {msg && <div className="alert-bad">{msg}</div>}
+
+      {confirmDel ? (
+        <div className="confirm-box">
+          <b>{item.name}님을 목록에서 지울까요?</b>
+          <p>
+            지난 상담 · 매출 기록은 그대로 남습니다. 시트에서도 줄을 지우지 않고
+            삭제 표시만 하므로 되살릴 수 있습니다.
+            <br />
+            잠깐 쉬는 경우라면 지우지 말고 <b>재직 상태를 휴직</b>으로 바꾸는 편이 낫습니다.
+          </p>
+          <div className="modal-actions" style={{ marginTop: 12 }}>
+            <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
+            <button className="btn-danger" onClick={remove} disabled={busy}>
+              {busy ? "처리 중…" : "지우기"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="modal-actions">
+          {can.remove && !isSelf && !lockedRole && (
+            <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>지우기</button>
+          )}
+          <button className="btn-ghost" onClick={onClose}>닫기</button>
+          {editable && (
+            <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+              {busy ? "저장 중…" : "저장"}
+            </button>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 

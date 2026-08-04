@@ -1,5 +1,6 @@
 "use client";
 
+import Modal from "@/components/Modal";
 /**
  * 회원 목록 · 등록 · 이용권 관리
  */
@@ -993,23 +994,21 @@ function AddPurchase({
   }
 
   return (
-    <div className="modal-back top" onClick={onClose}>
-      <div className="modal xl" onClick={(e) => e.stopPropagation()}>
-        <h3>{member.이름}님 상품 추가</h3>
+    <Modal onClose={onClose} label="회원 상품 추가" size="xl" top>
+      <h3>{member.이름}님 상품 추가</h3>
 
-        <PurchaseFields products={products} options={options} tickets={tickets}
-                        baseDate={today()} b={b} setB={setB} />
+      <PurchaseFields products={products} options={options} tickets={tickets}
+                      baseDate={today()} b={b} setB={setB} />
 
-        {msg && <div className="alert-bad">{msg}</div>}
+      {msg && <div className="alert-bad">{msg}</div>}
 
-        <div className="modal-actions">
-          <button className="btn-ghost" onClick={onClose}>취소</button>
-          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
-            {busy ? "저장 중…" : "추가"}
-          </button>
-        </div>
+      <div className="modal-actions">
+        <button className="btn-ghost" onClick={onClose}>취소</button>
+        <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+          {busy ? "저장 중…" : "추가"}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1063,73 +1062,71 @@ function NewForm({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal xl" onClick={(e) => e.stopPropagation()}>
-        <h3>회원 등록</h3>
+    <Modal onClose={onClose} label="회원 등록" size="xl">
+      <h3>회원 등록</h3>
 
-        {waiting.length > 0 && (
-          <>
-            <h4 className="mini-title">상담에서 가져오기</h4>
-            <select className="input" value={fromId} onChange={(e) => pickFrom(e.target.value)}>
-              <option value="">직접 입력 (상담 기록 없이 등록)</option>
-              {waiting.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.이름} · {showPhone(w.전화번호)}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
+      {waiting.length > 0 && (
+        <>
+          <h4 className="mini-title">상담에서 가져오기</h4>
+          <select className="input" value={fromId} onChange={(e) => pickFrom(e.target.value)}>
+            <option value="">직접 입력 (상담 기록 없이 등록)</option>
+            {waiting.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.이름} · {showPhone(w.전화번호)}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
 
-        <h4 className="mini-title">회원 정보</h4>
-        <div className="form-grid">
-          <L label="이름" req>
-            <input className="input" value={f["이름"] ?? ""} onChange={(e) => set("이름", e.target.value)} />
-          </L>
-          <L label="연락처" req>
-            <input className="input" inputMode="tel" placeholder="010-0000-0000"
-                   value={f["전화번호"] ?? ""} onChange={(e) => set("전화번호", e.target.value)} />
-          </L>
-          <Sel label="성별" k="성별" f={f} set={set} opts={options["성별"]} />
-          <Sel label="나이대" k="나이대" f={f} set={set} opts={options["나이대"]} />
-          <Sel label="거주 동네" k="거주동네" f={f} set={set} opts={options["거주동네"]} />
-          <L label="등록 지점">
-            <select className="input" value={f["지점코드"] ?? ""} onChange={(e) => set("지점코드", e.target.value)}>
-              {branches.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
-            </select>
-          </L>
-          <L label="담당 트레이너">
-            <select className="input" value={f["담당직원사번"] ?? ""} onChange={(e) => set("담당직원사번", e.target.value)}>
-              <option value="">지정 안 함</option>
-              {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </L>
-          <L label="가입일">
-            <input className="input" type="date" value={f["가입일"] ?? ""}
-                   onChange={(e) => set("가입일", e.target.value)} />
-          </L>
-        </div>
-
-        <PurchaseFields products={products} options={options} tickets={[]}
-                        baseDate={f["가입일"] ?? today()} b={b} setB={setB} />
-
-        <div className="form-grid" style={{ marginTop: 10 }}>
-          <L label="메모" full>
-            <textarea className="input area" rows={2} value={f["메모"] ?? ""}
-                      onChange={(e) => set("메모", e.target.value)} />
-          </L>
-        </div>
-
-        {msg && <div className="alert-bad">{msg}</div>}
-
-        <div className="modal-actions">
-          <button className="btn-ghost" onClick={onClose}>취소</button>
-          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
-            {busy ? "저장 중…" : "저장"}
-          </button>
-        </div>
+      <h4 className="mini-title">회원 정보</h4>
+      <div className="form-grid">
+        <L label="이름" req>
+          <input className="input" value={f["이름"] ?? ""} onChange={(e) => set("이름", e.target.value)} />
+        </L>
+        <L label="연락처" req>
+          <input className="input" inputMode="tel" placeholder="010-0000-0000"
+                 value={f["전화번호"] ?? ""} onChange={(e) => set("전화번호", e.target.value)} />
+        </L>
+        <Sel label="성별" k="성별" f={f} set={set} opts={options["성별"]} />
+        <Sel label="나이대" k="나이대" f={f} set={set} opts={options["나이대"]} />
+        <Sel label="거주 동네" k="거주동네" f={f} set={set} opts={options["거주동네"]} />
+        <L label="등록 지점">
+          <select className="input" value={f["지점코드"] ?? ""} onChange={(e) => set("지점코드", e.target.value)}>
+            {branches.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
+          </select>
+        </L>
+        <L label="담당 트레이너">
+          <select className="input" value={f["담당직원사번"] ?? ""} onChange={(e) => set("담당직원사번", e.target.value)}>
+            <option value="">지정 안 함</option>
+            {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </L>
+        <L label="가입일">
+          <input className="input" type="date" value={f["가입일"] ?? ""}
+                 onChange={(e) => set("가입일", e.target.value)} />
+        </L>
       </div>
-    </div>
+
+      <PurchaseFields products={products} options={options} tickets={[]}
+                      baseDate={f["가입일"] ?? today()} b={b} setB={setB} />
+
+      <div className="form-grid" style={{ marginTop: 10 }}>
+        <L label="메모" full>
+          <textarea className="input area" rows={2} value={f["메모"] ?? ""}
+                    onChange={(e) => set("메모", e.target.value)} />
+        </L>
+      </div>
+
+      {msg && <div className="alert-bad">{msg}</div>}
+
+      <div className="modal-actions">
+        <button className="btn-ghost" onClick={onClose}>취소</button>
+        <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+          {busy ? "저장 중…" : "저장"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -1277,275 +1274,273 @@ function Detail({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className={`modal ${editing ? "wide" : "xl"}`} onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} label="회원 상세" size={editing ? "wide" : "xl"}>
 
-        {editing ? (
-          <>
-            <h3>{item.이름} 정보 수정</h3>
-            <div className="form-grid">
-              <L label="이름" req>
-                <input className="input" value={f["이름"] ?? ""} onChange={(e) => setV("이름", e.target.value)} />
-              </L>
-              <L label="연락처">
-                <input className="input" inputMode="tel" value={f["전화번호"] ?? ""}
-                       onChange={(e) => setV("전화번호", e.target.value)} />
-              </L>
-              <Sel label="성별" k="성별" f={f} set={setV} opts={options["성별"]} />
-              <Sel label="나이대" k="나이대" f={f} set={setV} opts={options["나이대"]} />
-              <Sel label="거주 동네" k="거주동네" f={f} set={setV} opts={options["거주동네"]} />
-              <L label="담당 트레이너">
-                <select className="input" value={f["담당직원사번"] ?? ""}
-                        onChange={(e) => setV("담당직원사번", e.target.value)}>
-                  <option value="">지정 안 함</option>
-                  {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </L>
-              <L label="가입일">
-                <input className="input" type="date" value={(f["가입일"] ?? "").slice(0, 10)}
-                       onChange={(e) => setV("가입일", e.target.value)} />
-              </L>
-              <L label="회원 상태">
-                <select className="input" value={f["회원상태"] ?? "유효"}
-                        onChange={(e) => setV("회원상태", e.target.value)}>
-                  {["유효", "만료", "정지", "탈퇴"].map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </L>
-              <L label="메모" full>
-                <textarea className="input area" rows={2} value={f["메모"] ?? ""}
-                          onChange={(e) => setV("메모", e.target.value)} />
-              </L>
-            </div>
+      {editing ? (
+        <>
+          <h3>{item.이름} 정보 수정</h3>
+          <div className="form-grid">
+            <L label="이름" req>
+              <input className="input" value={f["이름"] ?? ""} onChange={(e) => setV("이름", e.target.value)} />
+            </L>
+            <L label="연락처">
+              <input className="input" inputMode="tel" value={f["전화번호"] ?? ""}
+                     onChange={(e) => setV("전화번호", e.target.value)} />
+            </L>
+            <Sel label="성별" k="성별" f={f} set={setV} opts={options["성별"]} />
+            <Sel label="나이대" k="나이대" f={f} set={setV} opts={options["나이대"]} />
+            <Sel label="거주 동네" k="거주동네" f={f} set={setV} opts={options["거주동네"]} />
+            <L label="담당 트레이너">
+              <select className="input" value={f["담당직원사번"] ?? ""}
+                      onChange={(e) => setV("담당직원사번", e.target.value)}>
+                <option value="">지정 안 함</option>
+                {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </L>
+            <L label="가입일">
+              <input className="input" type="date" value={(f["가입일"] ?? "").slice(0, 10)}
+                     onChange={(e) => setV("가입일", e.target.value)} />
+            </L>
+            <L label="회원 상태">
+              <select className="input" value={f["회원상태"] ?? "유효"}
+                      onChange={(e) => setV("회원상태", e.target.value)}>
+                {["유효", "만료", "정지", "탈퇴"].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </L>
+            <L label="메모" full>
+              <textarea className="input area" rows={2} value={f["메모"] ?? ""}
+                        onChange={(e) => setV("메모", e.target.value)} />
+            </L>
+          </div>
 
-            {msg && <div className="alert-bad">{msg}</div>}
+          {msg && <div className="alert-bad">{msg}</div>}
 
-            <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => { setEditing(false); setF({ ...(item as any) }); setMsg(""); }}>
-                취소
-              </button>
-              <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
-                {busy ? "저장 중…" : "저장"}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="m-detail">
-              {/* 왼쪽 — 사람 정보. 어느 탭을 보든 계속 보인다 */}
-              <aside className="m-profile">
-                <div className="m-avatar">{item.이름.slice(0, 1)}</div>
-                <b className="m-name">{item.이름}</b>
-                <span className="dim num">{item.id}</span>
+          <div className="modal-actions">
+            <button className="btn-ghost" onClick={() => { setEditing(false); setF({ ...(item as any) }); setMsg(""); }}>
+              취소
+            </button>
+            <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+              {busy ? "저장 중…" : "저장"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="m-detail">
+            {/* 왼쪽 — 사람 정보. 어느 탭을 보든 계속 보인다 */}
+            <aside className="m-profile">
+              <div className="m-avatar">{item.이름.slice(0, 1)}</div>
+              <b className="m-name">{item.이름}</b>
+              <span className="dim num">{item.id}</span>
 
-                <div className="m-chips">
-                  <span className={`pill ${TONE[live.state] ?? ""}`}>{live.state}</span>
-                  <span className="pill">{isReturning ? "재등록" : "신규"}</span>
-                  {unpaid > 0 && <span className="pill warn">미수금</span>}
-                </div>
+              <div className="m-chips">
+                <span className={`pill ${TONE[live.state] ?? ""}`}>{live.state}</span>
+                <span className="pill">{isReturning ? "재등록" : "신규"}</span>
+                {unpaid > 0 && <span className="pill warn">미수금</span>}
+              </div>
 
-                <dl className="kv tight">
-                  <Kv k="연락처" v={showPhone(item.전화번호)} />
-                  <Kv k="성별 · 나이" v={[item.성별, item.나이대].filter(Boolean).join(" · ")} />
-                  <Kv k="거주 동네" v={item.거주동네} />
-                  <Kv k="등록 지점" v={branchName} />
-                  <Kv k="담당 트레이너" v={staffNames[item.담당직원사번]} />
-                  <Kv k="가입일" v={korDate(item.가입일)} />
-                  <Kv k="회원 상태" v={item.회원상태 || "유효"} />
-                </dl>
-              </aside>
+              <dl className="kv tight">
+                <Kv k="연락처" v={showPhone(item.전화번호)} />
+                <Kv k="성별 · 나이" v={[item.성별, item.나이대].filter(Boolean).join(" · ")} />
+                <Kv k="거주 동네" v={item.거주동네} />
+                <Kv k="등록 지점" v={branchName} />
+                <Kv k="담당 트레이너" v={staffNames[item.담당직원사번]} />
+                <Kv k="가입일" v={korDate(item.가입일)} />
+                <Kv k="회원 상태" v={item.회원상태 || "유효"} />
+              </dl>
+            </aside>
 
-              {/* 오른쪽 — 탭으로 나눠 담는다 */}
-              <div className="m-body">
-                <div className="tabs">
-                  {TABS.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      className={`tab${view === t ? " on" : ""}`}
-                      aria-pressed={view === t}
-                      onClick={() => setView(t)}
-                    >
-                      {t}
-                      {t === "이용권" && tickets.length + extras.length > 0 && (
-                        <span className="cnt num">{tickets.length + extras.length}</span>
-                      )}
-                      {t === "결제" && paid.length > 0 && <span className="cnt num">{paid.length}</span>}
-                    </button>
-                  ))}
-                </div>
+            {/* 오른쪽 — 탭으로 나눠 담는다 */}
+            <div className="m-body">
+              <div className="tabs">
+                {TABS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`tab${view === t ? " on" : ""}`}
+                    aria-pressed={view === t}
+                    onClick={() => setView(t)}
+                  >
+                    {t}
+                    {t === "이용권" && tickets.length + extras.length > 0 && (
+                      <span className="cnt num">{tickets.length + extras.length}</span>
+                    )}
+                    {t === "결제" && paid.length > 0 && <span className="cnt num">{paid.length}</span>}
+                  </button>
+                ))}
+              </div>
 
-                <div className="tab-bar">
-                  <span className="tab-lead" />
-                  {can.update && (view === "요약" || view === "이용권") && (
-                    <button className="btn-dark" onClick={() => setAdding(true)}>
-                      <Icon name="plus" size={15} strokeWidth={2} />
-                      상품 추가
-                    </button>
-                  )}
-                </div>
+              <div className="tab-bar">
+                <span className="tab-lead" />
+                {can.update && (view === "요약" || view === "이용권") && (
+                  <button className="btn-dark" onClick={() => setAdding(true)}>
+                    <Icon name="plus" size={15} strokeWidth={2} />
+                    상품 추가
+                  </button>
+                )}
+              </div>
 
-                {view === "요약" && (
-                  <>
-                    <div className="mini-stats">
-                      <div className="mini-stat">
-                        <span className="lb">이용 중</span>
-                        <b className="num">{live.count}</b>
-                      </div>
-                      <div className="mini-stat">
-                        <span className="lb">부가 · 서비스</span>
-                        {/* 얹어준 서비스는 이용권이 아니라 이용권서비스 탭에 있다.
-                            그걸 빼먹으면 아래 목록과 숫자가 안 맞는다 */}
-                        <b className="num">{live.extra + live.service + extras.length}</b>
-                      </div>
-                      <div className="mini-stat">
-                        <span className="lb">총 결제</span>
-                        <b className="num">{money(totalPaid)}</b>
-                      </div>
-                      <div className="mini-stat">
-                        <span className="lb">미수금</span>
-                        <b className={`num${unpaid > 0 ? " warn-text" : ""}`}>{money(unpaid)}</b>
-                      </div>
+              {view === "요약" && (
+                <>
+                  <div className="mini-stats">
+                    <div className="mini-stat">
+                      <span className="lb">이용 중</span>
+                      <b className="num">{live.count}</b>
                     </div>
+                    <div className="mini-stat">
+                      <span className="lb">부가 · 서비스</span>
+                      {/* 얹어준 서비스는 이용권이 아니라 이용권서비스 탭에 있다.
+                          그걸 빼먹으면 아래 목록과 숫자가 안 맞는다 */}
+                      <b className="num">{live.extra + live.service + extras.length}</b>
+                    </div>
+                    <div className="mini-stat">
+                      <span className="lb">총 결제</span>
+                      <b className="num">{money(totalPaid)}</b>
+                    </div>
+                    <div className="mini-stat">
+                      <span className="lb">미수금</span>
+                      <b className={`num${unpaid > 0 ? " warn-text" : ""}`}>{money(unpaid)}</b>
+                    </div>
+                  </div>
 
-                    <h4 className="mini-title">지금 쓰는 회원권 · PT</h4>
-                    {live.rows.length === 0 ? (
-                      <p className="dim" style={{ fontSize: 13 }}>
-                        지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
-                      </p>
-                    ) : (
+                  <h4 className="mini-title">지금 쓰는 회원권 · PT</h4>
+                  {live.rows.length === 0 ? (
+                    <p className="dim" style={{ fontSize: 13 }}>
+                      지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
+                    </p>
+                  ) : (
+                    <div className="line-list">
+                      {live.rows.map((t) => (
+                        <ProgressLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                                      onEdit={can.update ? () => setEditTicket(t) : undefined} />
+                      ))}
+                    </div>
+                  )}
+
+                  {live.extraRows.length > 0 && (
+                    <>
+                      <h4 className="mini-title">부가 상품 ({live.extraRows.length})</h4>
                       <div className="line-list">
-                        {live.rows.map((t) => (
-                          <ProgressLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
-                                        onEdit={can.update ? () => setEditTicket(t) : undefined} />
+                        {live.extraRows.map((t) => (
+                          <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                                      onEdit={can.update ? () => setEditTicket(t) : undefined} />
                         ))}
                       </div>
-                    )}
+                    </>
+                  )}
 
-                    {live.extraRows.length > 0 && (
-                      <>
-                        <h4 className="mini-title">부가 상품 ({live.extraRows.length})</h4>
-                        <div className="line-list">
-                          {live.extraRows.map((t) => (
-                            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
-                                        onEdit={can.update ? () => setEditTicket(t) : undefined} />
-                          ))}
-                        </div>
-                      </>
-                    )}
+                  <ServiceList rows={live.serviceRows} extras={extras} productOf={productOf}
+                               ticketOf={ticketOf} now={now}
+                               onEdit={can.update ? setEditTicket : undefined} />
 
-                    <ServiceList rows={live.serviceRows} extras={extras} productOf={productOf}
-                                 ticketOf={ticketOf} now={now}
-                                 onEdit={can.update ? setEditTicket : undefined} />
-
-                    {item.메모 && (
-                      <>
-                        <h4 className="mini-title">특이사항</h4>
-                        <div className="quote">{item.메모}</div>
-                      </>
-                    )}
-                  </>
-                )}
-
-                {view === "이용권" && (
-                  <TicketGroups tickets={tickets} extras={extras} productOf={productOf} now={now}
-                                onEdit={can.update ? setEditTicket : undefined} />
-                )}
-
-                {view === "결제" && (
-                  <>
-                    {paid.length === 0 ? (
-                      <p className="dim" style={{ fontSize: 13, margin: "8px 0 12px" }}>
-                        결제 기록이 없습니다.
-                      </p>
-                    ) : (
-                      <>
-                        <div className="line-list">
-                          {paid
-                            .slice()
-                            .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
-                            .map((x) => (
-                              <PaymentLine key={x.id} x={x}
-                                           onEdit={can.update ? () => setEditPay(x) : undefined} />
-                            ))}
-                        </div>
-                        <p className="stat-note">
-                          지금까지 결제 <b>{paid.length}건</b> · 합계{" "}
-                          <b className="num">{money(totalPaid)}원</b>
-                          {unpaid > 0 && (
-                            <> · 아직 못 받은 돈 <b className="warn-text num">{money(unpaid)}원</b></>
-                          )}
-                        </p>
-                      </>
-                    )}
-                  </>
-                )}
-
-                {view === "기록" && (
-                  <>
-                    <dl className="kv tight">
-                      <Kv k="상담 기록" v={item.상담번호 ? `${item.상담번호} 에서 전환` : ""} />
-                      <Kv k="처음 등록" v={[item.등록일시, staffNames[item.등록자]].filter(Boolean).join(" · ")} />
-                      <Kv k="마지막 수정" v={[item.수정일시, staffNames[item.수정자]].filter(Boolean).join(" · ")} />
-                    </dl>
-                    <h4 className="mini-title">특이사항 · 메모</h4>
-                    {item.메모 ? (
+                  {item.메모 && (
+                    <>
+                      <h4 className="mini-title">특이사항</h4>
                       <div className="quote">{item.메모}</div>
-                    ) : (
-                      <p className="dim" style={{ fontSize: 13 }}>없습니다.</p>
-                    )}
-                  </>
-                )}
+                    </>
+                  )}
+                </>
+              )}
+
+              {view === "이용권" && (
+                <TicketGroups tickets={tickets} extras={extras} productOf={productOf} now={now}
+                              onEdit={can.update ? setEditTicket : undefined} />
+              )}
+
+              {view === "결제" && (
+                <>
+                  {paid.length === 0 ? (
+                    <p className="dim" style={{ fontSize: 13, margin: "8px 0 12px" }}>
+                      결제 기록이 없습니다.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="line-list">
+                        {paid
+                          .slice()
+                          .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
+                          .map((x) => (
+                            <PaymentLine key={x.id} x={x}
+                                         onEdit={can.update ? () => setEditPay(x) : undefined} />
+                          ))}
+                      </div>
+                      <p className="stat-note">
+                        지금까지 결제 <b>{paid.length}건</b> · 합계{" "}
+                        <b className="num">{money(totalPaid)}원</b>
+                        {unpaid > 0 && (
+                          <> · 아직 못 받은 돈 <b className="warn-text num">{money(unpaid)}원</b></>
+                        )}
+                      </p>
+                    </>
+                  )}
+                </>
+              )}
+
+              {view === "기록" && (
+                <>
+                  <dl className="kv tight">
+                    <Kv k="상담 기록" v={item.상담번호 ? `${item.상담번호} 에서 전환` : ""} />
+                    <Kv k="처음 등록" v={[item.등록일시, staffNames[item.등록자]].filter(Boolean).join(" · ")} />
+                    <Kv k="마지막 수정" v={[item.수정일시, staffNames[item.수정자]].filter(Boolean).join(" · ")} />
+                  </dl>
+                  <h4 className="mini-title">특이사항 · 메모</h4>
+                  {item.메모 ? (
+                    <div className="quote">{item.메모}</div>
+                  ) : (
+                    <p className="dim" style={{ fontSize: 13 }}>없습니다.</p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {editTicket && (
+            <TicketEdit
+              t={editTicket}
+              pr={productOf(editTicket.상품코드)}
+              trainers={trainers}
+              canRemove={can.remove}
+              onClose={() => setEditTicket(null)}
+            />
+          )}
+          {editPay && (
+            <PaymentEdit x={editPay} options={options} onClose={() => setEditPay(null)} />
+          )}
+          {adding && (
+            <AddPurchase member={item} tickets={tickets} products={products} options={options}
+                         onClose={() => setAdding(false)} />
+          )}
+
+          {msg && <div className="alert-bad">{msg}</div>}
+
+          {confirmDel ? (
+            <div className="confirm-box">
+              <b>{item.이름}님을 목록에서 지울까요?</b>
+              <p>
+                결제 · 이용권 기록은 그대로 남습니다. 시트에서도 줄을 지우지 않고
+                삭제 표시만 하므로 되살릴 수 있습니다.
+              </p>
+              <div className="modal-actions" style={{ marginTop: 12 }}>
+                <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
+                <button className="btn-danger" onClick={remove} disabled={busy}>
+                  {busy ? "처리 중…" : "지우기"}
+                </button>
               </div>
             </div>
-
-            {editTicket && (
-              <TicketEdit
-                t={editTicket}
-                pr={productOf(editTicket.상품코드)}
-                trainers={trainers}
-                canRemove={can.remove}
-                onClose={() => setEditTicket(null)}
-              />
-            )}
-            {editPay && (
-              <PaymentEdit x={editPay} options={options} onClose={() => setEditPay(null)} />
-            )}
-            {adding && (
-              <AddPurchase member={item} tickets={tickets} products={products} options={options}
-                           onClose={() => setAdding(false)} />
-            )}
-
-            {msg && <div className="alert-bad">{msg}</div>}
-
-            {confirmDel ? (
-              <div className="confirm-box">
-                <b>{item.이름}님을 목록에서 지울까요?</b>
-                <p>
-                  결제 · 이용권 기록은 그대로 남습니다. 시트에서도 줄을 지우지 않고
-                  삭제 표시만 하므로 되살릴 수 있습니다.
-                </p>
-                <div className="modal-actions" style={{ marginTop: 12 }}>
-                  <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
-                  <button className="btn-danger" onClick={remove} disabled={busy}>
-                    {busy ? "처리 중…" : "지우기"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="modal-actions">
-                {can.remove && (
-                  <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>지우기</button>
-                )}
-                {can.update && (
-                  <button className="btn-ghost" onClick={() => { setEditing(true); setMsg(""); }}>수정</button>
-                )}
-                <button className="btn-ghost" onClick={onClose}>닫기</button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+          ) : (
+            <div className="modal-actions">
+              {can.remove && (
+                <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>지우기</button>
+              )}
+              {can.update && (
+                <button className="btn-ghost" onClick={() => { setEditing(true); setMsg(""); }}>수정</button>
+              )}
+              <button className="btn-ghost" onClick={onClose}>닫기</button>
+            </div>
+          )}
+        </>
+      )}
+    </Modal>
   );
 }
 
@@ -1799,86 +1794,84 @@ function TicketEdit({
   }
 
   return (
-    <div className="modal-back top" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>{pr?.name ?? t.상품코드}</h3>
-        <p className="modal-lead">{t.id}</p>
+    <Modal onClose={onClose} label="이용권 고치기" size="wide" top>
+      <h3>{pr?.name ?? t.상품코드}</h3>
+      <p className="modal-lead">{t.id}</p>
 
-        <div className="form-grid">
-          <L label="시작일">
-            <input className="input" type="date" value={f.시작일}
-                   onChange={(e) => set("시작일", e.target.value)} />
-          </L>
-          <L label="종료일">
-            <input className="input" type="date" value={f.종료일}
-                   onChange={(e) => set("종료일", e.target.value)} />
-          </L>
-          {byCount && (
-            <>
-              <L label="총 횟수">
-                <input className="input" inputMode="numeric"
-                       value={f.총횟수} onChange={(e) => set("총횟수", e.target.value)} />
-              </L>
-              <L label="남은 횟수">
-                <input className="input" inputMode="numeric"
-                       value={f.잔여횟수} onChange={(e) => set("잔여횟수", e.target.value)} />
-              </L>
-            </>
-          )}
-          <L label="담당 트레이너">
-            <select className="input" value={f.담당트레이너사번}
-                    onChange={(e) => set("담당트레이너사번", e.target.value)}>
-              <option value="">지정 안 함</option>
-              {trainers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-            </select>
-          </L>
-          <L label="상태">
-            <select className="input" value={f.상태} onChange={(e) => set("상태", e.target.value)}>
-              {["진행중", "정지", "만료", "환불"].map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </L>
-        </div>
+      <div className="form-grid">
+        <L label="시작일">
+          <input className="input" type="date" value={f.시작일}
+                 onChange={(e) => set("시작일", e.target.value)} />
+        </L>
+        <L label="종료일">
+          <input className="input" type="date" value={f.종료일}
+                 onChange={(e) => set("종료일", e.target.value)} />
+        </L>
+        {byCount && (
+          <>
+            <L label="총 횟수">
+              <input className="input" inputMode="numeric"
+                     value={f.총횟수} onChange={(e) => set("총횟수", e.target.value)} />
+            </L>
+            <L label="남은 횟수">
+              <input className="input" inputMode="numeric"
+                     value={f.잔여횟수} onChange={(e) => set("잔여횟수", e.target.value)} />
+            </L>
+          </>
+        )}
+        <L label="담당 트레이너">
+          <select className="input" value={f.담당트레이너사번}
+                  onChange={(e) => set("담당트레이너사번", e.target.value)}>
+            <option value="">지정 안 함</option>
+            {trainers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        </L>
+        <L label="상태">
+          <select className="input" value={f.상태} onChange={(e) => set("상태", e.target.value)}>
+            {["진행중", "정지", "만료", "환불"].map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </L>
+      </div>
 
-        <h4 className="mini-title">홀딩 (기간 미루기)</h4>
-        <div className="inline-form">
-          <input className="input" inputMode="numeric" placeholder="미룰 날수"
-                 style={{ maxWidth: 120 }} value={hold} onChange={(e) => setHold(e.target.value)} />
-          <button className="btn-ghost" onClick={applyHold} disabled={!hold || !f.종료일}>
-            종료일 미루기
-          </button>
-        </div>
-        <p className="stat-note">지금까지 미룬 날수 <b>{Number(f.정지일수) || 0}일</b></p>
+      <h4 className="mini-title">홀딩 (기간 미루기)</h4>
+      <div className="inline-form">
+        <input className="input" inputMode="numeric" placeholder="미룰 날수"
+               style={{ maxWidth: 120 }} value={hold} onChange={(e) => setHold(e.target.value)} />
+        <button className="btn-ghost" onClick={applyHold} disabled={!hold || !f.종료일}>
+          종료일 미루기
+        </button>
+      </div>
+      <p className="stat-note">지금까지 미룬 날수 <b>{Number(f.정지일수) || 0}일</b></p>
 
-        {msg && <div className="alert-bad">{msg}</div>}
+      {msg && <div className="alert-bad">{msg}</div>}
 
-        {confirmDel ? (
-          <div className="confirm-box">
-            <b>이 이용권을 지울까요?</b>
-            <p>
-              잘못 넣은 줄을 되돌릴 때 쓰세요. 환불은 지우지 말고 <b>상태를 환불</b>로 바꾸셔야
-              나중에 환불 건수를 셀 수 있습니다.
-            </p>
-            <div className="modal-actions" style={{ marginTop: 12 }}>
-              <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
-              <button className="btn-danger" onClick={() => send({ id: t.id, remove: true })} disabled={busy}>
-                {busy ? "처리 중…" : "지우기"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="modal-actions">
-            {canRemove && (
-              <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>지우기</button>
-            )}
-            <button className="btn-ghost" onClick={onClose}>닫기</button>
-            <button className="btn-primary" style={{ marginTop: 0 }}
-                    onClick={() => send({ id: t.id, changes: f })} disabled={busy}>
-              {busy ? "저장 중…" : "저장"}
+      {confirmDel ? (
+        <div className="confirm-box">
+          <b>이 이용권을 지울까요?</b>
+          <p>
+            잘못 넣은 줄을 되돌릴 때 쓰세요. 환불은 지우지 말고 <b>상태를 환불</b>로 바꾸셔야
+            나중에 환불 건수를 셀 수 있습니다.
+          </p>
+          <div className="modal-actions" style={{ marginTop: 12 }}>
+            <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
+            <button className="btn-danger" onClick={() => send({ id: t.id, remove: true })} disabled={busy}>
+              {busy ? "처리 중…" : "지우기"}
             </button>
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      ) : (
+        <div className="modal-actions">
+          {canRemove && (
+            <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>지우기</button>
+          )}
+          <button className="btn-ghost" onClick={onClose}>닫기</button>
+          <button className="btn-primary" style={{ marginTop: 0 }}
+                  onClick={() => send({ id: t.id, changes: f })} disabled={busy}>
+            {busy ? "저장 중…" : "저장"}
+          </button>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -1931,115 +1924,113 @@ function PaymentEdit({
   }
 
   return (
-    <div className="modal-back top" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>결제 고치기</h3>
-        <p className="modal-lead">{x.id}</p>
+    <Modal onClose={onClose} label="결제 고치기" size="wide" top>
+      <h3>결제 고치기</h3>
+      <p className="modal-lead">{x.id}</p>
 
-        <div className="form-grid">
-          <L label="결제일">
-            <input className="input" type="date" value={f.결제일시}
-                   onChange={(e) => set("결제일시", e.target.value)} />
-          </L>
-          <L label="결제 수단">
-            <select className="input" value={f.결제수단} onChange={(e) => set("결제수단", e.target.value)}>
-              {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </L>
-          {split ? (
-            <>
-              <L label="카드">
-                <input className="input" inputMode="numeric" value={f.카드액}
-                       onChange={(e) => set("카드액", e.target.value)} />
-              </L>
-              <L label="계좌">
-                <input className="input" inputMode="numeric" value={f.계좌액}
-                       onChange={(e) => set("계좌액", e.target.value)} />
-              </L>
-            </>
-          ) : (
-            <L label="결제 금액">
-              <input className="input" inputMode="numeric" value={f.결제금액}
-                     onChange={(e) => set("결제금액", e.target.value)} />
+      <div className="form-grid">
+        <L label="결제일">
+          <input className="input" type="date" value={f.결제일시}
+                 onChange={(e) => set("결제일시", e.target.value)} />
+        </L>
+        <L label="결제 수단">
+          <select className="input" value={f.결제수단} onChange={(e) => set("결제수단", e.target.value)}>
+            {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </L>
+        {split ? (
+          <>
+            <L label="카드">
+              <input className="input" inputMode="numeric" value={f.카드액}
+                     onChange={(e) => set("카드액", e.target.value)} />
             </L>
-          )}
-          <L label="미수금">
-            <input className="input" inputMode="numeric" placeholder="0"
-                   value={f.미수금액} onChange={(e) => set("미수금액", e.target.value)} />
-          </L>
-          <L label="매출 유형">
-            <select className="input" value={f.매출유형}
-                    onChange={(e) => set("매출유형", e.target.value)}>
-              <option value="">선택</option>
-              {(options["매출유형"] ?? ["신규", "재등록", "기타매출"]).map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </L>
-          {onlyNum(f.미수금액) > 0 && (
-            <L label="미수금 받기로 한 날">
-              <input className="input" type="date" value={f.미수금결제예정일}
-                     onChange={(e) => set("미수금결제예정일", e.target.value)} />
+            <L label="계좌">
+              <input className="input" inputMode="numeric" value={f.계좌액}
+                     onChange={(e) => set("계좌액", e.target.value)} />
             </L>
-          )}
-          <L label="환불">
-            <select className="input" value={refunded ? "Y" : ""}
-                    onChange={(e) => set("환불여부", e.target.value)}>
-              <option value="">환불 안 함</option>
-              <option value="Y">환불함</option>
-            </select>
+          </>
+        ) : (
+          <L label="결제 금액">
+            <input className="input" inputMode="numeric" value={f.결제금액}
+                   onChange={(e) => set("결제금액", e.target.value)} />
           </L>
-          {refunded && (
-            <>
-              <L label="환불 금액">
-                <input className="input" inputMode="numeric" value={f.환불액}
-                       onChange={(e) => set("환불액", e.target.value)} />
-              </L>
-              <L label="진행 상태">
-                <select className="input" value={f.환불진행상태}
-                        onChange={(e) => set("환불진행상태", e.target.value)}>
-                  <option value="">선택</option>
-                  {REFUND_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </L>
-              <L label="환불 사유">
-                <input className="input" list="refund-reasons" placeholder="고르거나 직접 적기"
-                       value={f.환불사유} onChange={(e) => set("환불사유", e.target.value)} />
-                <datalist id="refund-reasons">
-                  {REFUND_REASONS.map((r) => <option key={r} value={r} />)}
-                </datalist>
-              </L>
-              <L label="신청일">
-                <input className="input" type="date" value={f.환불신청일}
-                       onChange={(e) => set("환불신청일", e.target.value)} />
-              </L>
-              {f.환불진행상태 === "환불완료" && (
-                <L label="완료일">
-                  <input className="input" type="date" value={f.환불완료일}
-                         onChange={(e) => set("환불완료일", e.target.value)} />
-                </L>
-              )}
-            </>
-          )}
-        </div>
-
-        {split && (
-          <p className="stat-note">
-            합계 <b>{money(onlyNum(f.카드액) + onlyNum(f.계좌액))}원</b>
-          </p>
         )}
-
-
-        {msg && <div className="alert-bad">{msg}</div>}
-
-        <div className="modal-actions">
-          <button className="btn-ghost" onClick={onClose}>닫기</button>
-          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
-            {busy ? "저장 중…" : "저장"}
-          </button>
-        </div>
+        <L label="미수금">
+          <input className="input" inputMode="numeric" placeholder="0"
+                 value={f.미수금액} onChange={(e) => set("미수금액", e.target.value)} />
+        </L>
+        <L label="매출 유형">
+          <select className="input" value={f.매출유형}
+                  onChange={(e) => set("매출유형", e.target.value)}>
+            <option value="">선택</option>
+            {(options["매출유형"] ?? ["신규", "재등록", "기타매출"]).map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </L>
+        {onlyNum(f.미수금액) > 0 && (
+          <L label="미수금 받기로 한 날">
+            <input className="input" type="date" value={f.미수금결제예정일}
+                   onChange={(e) => set("미수금결제예정일", e.target.value)} />
+          </L>
+        )}
+        <L label="환불">
+          <select className="input" value={refunded ? "Y" : ""}
+                  onChange={(e) => set("환불여부", e.target.value)}>
+            <option value="">환불 안 함</option>
+            <option value="Y">환불함</option>
+          </select>
+        </L>
+        {refunded && (
+          <>
+            <L label="환불 금액">
+              <input className="input" inputMode="numeric" value={f.환불액}
+                     onChange={(e) => set("환불액", e.target.value)} />
+            </L>
+            <L label="진행 상태">
+              <select className="input" value={f.환불진행상태}
+                      onChange={(e) => set("환불진행상태", e.target.value)}>
+                <option value="">선택</option>
+                {REFUND_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </L>
+            <L label="환불 사유">
+              <input className="input" list="refund-reasons" placeholder="고르거나 직접 적기"
+                     value={f.환불사유} onChange={(e) => set("환불사유", e.target.value)} />
+              <datalist id="refund-reasons">
+                {REFUND_REASONS.map((r) => <option key={r} value={r} />)}
+              </datalist>
+            </L>
+            <L label="신청일">
+              <input className="input" type="date" value={f.환불신청일}
+                     onChange={(e) => set("환불신청일", e.target.value)} />
+            </L>
+            {f.환불진행상태 === "환불완료" && (
+              <L label="완료일">
+                <input className="input" type="date" value={f.환불완료일}
+                       onChange={(e) => set("환불완료일", e.target.value)} />
+              </L>
+            )}
+          </>
+        )}
       </div>
-    </div>
+
+      {split && (
+        <p className="stat-note">
+          합계 <b>{money(onlyNum(f.카드액) + onlyNum(f.계좌액))}원</b>
+        </p>
+      )}
+
+
+      {msg && <div className="alert-bad">{msg}</div>}
+
+      <div className="modal-actions">
+        <button className="btn-ghost" onClick={onClose}>닫기</button>
+        <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+          {busy ? "저장 중…" : "저장"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

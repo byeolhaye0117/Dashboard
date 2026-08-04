@@ -142,9 +142,13 @@ button { font-family: inherit; }
 .rail.is-collapsed .acct .who,
 .rail.is-collapsed .acct .fold { display: none; }
 .rail.is-collapsed .rail-group > h4 { text-align: center; padding: 0; font-size: 10px; }
-.rail.is-collapsed .rail a { justify-content: center; padding: 10px 0; }
-.rail.is-collapsed .rail .label,
-.rail.is-collapsed .label { display: none; }
+/* 접었을 때는 아이콘만 남으므로 가운데로 모은다.
+   예전 선택자가 `.rail.is-collapsed .rail a` 였는데, .rail 안에 또 .rail 이 없어서
+   한 번도 걸린 적이 없었다 — 태블릿에서 아이콘이 왼쪽에 치우쳐 있었던 이유다. */
+.rail.is-collapsed .rail-scroll a,
+.rail.is-collapsed .rail-scroll .soon { justify-content: center; padding: 10px 0; }
+.rail.is-collapsed .label,
+.rail.is-collapsed .soon-tag { display: none; }
 .rail.is-collapsed .rail-foot { flex-direction: column; }
 .rail.is-collapsed .icon-btn.wide { width: 100%; flex: none; }
 .rail.is-collapsed .icon-btn.wide span { display: none; }
@@ -183,6 +187,24 @@ button { font-family: inherit; }
 .rail a:hover { background: var(--surface-2); color: var(--ink); }
 .rail a.on { background: var(--surface-3); color: var(--ink); font-weight: 700; }
 .rail .label { overflow: hidden; text-overflow: ellipsis; }
+
+/* 아직 만들지 않은 화면 — 자리는 지키되 누를 수 없다.
+   숨기지 않는 이유: 무엇이 더 올지 보이는 편이 낫고, 갑자기 메뉴가 늘어나
+   위치가 밀리는 것보다 처음부터 자리를 잡아두는 쪽이 손에 익는다.
+   흐리게만 두면 "고장난 줄"로 읽히므로 「준비중」이라고 말로 적는다. */
+.rail .soon {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 9px; margin-bottom: 1px; border-radius: var(--r-sm);
+  font-size: 13.5px; font-weight: 500;
+  color: var(--muted); white-space: nowrap; cursor: default;
+}
+.rail .soon > svg { opacity: .6; flex: 0 0 auto; }
+.soon-tag {
+  margin-left: auto; flex: 0 0 auto;
+  padding: 1px 6px; border-radius: 5px;
+  background: var(--surface-3); color: var(--muted);
+  font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: .02em;
+}
 
 .rail-foot { padding: 10px 9px; border-top: 1px solid var(--line-soft); display: flex; gap: 6px; }
 
@@ -438,7 +460,11 @@ button { font-family: inherit; }
 
 /* ── 도넛 ─────────────────────────────────── */
 .dwrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-.dn { display: block; width: 168px; height: 168px; flex: 0 0 168px; }
+/* 이름이 겹친다 — 여기 .dn 은 "도넛", 위 숫자 카드의 .dt.dn 은 "감소"다.
+   태그로 좁혀두지 않으면 도넛의 168px 정사각형이 "감소" 줄에 그대로 걸려서,
+   숫자 카드 하나만 2.5배로 길어진다. 도넛은 언제나 svg 이므로 svg 로 좁힌다.
+   (숫자 카드에서 감소를 쓰는 화면이 아직 없어 눈에 안 띄었을 뿐이다) */
+svg.dn { display: block; width: 168px; height: 168px; flex: 0 0 168px; }
 .dn-lb { fill: var(--muted); font-size: 11px; font-weight: 700; }
 .dn-vl { fill: var(--ink); font-size: 15px; font-weight: 800; letter-spacing: -.4px; }
 
@@ -661,12 +687,12 @@ i.s4 { background: var(--s4); }
 i.s5 { background: var(--s5); }
 i.s6 { background: var(--s6); }
 
-.dn circle.s1 { stroke: var(--s1); }
-.dn circle.s2 { stroke: var(--s2); }
-.dn circle.s3 { stroke: var(--s3); }
-.dn circle.s4 { stroke: var(--s4); }
-.dn circle.s5 { stroke: var(--s5); }
-.dn circle.s6 { stroke: var(--s6); }
+svg.dn circle.s1 { stroke: var(--s1); }
+svg.dn circle.s2 { stroke: var(--s2); }
+svg.dn circle.s3 { stroke: var(--s3); }
+svg.dn circle.s4 { stroke: var(--s4); }
+svg.dn circle.s5 { stroke: var(--s5); }
+svg.dn circle.s6 { stroke: var(--s6); }
 
 /* 무엇을 보는 자리인지 제목 밑에 한 줄 */
 .sec-sub { margin: -4px 0 10px; font-size: 12px; color: var(--muted); }
@@ -924,7 +950,8 @@ i.s6 { background: var(--s6); }
 .menu-btn { display: none; }
 
 @media (max-width: 767px) {
-  .app { padding: 8px 8px 76px; gap: 8px; }
+  /* 아래 여백은 떠 있는 탭바(약 60px) + 아이폰 홈 막대를 함께 피한다 */
+  .app { padding: 8px 8px calc(76px + env(safe-area-inset-bottom)); gap: 8px; }
   .rail { display: none; }
   .topbar { height: 52px; padding: 0 12px; border-radius: var(--r); }
   .sheet { padding: 18px 15px 24px; border-radius: var(--r); }
@@ -934,7 +961,9 @@ i.s6 { background: var(--s6); }
   .card-link { padding: 13px; }
   .tabbar {
     display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
-    position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 40;
+    position: fixed; left: 8px; right: 8px; z-index: 40;
+    /* 아이폰 홈 막대 위로 띄운다 — 그냥 8px 이면 막대에 겹쳐 오눌림이 생긴다 */
+    bottom: calc(8px + env(safe-area-inset-bottom));
     background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--r-lg); box-shadow: var(--shadow); overflow: hidden;
   }
@@ -977,6 +1006,14 @@ i.s6 { background: var(--s6); }
   background: var(--surface-2); text-align: center;
 }
 .menu-sheet .m-grid a.on { background: var(--surface-3); border-color: var(--ink); }
+.menu-sheet .m-grid .soon {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 14px 6px; border: 1px dashed var(--line); border-radius: var(--r);
+  color: var(--muted); font-size: 12px; font-weight: 600;
+  background: var(--surface-2); text-align: center; cursor: default;
+}
+.menu-sheet .m-grid .soon > svg { opacity: .55; }
+.menu-sheet .m-grid .soon-tag { margin-left: 0; }
 
 .tab-more {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -1041,7 +1078,13 @@ select.input { cursor: pointer; }
   width: 100%; max-width: 344px; padding: 22px;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--r-lg); box-shadow: var(--shadow);
+  /* wide·xl 에만 있던 규칙. 작은 창도 휴대폰에서는 화면보다 길어질 수 있고,
+     그때 아래쪽 버튼이 화면 밖으로 나가 누를 수가 없었다 */
+  max-height: 88dvh; overflow-y: auto;
 }
+/* 창 안으로 커서를 옮길 때 상자 자체가 받는 경우가 있다.
+   그때 테두리가 두 겹으로 겹쳐 보이지 않게 한다 */
+.modal:focus { outline: none; }
 .modal h3 { margin: 0 0 15px; font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
 .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
 .modal-actions > * { flex: 1; }

@@ -11,8 +11,32 @@
  */
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
-import { GROUP_ORDER, type MenuItem } from "@/lib/menuItems";
+import Modal from "@/components/Modal";
+import { GROUP_ORDER, tabMenus, type MenuItem } from "@/lib/menuItems";
 import type { Session } from "@/lib/session";
+
+/**
+ * 메뉴 한 줄 — 아직 안 만든 화면은 누를 수 없게 둔다.
+ *
+ * 사이드바와 휴대폰 전체메뉴가 같은 규칙을 쓰도록 여기 한 곳에 둔다.
+ */
+function MenuLink({ item, active }: { item: MenuItem; active: boolean }) {
+  if (item.soon) {
+    return (
+      <span className="soon" aria-disabled="true" title={`${item.label} — 아직 만드는 중입니다`}>
+        <Icon name={item.icon} size={18} />
+        <span className="label">{item.label}</span>
+        <em className="soon-tag">준비중</em>
+      </span>
+    );
+  }
+  return (
+    <a href={item.href} className={active ? "on" : ""} title={item.label}>
+      <Icon name={item.icon} size={18} />
+      <span className="label">{item.label}</span>
+    </a>
+  );
+}
 
 type Props = {
   session: Session;
@@ -102,10 +126,7 @@ export default function Shell({
               <div className="rail-group" key={g}>
                 <h4>{g}</h4>
                 {items.map((m) => (
-                  <a key={m.key} href={m.href} className={active === m.key ? "on" : ""} title={m.label}>
-                    <Icon name={m.icon} size={18} />
-                    <span className="label">{m.label}</span>
-                  </a>
+                  <MenuLink key={m.key} item={m} active={active === m.key} />
                 ))}
               </div>
             );
@@ -180,8 +201,13 @@ export default function Shell({
       </div>
 
       <nav className="tabbar" aria-label="주 메뉴">
-        {menus.slice(0, 4).map((m) => (
-          <a key={m.key} href={m.href} className={active === m.key ? "on" : ""}>
+        {tabMenus(menus).map((m) => (
+          <a
+            key={m.key}
+            href={m.href}
+            className={active === m.key ? "on" : ""}
+            aria-current={active === m.key ? "page" : undefined}
+          >
             <Icon name={m.icon} size={19} />
             {m.short}
           </a>
@@ -193,31 +219,76 @@ export default function Shell({
       </nav>
 
       {allOpen && (
-        <div className="sheet-back" onClick={() => setAllOpen(false)}>
-          <div className="menu-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="grip" />
-            {GROUP_ORDER.map((g) => {
-              const items = menus.filter((m) => m.group === g);
-              if (items.length === 0) return null;
-              return (
-                <div className="rail-group" key={g}>
-                  <h4>{g}</h4>
-                  <div className="m-grid">
-                    {items.map((m) => (
-                      <a key={m.key} href={m.href} className={active === m.key ? "on" : ""}>
-                        <Icon name={m.icon} size={20} />
-                        {m.label}
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <MenuSheet menus={menus} active={active} onClose={() => setAllOpen(false)} />
       )}
 
       {pwOpen && <PasswordDialog onClose={() => setPwOpen(false)} />}
+    </div>
+  );
+}
+
+/**
+ * 휴대폰 전체 메뉴 — 아래에서 올라오는 시트
+ *
+ * 창(Modal)과 생김새가 달라 부품을 같이 쓰진 않지만, 열려 있는 동안 지켜야 할
+ * 것은 같다 — Esc 로 닫히고, 뒤 화면이 따라 스크롤되지 않고, 화면낭독기가
+ * 무엇이 열렸는지 말해야 한다.
+ */
+function MenuSheet({
+  menus, active, onClose,
+}: { menus: MenuItem[]; active: string; onClose: () => void }) {
+  useEffect(() => {
+    const saved = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = saved;
+    };
+  }, [onClose]);
+
+  return (
+    <div className="sheet-back" onClick={onClose}>
+      <div
+        className="menu-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="전체 메뉴"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="grip" />
+        {GROUP_ORDER.map((g) => {
+          const items = menus.filter((m) => m.group === g);
+          if (items.length === 0) return null;
+          return (
+            <div className="rail-group" key={g}>
+              <h4>{g}</h4>
+              <div className="m-grid">
+                {items.map((m) =>
+                  m.soon ? (
+                    <span key={m.key} className="soon" aria-disabled="true">
+                      <Icon name={m.icon} size={20} />
+                      {m.label}
+                      <em className="soon-tag">준비중</em>
+                    </span>
+                  ) : (
+                    <a
+                      key={m.key}
+                      href={m.href}
+                      className={active === m.key ? "on" : ""}
+                      aria-current={active === m.key ? "page" : undefined}
+                    >
+                      <Icon name={m.icon} size={20} />
+                      {m.label}
+                    </a>
+                  )
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -244,27 +315,25 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>비밀번호 변경</h3>
-        <div className="field">
-          <label htmlFor="pw1">새 비밀번호</label>
-          <input id="pw1" className="input" type="password" value={pw}
-                 onChange={(e) => setPw(e.target.value)} autoComplete="new-password" />
-        </div>
-        <div className="field">
-          <label htmlFor="pw2">한 번 더 입력</label>
-          <input id="pw2" className="input" type="password" value={pw2}
-                 onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" />
-        </div>
-        {msg && <div className="alert-bad">{msg}</div>}
-        <div className="modal-actions">
-          <button className="btn-ghost" onClick={onClose}>취소</button>
-          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
-            {busy ? "저장 중…" : "저장"}
-          </button>
-        </div>
+    <Modal onClose={onClose} label="비밀번호 변경">
+      <h3>비밀번호 변경</h3>
+      <div className="field">
+        <label htmlFor="pw1">새 비밀번호</label>
+        <input id="pw1" className="input" type="password" value={pw}
+               onChange={(e) => setPw(e.target.value)} autoComplete="new-password" />
       </div>
-    </div>
+      <div className="field">
+        <label htmlFor="pw2">한 번 더 입력</label>
+        <input id="pw2" className="input" type="password" value={pw2}
+               onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" />
+      </div>
+      {msg && <div className="alert-bad">{msg}</div>}
+      <div className="modal-actions">
+        <button className="btn-ghost" onClick={onClose}>취소</button>
+        <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+          {busy ? "저장 중…" : "저장"}
+        </button>
+      </div>
+    </Modal>
   );
 }
