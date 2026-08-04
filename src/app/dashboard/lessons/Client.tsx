@@ -13,13 +13,13 @@ import { Fragment, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today } from "@/lib/time";
 import {
-  JOIN_STATES, STATE_TONE, KIND_PT, KIND_GROUP, addMinutes, toMinutes,
+  JOIN_STATES, STATE_TONE, KIND_PT, KIND_GROUP, addMinutes, toMinutes, lastSlot,
 } from "@/lib/lessonMeta";
 
 type Lesson = {
   id: string; 지점코드: string; 수업구분: string; 상품코드: string;
   트레이너사번: string; 날짜: string; 시작시각: string; 종료시각: string;
-  정원: number; 진행상태: string; 메모: string;
+  정원: number; 진행상태: string; 메모: string; 사진파일: string;
 };
 type Join = {
   id: string; 수업번호: string; 회원번호: string; 이용권번호: string;
@@ -42,6 +42,10 @@ type Props = {
   tickets: Ticket[];
   products: Product[];
   can: { create: boolean; update: boolean; remove: boolean };
+  /** 사번 → 맡은 그룹수업 시간대 */
+  groupSlots: Record<string, string[]>;
+  /** 사진 폴더가 준비 안 됐으면 그 이유 */
+  photoProblem: string;
   canSetup: boolean;
   ready: boolean;
   problem: string;
@@ -78,6 +82,7 @@ export default function Client(p: Props) {
   const [adding, setAdding] = useState(false);
   const [onlyMine, setOnlyMine] = useState(false);
   const [showLate, setShowLate] = useState(false);
+  const [tab, setTab] = useState<"pt" | "group">("pt");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -107,6 +112,7 @@ export default function Client(p: Props) {
    */
   const late = useMemo(() => {
     const rows = p.lessons
+      .filter((l) => l.수업구분 !== KIND_GROUP)
       .filter((l) => l.날짜 < now && l.진행상태 !== "취소")
       .filter((l) => !onlyMine || l.트레이너사번 === p.me)
       .map((l) => ({ lesson: l, waiting: (joinsOf.get(l.id) ?? []).filter((j) => j.진행상태 === "예정") }))
@@ -117,6 +123,7 @@ export default function Client(p: Props) {
 
   const dayList = useMemo(
     () => p.lessons
+      .filter((l) => l.수업구분 !== KIND_GROUP)
       .filter((l) => l.날짜 === day)
       .filter((l) => !onlyMine || l.트레이너사번 === p.me)
       .sort((a, b) => (a.시작시각 || "").localeCompare(b.시작시각 || "")),
@@ -149,6 +156,24 @@ export default function Client(p: Props) {
     });
     return stat;
   }, [p.lessons, joinsOf, day]);
+
+  /** 사번|날짜 → 그날 보고한 타임들 */
+  const reported = useMemo(() => {
+    const map = new Map<string, { slots: string[]; photo: string }>();
+    p.lessons.filter((l) => l.수업구분 === KIND_GROUP).forEach((l) => {
+      const key = `${l.트레이너사번}|${l.날짜}`;
+      const cur = map.get(key) ?? { slots: [], photo: "" };
+      cur.slots.push(l.시작시각);
+      if (l.사진파일) cur.photo = l.사진파일;
+      map.set(key, { ...cur, slots: [...cur.slots].sort() });
+    });
+    return map;
+  }, [p.lessons]);
+
+  const slotsOf = useMemo(
+    () => new Map(Object.entries(p.groupSlots)),
+    [p.groupSlots]
+  );
 
   async function send(payload: any) {
     setBusy(true);
@@ -237,13 +262,35 @@ export default function Client(p: Props) {
         </div>
       </div>
 
+      <div className="pick-row" style={{ marginBottom: 14 }}>
+        <button className={`mini-tab${tab === "pt" ? " on" : ""}`} onClick={() => setTab("pt")}>
+          1:1 PT 시간표
+        </button>
+        <button className={`mini-tab${tab === "group" ? " on" : ""}`} onClick={() => setTab("group")}>
+          그룹수업 보고
+        </button>
+      </div>
+
+      {tab === "group" ? (
+        <GroupReport
+          me={p.me}
+          myBranch={p.myBranch}
+          trainers={p.trainers}
+          slotsOf={slotsOf}
+          reported={reported}
+          canPickOther={p.can.update}
+          photoProblem={p.photoProblem}
+          onDone={() => location.reload()}
+        />
+      ) : (
+      <>
       <div className="pick-row">
         <button className={`mini-tab${onlyMine ? "" : " on"}`} onClick={() => setOnlyMine(false)}>전체</button>
         <button className={`mini-tab${onlyMine ? " on" : ""}`} onClick={() => setOnlyMine(true)}>내 수업</button>
         <span className="spacer" />
         {p.can.create && (
           <button className="btn-dark" onClick={() => setAdding(true)}>
-            <Icon name="plus" size={14} /> 수업 잡기
+            <Icon name="plus" size={14} /> 1:1 PT 잡기
           </button>
         )}
       </div>
@@ -357,6 +404,8 @@ export default function Client(p: Props) {
             ))}
           </div>
         </div>
+      )}
+      </>
       )}
 
       {openLesson && (
@@ -505,6 +554,193 @@ function LessonBox(props: {
 
 /* ── 수업 잡기 ─────────────────────────────── */
 
+/* ── 그룹수업 보고 ─────────────────────────── */
+
+/**
+ * 그룹수업은 담당 직원과 시간이 이미 정해져 있다
+ *
+ * 그래서 회원을 고르고 정원을 적는 절차가 없다. 그날 어느 타임을 했는지만 고른다.
+ * 사진은 고른 타임 중 가장 늦은 하나에만 붙는다 — 타임마다 올리라고 하면
+ * 하루 세 번 올려야 하고, 그러면 안 하게 된다.
+ */
+function GroupReport(props: {
+  me: string;
+  myBranch: string;
+  trainers: Person[];
+  slotsOf: Map<string, string[]>;
+  reported: Map<string, { slots: string[]; photo: string }>;
+  canPickOther: boolean;
+  photoProblem: string;
+  onDone: () => void;
+}) {
+  const nowDay = today();
+  const [who, setWho] = useState(props.me);
+  const [day, setDay] = useState(nowDay);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [photo, setPhoto] = useState("");
+  const [memo, setMemo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const slots = props.slotsOf.get(who) ?? [];
+  const already = props.reported.get(`${who}|${day}`);
+  const last = lastSlot(picked);
+
+  async function upload(file: File) {
+    setBusy(true);
+    setMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("날짜", day);
+      const res = await fetch("/api/lesson-photo", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "사진을 올리지 못했습니다.");
+      setPhoto(data.id);
+    } catch (e: any) {
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function send() {
+    if (picked.length === 0) return setMsg("수업한 시간대를 골라주세요.");
+    if (!photo) return setMsg("수업 후 사진을 올려야 보고할 수 있습니다.");
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/lessons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "report-group",
+          사번: who,
+          지점코드: props.myBranch,
+          날짜: day,
+          slots: picked,
+          사진파일: photo,
+          메모: memo,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "보고하지 못했습니다.");
+      props.onDone();
+    } catch (e: any) {
+      setMsg(e.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="form-grid" style={{ marginBottom: 14 }}>
+        <div className="field">
+          <label htmlFor="gd">날짜</label>
+          <input id="gd" className="input" type="date" value={day} max={nowDay}
+                 onChange={(e) => { setDay(e.target.value || nowDay); setPicked([]); setPhoto(""); }} />
+        </div>
+        <div className="field">
+          <label htmlFor="gw">수업한 사람</label>
+          <select id="gw" className="select" value={who} disabled={!props.canPickOther}
+                  onChange={(e) => { setWho(e.target.value); setPicked([]); setPhoto(""); }}>
+            {props.trainers.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {already && (
+        <div className="banner" style={{ marginBottom: 14 }}>
+          <span className="lead"><Icon name="check" size={18} /></span>
+          <div>
+            <b>이 날은 이미 보고했습니다 — {already.slots.join(" · ")}</b>
+            <p>다시 보고하면 이 날 기록을 지우고 새로 씁니다. 타임을 잘못 고르셨을 때 고쳐 보내시면 됩니다.</p>
+          </div>
+        </div>
+      )}
+
+      {slots.length === 0 ? (
+        <div className="setup">
+          <div>
+            <b>이 직원의 그룹수업 시간이 정해져 있지 않습니다</b>
+            <p>
+              <b>직원 관리</b>에서 그 사람을 열고 <b>그룹수업 시간</b>에
+              맡은 타임을 적어주세요 (예: 06:00, 10:00, 19:00). 그러면 여기서 단추로 고르게 됩니다.
+            </p>
+          </div>
+          <a className="btn-dark" href="/dashboard/staff">직원 관리로 가기</a>
+        </div>
+      ) : (
+        <>
+          <div className="field">
+            <label>오늘 수업한 시간대 ({picked.length}개)</label>
+            <div className="pick-row">
+              {slots.map((t) => (
+                <button key={t} className={`mini-tab${picked.includes(t) ? " on" : ""}`}
+                        onClick={() =>
+                          setPicked((v) => (v.includes(t) ? v.filter((x) => x !== t) : [...v, t]))
+                        }>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="field" style={{ marginTop: 14 }}>
+            <label>
+              수업 후 사진
+              {last && ` — 마지막 타임 ${last} 에 붙습니다`}
+            </label>
+            {props.photoProblem ? (
+              <div className="setup" style={{ marginBottom: 0 }}>
+                <div>
+                  <b>사진을 올릴 폴더가 아직 없습니다</b>
+                  <p>{props.photoProblem}</p>
+                </div>
+              </div>
+            ) : photo ? (
+              <div className="shot">
+                <img src={`/api/lesson-photo?id=${photo}`} alt="수업 후 사진" />
+                <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setPhoto("")}>
+                  다시 올리기
+                </button>
+              </div>
+            ) : (
+              <label className="drop">
+                <input type="file" accept="image/*" capture="environment" disabled={busy}
+                       onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+                <Icon name="plus" size={18} />
+                <b>{busy ? "올리는 중…" : "사진 고르기 · 찍기"}</b>
+                <em>사진이 없으면 보고할 수 없습니다</em>
+              </label>
+            )}
+          </div>
+
+          <div className="field" style={{ marginTop: 14 }}>
+            <label htmlFor="gm">메모</label>
+            <input id="gm" className="input" value={memo} placeholder="선택"
+                   onChange={(e) => setMemo(e.target.value)} />
+          </div>
+
+          {msg && <div className="alert-bad" style={{ marginTop: 12 }}>{msg}</div>}
+
+          <button className="btn-primary" disabled={busy || !photo || picked.length === 0}
+                  onClick={send}>
+            {busy ? "보내는 중…" : `보고 (${picked.length}타임)`}
+          </button>
+          {!photo && picked.length > 0 && (
+            <p className="stat-note" style={{ marginTop: 8 }}>
+              사진을 올리면 보고 단추가 켜집니다.
+            </p>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 function AddBox(props: {
   day: string;
   me: string;
@@ -518,7 +754,7 @@ function AddBox(props: {
   onSave: (payload: any) => void;
   onClose: () => void;
 }) {
-  const [kind, setKind] = useState<string>(KIND_PT);
+  const kind = KIND_PT;
   const [trainer, setTrainer] = useState(props.me);
   const [date, setDate] = useState(props.day);
   const [start, setStart] = useState("");
@@ -528,8 +764,6 @@ function AddBox(props: {
   */
   const [end, setEnd] = useState("");
   const [touched, setTouched] = useState(false);
-  const [product, setProduct] = useState("");
-  const [cap, setCap] = useState(8);
   const [memo, setMemo] = useState("");
   const [find, setFind] = useState("");
   const [picked, setPicked] = useState<{ 회원번호: string; 이용권번호: string }[]>([]);
@@ -555,8 +789,9 @@ function AddBox(props: {
     return q ? rows.slice(0, 12) : rows.slice(0, 8);
   }, [usable, props.members, find]);
 
-  const single = kind === KIND_PT;
-  const limit = single ? 1 : Math.max(1, cap);
+  // 1:1 PT 는 한 명이다. 그룹수업은 여기서 잡지 않고 「그룹수업 보고」에서 다룬다
+  const single = true;
+  const limit = 1;
 
   function toggle(회원번호: string, 이용권번호: string) {
     setErr("");
@@ -582,7 +817,7 @@ function AddBox(props: {
     props.onSave({
       지점코드: props.myBranch,
       수업구분: kind,
-      상품코드: product || usable.find((t) => t.id === picked[0].이용권번호)?.상품코드 || "",
+      상품코드: usable.find((t) => t.id === picked[0].이용권번호)?.상품코드 || "",
       트레이너사번: trainer,
       날짜: date,
       시작시각: start,
@@ -598,16 +833,7 @@ function AddBox(props: {
   return (
     <div className="modal-back" onClick={props.onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>수업 잡기</h3>
-
-        <div className="pick-row" style={{ marginBottom: 14 }}>
-          {[KIND_PT, KIND_GROUP].map((k) => (
-            <button key={k} className={`mini-tab${kind === k ? " on" : ""}`}
-                    onClick={() => { setKind(k); setPicked([]); setErr(""); }}>
-              {k === KIND_PT ? "1:1 PT" : "그룹수업"}
-            </button>
-          ))}
-        </div>
+        <h3>1:1 PT 잡기</h3>
 
         <div className="form-grid">
           <div className="field">
@@ -637,25 +863,6 @@ function AddBox(props: {
               ))}
             </select>
           </div>
-          {!single && (
-            <>
-              <div className="field">
-                <label htmlFor="lp">수업 상품</label>
-                <select id="lp" className="select" value={product}
-                        onChange={(e) => setProduct(e.target.value)}>
-                  <option value="">고르지 않음</option>
-                  {props.products.filter((x) => x.kind === KIND_GROUP).map((x) => (
-                    <option key={x.code} value={x.code}>{x.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="lc">정원</label>
-                <input id="lc" className="input" type="number" min={1} max={40} value={cap}
-                       onChange={(e) => setCap(Number(e.target.value) || 1)} />
-              </div>
-            </>
-          )}
         </div>
 
         <div className="field">

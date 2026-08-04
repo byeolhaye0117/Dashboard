@@ -27,6 +27,8 @@ type Staff = {
   workDays: string;
   /** 수업을 맡는 사람인가 — 직급과 별개로 사람마다 정한다 */
   trainer: boolean;
+  /** 맡은 그룹수업 시간대 "06:00,10:00,19:00" */
+  groupSlots: string;
 };
 
 type Named = { code: string; name: string };
@@ -448,6 +450,7 @@ function Detail({
     휴게변동: item.restVary,
     근무요일: item.workDays,
     트레이너: item.trainer,
+    그룹수업시간: item.groupSlots,
   });
   const [picked, setPicked] = useState<string[]>(item.branches);
   const [msg, setMsg] = useState("");
@@ -591,6 +594,17 @@ function Detail({
               </span>
             </label>
           </L>
+          {f.트레이너 && (
+            <L label="그룹수업 시간" full>
+              <input className="input" value={f.그룹수업시간} disabled={!editable}
+                     placeholder="06:00, 10:00, 19:00"
+                     onChange={(e) => setF({ ...f, 그룹수업시간: e.target.value })} />
+              <p className="stat-note" style={{ marginTop: 6 }}>
+                이 사람이 <b>맡은 타임</b>을 쉼표로 나눠 적습니다. 그러면 그룹수업 보고 화면에서
+                시각을 입력하지 않고 <b>단추로 고르게</b> 됩니다. 1:1 PT만 하는 분은 비워두세요.
+              </p>
+            </L>
+          )}
         </div>
 
         <h4 className="mini-title" style={{ marginTop: 20 }}>근무 시각</h4>

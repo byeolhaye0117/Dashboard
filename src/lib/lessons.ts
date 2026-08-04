@@ -7,13 +7,17 @@
  * 회차 차감은 "수업"이 아니라 "참석"에서 일어난다.
  * 그룹수업은 한 수업에서도 온 사람과 안 온 사람이 갈리기 때문이다.
  */
-import { readSheet, appendRow, appendRows, updateRow, updateRows, addColumns } from "./sheets";
+import {
+  readSheet, appendRow, appendRows, updateRow, updateRows, addColumns, type Row,
+} from "./sheets";
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now } from "./time";
 import { patchTicket, listTickets, listMembers, bumpTicketCounts } from "./members";
 import { getProducts } from "./data";
 import { readProduct } from "./productMeta";
-import { SHEET_L, SHEET_LA, usesCount, normalizeTime, toMinutes, KIND_PT } from "./lessonMeta";
+import {
+  SHEET_L, SHEET_LA, usesCount, normalizeTime, toMinutes, lastSlot, KIND_PT, KIND_GROUP,
+} from "./lessonMeta";
 
 export { SHEET_L, SHEET_LA } from "./lessonMeta";
 
@@ -29,6 +33,7 @@ const L_COLS: ColumnSpec = {
   정원: { names: ["최대인원", "정원수"] },
   진행상태: { names: ["상태"] },
   메모: { names: ["비고", "특이사항"] },
+  사진파일: { names: ["사진", "수업사진"] },
   등록일시: { names: [] },
   등록자: { names: [] },
   수정일시: { names: [] },
@@ -68,6 +73,8 @@ export type Lesson = {
   정원: number;
   진행상태: string;
   메모: string;
+  /** 수업 후 사진 (구글 드라이브 파일 번호) — 그룹수업 보고에 쓴다 */
+  사진파일: string;
 };
 
 export type Join = {
@@ -123,6 +130,7 @@ export async function listLessons(): Promise<{ lessons: Lesson[]; joins: Join[] 
       정원: int(get(r, lc, "정원"), 1) || 1,
       진행상태: get(r, lc, "진행상태") || "예정",
       메모: get(r, lc, "메모"),
+      사진파일: get(r, lc, "사진파일"),
     });
   });
 
@@ -405,10 +413,95 @@ async function ensurePayColumns(headers: string[]): Promise<boolean> {
   return true;
 }
 
+/** 사진 칸도 뒤늦게 생긴 것이라 같은 이유로 직접 만든다 */
+async function ensurePhotoColumn(headers: string[]): Promise<boolean> {
+  if (headers.includes("사진파일")) return false;
+  await addColumns(SHEET_L, ["사진파일"]);
+  return true;
+}
+
 /** 겹침을 알릴 때 회원 이름을 쓰려면 이름표가 필요하다 */
 async function memberNames(): Promise<Map<string, string>> {
   const { items } = await listMembers();
   return new Map(items.map((m) => [m.id, m.이름]));
+}
+
+/**
+ * 그룹수업 하루치를 보고한다
+ *
+ * 그룹수업은 담당 직원과 시간이 이미 정해져 있다. 회원을 고르고 정원을 적는
+ * 절차가 필요 없다 — 그날 어느 타임을 했는지만 남기면 된다.
+ *
+ * 사진은 고른 타임 중 가장 늦은 하나에만 붙인다. 타임마다 찍으라고 하면
+ * 하루에 세 번 사진을 올려야 하고, 그러면 안 하게 된다.
+ *
+ * 같은 날 다시 보고하면 그날 것을 지우고 새로 쓴다. 두 번 눌러도 겹치지 않고,
+ * 타임을 잘못 골랐을 때 고쳐 보낼 수 있다.
+ */
+export async function reportGroup(input: {
+  사번: string;
+  지점코드: string;
+  날짜: string;
+  slots: string[];
+  사진파일: string;
+  메모: string;
+}, byId: string): Promise<number> {
+  const slots = [...new Set(input.slots.map(normalizeTime).filter(Boolean))].sort();
+  if (slots.length === 0) throw new Error("수업한 시간대를 하나 이상 골라주세요.");
+  if (!input.사진파일) throw new Error("수업 후 사진을 올려야 보고할 수 있습니다.");
+
+  const preL = await readSheet(SHEET_L);
+  const grewL = await ensurePhotoColumn(preL.headers);
+  const l = grewL ? await readSheet(SHEET_L) : preL;
+  const lc = resolve(SHEET_L, l.headers, L_COLS);
+  const stamp = now();
+
+  // 그날 그 사람의 그룹수업 줄을 먼저 지운다 — 다시 보고하면 새 것만 남는다
+  const old: { rowNumber: number; row: Row }[] = [];
+  l.rows.forEach((r, i) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    if (get(r, lc, "수업구분") !== KIND_GROUP) return;
+    if (get(r, lc, "트레이너사번") !== input.사번) return;
+    if (get(r, lc, "날짜").slice(0, 10) !== input.날짜) return;
+    old.push({
+      rowNumber: l.rowNumbers[i],
+      row: { ...r, ...toSheetRow({ 삭제여부: "Y", 수정일시: stamp, 수정자: byId }, lc) },
+    });
+  });
+  await updateRows(SHEET_L, l.headers, old);
+
+  const seed = nextId("L", 6, l.rows.map((r) => get(r, lc, "수업번호")));
+  const base = Number(seed.slice(1));
+  const last = lastSlot(slots);
+
+  await appendRows(
+    SHEET_L,
+    l.headers,
+    slots.map((t, i) =>
+      toSheetRow({
+        수업번호: "L" + String(base + i).padStart(6, "0"),
+        지점코드: input.지점코드,
+        수업구분: KIND_GROUP,
+        상품코드: "",
+        트레이너사번: input.사번,
+        날짜: input.날짜,
+        시작시각: t,
+        종료시각: "",
+        정원: "",
+        진행상태: "완료",
+        메모: input.메모 ?? "",
+        // 사진은 마지막 타임 한 줄에만
+        사진파일: t === last ? input.사진파일 : "",
+        등록일시: stamp,
+        등록자: byId,
+        수정일시: stamp,
+        수정자: byId,
+        삭제여부: "",
+      }, lc)
+    )
+  );
+
+  return slots.length;
 }
 
 /**
