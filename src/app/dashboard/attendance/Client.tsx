@@ -9,20 +9,58 @@
  */
 import { useMemo, useState } from "react";
 import { today, korDate } from "@/lib/time";
-import { WORK_KINDS, KIND_MARK as MARK } from "@/lib/attendanceMeta";
+import { WORK_KINDS, KIND_MARK as MARK, toMinutes, hourText } from "@/lib/attendanceMeta";
 
 type Row = {
   id: string;
   사번: string;
   지점코드: string;
   날짜: string;
+  회차: number;
   출근시각: string;
   퇴근시각: string;
+  휴게시작: string;
+  휴게분: string;
   근무구분: string;
   지각분: string;
+  조퇴분: string;
   메모: string;
 };
-type Person = { id: string; name: string; branch: string; baseTime: string };
+type Person = {
+  id: string; name: string; branch: string;
+  baseTime: string; outTime: string; restMin: string;
+};
+
+/**
+ * 하루치를 한 덩어리로 묶는다
+ *
+ * 한 줄이 한 번의 근무 구간이라 하루가 여러 줄일 수 있다.
+ * 일한 시간에서 휴게를 뺀다. 그날 찍은 휴게가 없으면 직원의 고정 휴게분을 쓴다.
+ */
+function foldDay(list: Row[], restMin: string) {
+  const rounds = list.slice().sort((a, b) => a.회차 - b.회차);
+  const gross = rounds.reduce((s, r) => {
+    const a = toMinutes(r.출근시각);
+    const b = toMinutes(r.퇴근시각);
+    return s + (a !== null && b !== null && b > a ? b - a : 0);
+  }, 0);
+  const punched = rounds.reduce((s, r) => s + (Number(r.휴게분) || 0), 0);
+  const fixed = Number(restMin) || 0;
+  // 찍은 휴게가 있으면 그걸 쓴다. 없으면 고정분. 둘 다 없으면 0
+  const rest = punched > 0 ? punched : gross > 0 ? fixed : 0;
+  const head = rounds[0];
+  return {
+    rounds,
+    head,
+    kind: head?.근무구분 ?? "",
+    gross,
+    rest,
+    net: Math.max(0, gross - rest),
+    resting: rounds.some((r) => r.휴게시작),
+    working: rounds.some((r) => r.출근시각 && !r.퇴근시각),
+    started: rounds.some((r) => r.출근시각),
+  };
+}
 
 type Props = {
   me: string;
@@ -57,36 +95,41 @@ export default function Client(p: Props) {
   const [msg, setMsg] = useState("");
 
   const days = useMemo(() => daysOf(month), [month]);
-  const byKey = useMemo(() => {
-    const m: Record<string, Row> = {};
-    p.rows.forEach((r) => (m[`${r.사번}|${r.날짜}`] = r));
-    return m;
-  }, [p.rows]);
+  const restOf = (id: string) => p.people.find((x) => x.id === id)?.restMin ?? "";
 
-  const meRow = byKey[`${p.me}|${now}`];
-  const meName = p.people.find((x) => x.id === p.me)?.name ?? "";
-  const meBase = p.people.find((x) => x.id === p.me)?.baseTime ?? "";
+  /** 사람·날짜별로 하루치를 묶어 둔다 — 하루가 여러 줄일 수 있다 */
+  const byKey = useMemo(() => {
+    const bag: Record<string, Row[]> = {};
+    p.rows.forEach((r) => (bag[`${r.사번}|${r.날짜}`] ??= []).push(r));
+    const m: Record<string, ReturnType<typeof foldDay>> = {};
+    Object.entries(bag).forEach(([k, list]) => {
+      m[k] = foldDay(list, restOf(k.split("|")[0]));
+    });
+    return m;
+  }, [p.rows, p.people]);
+
+  const meToday = byKey[`${p.me}|${now}`];
+  const meSelf = p.people.find((x) => x.id === p.me);
 
   /** 이 달 내 근태 셈 */
   const mine = useMemo(() => {
-    const list = p.rows.filter((r) => r.사번 === p.me && r.날짜.startsWith(month));
-    const count = (k: string) => list.filter((r) => r.근무구분 === k).length;
-    const worked = list.filter((r) => r.출근시각 && r.퇴근시각);
-    const minutes = worked.reduce((s, r) => {
-      const a = Number(r.출근시각.slice(0, 2)) * 60 + Number(r.출근시각.slice(3, 5));
-      const b = Number(r.퇴근시각.slice(0, 2)) * 60 + Number(r.퇴근시각.slice(3, 5));
-      return s + Math.max(0, b - a);
-    }, 0);
+    const bag: Record<string, Row[]> = {};
+    p.rows
+      .filter((r) => r.사번 === p.me && r.날짜.startsWith(month))
+      .forEach((r) => (bag[r.날짜] ??= []).push(r));
+    const folds = Object.values(bag).map((list) => foldDay(list, meSelf?.restMin ?? ""));
+    const count = (k: string) => folds.filter((f) => f.kind === k).length;
     return {
-      정상: count("정상"), 지각: count("지각"), 결근: count("결근"),
+      지각: count("지각"),
       휴무: count("휴무") + count("연차") + count("반차"),
-      days: list.filter((r) => r.출근시각).length,
-      hours: Math.round((minutes / 60) * 10) / 10,
-      lateMin: list.reduce((s, r) => s + (Number(r.지각분) || 0), 0),
+      days: folds.filter((f) => f.started).length,
+      net: folds.reduce((s, f) => s + f.net, 0),
+      rest: folds.reduce((s, f) => s + f.rest, 0),
+      lateMin: folds.reduce((s, f) => s + (Number(f.head?.지각분) || 0), 0),
     };
-  }, [p.rows, p.me, month]);
+  }, [p.rows, p.me, month, meSelf]);
 
-  async function punch(action: "in" | "out") {
+  async function punch(action: "in" | "out" | "break-in" | "break-out") {
     setBusy(action);
     setMsg("");
     try {
@@ -148,44 +191,66 @@ export default function Client(p: Props) {
         </div>
       </div>
 
-      {/* 오늘 나 — 버튼 두 개 */}
+      {/* 오늘 나 — 근무 구간이 여럿일 수 있다 */}
       <div className="punch">
         <div className="pk-me">
           <span className="lb">{korDate(now)}</span>
-          <b className="nm">{meName}</b>
+          <b className="nm">{meSelf?.name ?? ""}</b>
           <span className="base">
-            {meBase ? `출근 기준 ${meBase}` : "출근 기준 시각 없음 · 지각은 표시되지 않습니다"}
+            {meSelf?.baseTime || meSelf?.outTime
+              ? `기준 ${meSelf?.baseTime || "—"} ~ ${meSelf?.outTime || "—"}` +
+                (Number(meSelf?.restMin) > 0 ? ` · 휴게 ${meSelf?.restMin}분` : "")
+              : "기준 시각 없음 · 지각·조퇴는 표시되지 않습니다"}
           </span>
         </div>
 
         <div className="pk-time">
-          <div>
-            <span>출근</span>
-            <b className={meRow?.출근시각 ? "on num" : "num"}>{meRow?.출근시각 || "—"}</b>
-          </div>
-          <div>
-            <span>퇴근</span>
-            <b className={meRow?.퇴근시각 ? "on num" : "num"}>{meRow?.퇴근시각 || "—"}</b>
-          </div>
-          {meRow?.근무구분 === "지각" && (
-            <span className="pill bad">{Number(meRow.지각분) > 0 ? `${meRow.지각분}분 지각` : "지각"}</span>
+          {(meToday?.rounds ?? []).map((r) => (
+            <div key={r.id}>
+              <span>{(meToday?.rounds.length ?? 0) > 1 ? `${r.회차}회차` : "출근 · 퇴근"}</span>
+              <b className="on num">{r.출근시각 || "—"} ~ {r.퇴근시각 || "—"}</b>
+            </div>
+          ))}
+          {!meToday?.started && (
+            <div><span>출근 · 퇴근</span><b className="num">— ~ —</b></div>
           )}
+          <div>
+            <span>일한 시간</span>
+            <b className={meToday?.net ? "on num" : "num"}>
+              {meToday?.net ? hourText(meToday.net) : "—"}
+            </b>
+          </div>
+          {Number(meToday?.rest) > 0 && (
+            <div><span>휴게</span><b className="num">{hourText(meToday!.rest)}</b></div>
+          )}
+          {meToday?.kind === "지각" && (
+            <span className="pill bad">
+              {Number(meToday.head?.지각분) > 0 ? `${meToday.head?.지각분}분 지각` : "지각"}
+            </span>
+          )}
+          {meToday?.resting && <span className="pill warn">휴게 중</span>}
         </div>
 
         <div className="pk-act">
-          {!meRow?.출근시각 ? (
-            <button className="btn-dark big" onClick={() => punch("in")} disabled={Boolean(busy)}>
-              {busy === "in" ? "찍는 중…" : "출근"}
-            </button>
-          ) : !meRow?.퇴근시각 ? (
-            <button className="btn-dark big" onClick={() => punch("out")} disabled={Boolean(busy)}>
-              {busy === "out" ? "찍는 중…" : "퇴근"}
-            </button>
+          {meToday?.working ? (
+            <>
+              <button className="btn-ghost tall"
+                      onClick={() => punch(meToday.resting ? "break-out" : "break-in")}
+                      disabled={Boolean(busy)}>
+                {meToday.resting ? "휴게 끝" : "휴게 시작"}
+              </button>
+              <button className="btn-dark big" onClick={() => punch("out")} disabled={Boolean(busy)}>
+                {busy === "out" ? "찍는 중…" : "퇴근"}
+              </button>
+            </>
           ) : (
-            <span className="done">오늘 근무 끝</span>
+            <button className="btn-dark big" onClick={() => punch("in")} disabled={Boolean(busy)}>
+              {busy === "in" ? "찍는 중…" : meToday?.started ? "다시 출근" : "출근"}
+            </button>
           )}
         </div>
       </div>
+
       {msg && <div className="alert-bad">{msg}</div>}
 
       {/* 이 달 내 근태 */}
@@ -197,8 +262,10 @@ export default function Client(p: Props) {
         </div>
         <div className="tile">
           <span className="lb">일한 시간</span>
-          <b className="vl num">{mine.hours}시간</b>
-          <span className="sub">출근·퇴근 다 찍힌 날만</span>
+          <b className="vl num">{hourText(mine.net)}</b>
+          <span className="sub">
+            {mine.rest > 0 ? `휴게 ${hourText(mine.rest)} 뺀 시간` : "휴게 없음"}
+          </span>
         </div>
         <div className="tile">
           <span className="lb">지각</span>
@@ -239,18 +306,30 @@ export default function Client(p: Props) {
               <tr key={s.id}>
                 <td className="sticky"><span className="nm">{s.name}</span></td>
                 {days.map((d) => {
-                  const r = byKey[`${s.id}|${d}`];
-                  const kind = r?.근무구분 || "";
+                  const f = byKey[`${s.id}|${d}`];
+                  const kind = f?.kind || "";
+                  const twice = (f?.rounds.length ?? 0) > 1;
                   return (
                     <td key={d}
                         className={`cell k-${kind || "none"}${p.canEdit ? " hit" : ""}`}
                         title={
-                          r
-                            ? `${korDate(d)} ${s.name}\n${kind || "-"} · 출근 ${r.출근시각 || "-"} · 퇴근 ${r.퇴근시각 || "-"}`
+                          f
+                            ? [
+                                `${korDate(d)} ${s.name}`,
+                                kind || "-",
+                                ...f.rounds.map(
+                                  (r) => `${r.회차}회차 ${r.출근시각 || "-"} ~ ${r.퇴근시각 || "-"}`
+                                ),
+                                f.rest > 0 ? `휴게 ${hourText(f.rest)}` : "",
+                                f.net > 0 ? `일한 시간 ${hourText(f.net)}` : "",
+                              ]
+                                .filter(Boolean)
+                                .join("\n")
                             : `${korDate(d)} ${s.name}\n기록 없음`
                         }
                         onClick={() => p.canEdit && setEdit({ 사번: s.id, 날짜: d })}>
                       {MARK[kind] ?? ""}
+                      {twice && <em className="twice">2</em>}
                     </td>
                   );
                 })}
@@ -269,7 +348,7 @@ export default function Client(p: Props) {
         <EditBox
           person={p.people.find((x) => x.id === edit.사번)!}
           day={edit.날짜}
-          row={byKey[`${edit.사번}|${edit.날짜}`]}
+          rounds={byKey[`${edit.사번}|${edit.날짜}`]?.rounds ?? []}
           onClose={() => setEdit(null)}
         />
       )}
@@ -336,18 +415,36 @@ function SetupTab({ can }: { can: boolean }) {
 }
 
 /** 한 칸 고치기 — 점장·대표 */
-function EditBox({ person, day, row, onClose }: {
+function EditBox({ person, day, rounds, onClose }: {
   person: Person;
   day: string;
-  row?: Row;
+  /** 그날의 근무 구간들. 오전·저녁이면 둘이다 */
+  rounds: Row[];
   onClose: () => void;
 }) {
+  // 고칠 회차를 먼저 고른다. 없던 회차를 고르면 새로 만들어진다
+  const [round, setRound] = useState(rounds[0]?.회차 ?? 1);
+  const row = rounds.find((r) => r.회차 === round);
   const [f, setF] = useState({
-    근무구분: row?.근무구분 ?? "",
+    근무구분: rounds[0]?.근무구분 ?? "",
     출근시각: row?.출근시각 ?? "",
     퇴근시각: row?.퇴근시각 ?? "",
+    휴게분: row?.휴게분 ?? "",
     메모: row?.메모 ?? "",
   });
+
+  /** 회차를 바꾸면 그 회차 값으로 갈아 끼운다 */
+  const pick = (n: number) => {
+    const r = rounds.find((x) => x.회차 === n);
+    setRound(n);
+    setF({
+      근무구분: rounds[0]?.근무구분 ?? "",
+      출근시각: r?.출근시각 ?? "",
+      퇴근시각: r?.퇴근시각 ?? "",
+      휴게분: r?.휴게분 ?? "",
+      메모: r?.메모 ?? "",
+    });
+  };
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
@@ -359,7 +456,14 @@ function EditBox({ person, day, row, onClose }: {
       const res = await fetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "patch", 사번: person.id, 날짜: day, changes: f }),
+        body: JSON.stringify({
+          action: "patch",
+          사번: person.id,
+          날짜: day,
+          회차: round,
+          // 그날 판정은 첫 줄에만 적는다. 회차 2를 고칠 땐 건드리지 않는다
+          changes: round === 1 ? f : { 출근시각: f.출근시각, 퇴근시각: f.퇴근시각, 휴게분: f.휴게분, 메모: f.메모 },
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "저장하지 못했습니다.");
@@ -375,8 +479,18 @@ function EditBox({ person, day, row, onClose }: {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{person.name} · {korDate(day)}</h3>
 
+        <div className="tab-bar" style={{ marginBottom: 12 }}>
+          {[1, 2].map((n) => (
+            <button key={n} type="button"
+                    className={`mini-tab${round === n ? " on" : ""}`}
+                    onClick={() => pick(n)}>
+              {n}회차{!rounds.some((r) => r.회차 === n) && n > 1 ? " (없음)" : ""}
+            </button>
+          ))}
+        </div>
+
         <div className="form-grid">
-          <div className="field full">
+          <div className="field full" style={{ display: round === 1 ? "block" : "none" }}>
             <label>근무 구분</label>
             <select className="input" value={f.근무구분} onChange={(e) => set("근무구분", e.target.value)}>
               <option value="">기록 없음</option>
@@ -393,12 +507,23 @@ function EditBox({ person, day, row, onClose }: {
             <input className="input" type="time" value={f.퇴근시각}
                    onChange={(e) => set("퇴근시각", e.target.value)} />
           </div>
+          <div className="field">
+            <label>휴게 (분)</label>
+            <input className="input" inputMode="numeric" value={f.휴게분} placeholder={person.restMin || "0"}
+                   onChange={(e) => set("휴게분", e.target.value)} />
+          </div>
           <div className="field full">
             <label>메모</label>
             <input className="input" value={f.메모} placeholder="사유를 적어두면 나중에 압니다"
                    onChange={(e) => set("메모", e.target.value)} />
           </div>
         </div>
+
+        <p className="stat-note">
+          오전에 갔다 저녁에 다시 온 날은 <b>2회차</b>에 적습니다.
+          휴게를 비워두면 이 직원의 고정 휴게
+          {Number(person.restMin) > 0 ? ` ${person.restMin}분` : "(없음)"}을 뺍니다.
+        </p>
 
         {msg && <div className="alert-bad">{msg}</div>}
 

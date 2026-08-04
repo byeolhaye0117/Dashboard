@@ -46,6 +46,8 @@ export default async function AttendancePage() {
       name: s.name,
       branch: (branchMap.get(s.id) ?? [])[0] || s.mainBranch || "",
       baseTime: s.baseTime,
+      outTime: s.outTime,
+      restMin: s.restMin,
     }));
 
   // 근태 탭이 아직 없을 수 있다. 없으면 화면에서 만들 수 있게 알려준다
