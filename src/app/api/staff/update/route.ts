@@ -67,6 +67,7 @@ export async function POST(req: Request) {
         출근기준시각: c.출근기준시각 === undefined ? undefined : String(c.출근기준시각),
         퇴근기준시각: c.퇴근기준시각 === undefined ? undefined : String(c.퇴근기준시각),
         휴게분: c.휴게분 === undefined ? undefined : String(c.휴게분),
+        휴게변동: c.휴게변동 === undefined ? undefined : Boolean(c.휴게변동),
       },
       g.session.staffId
     );

@@ -22,6 +22,7 @@ type Staff = {
   baseTime: string;
   outTime: string;
   restMin: string;
+  restVary: boolean;
 };
 
 type Named = { code: string; name: string };
@@ -387,6 +388,7 @@ function Detail({
     출근기준시각: item.baseTime,
     퇴근기준시각: item.outTime,
     휴게분: item.restMin,
+    휴게변동: item.restVary,
   });
   const [picked, setPicked] = useState<string[]>(item.branches);
   const [msg, setMsg] = useState("");
@@ -524,18 +526,32 @@ function Detail({
             <input className="input" type="time" value={f.퇴근기준시각} disabled={!editable}
                    onChange={(e) => setF({ ...f, 퇴근기준시각: e.target.value })} />
           </L>
-          <L label="휴게 (분)">
-            <input className="input" inputMode="numeric" placeholder="0" value={f.휴게분}
-                   disabled={!editable}
-                   onChange={(e) => setF({ ...f, 휴게분: e.target.value.replace(/[^0-9]/g, "") })} />
+          {!f.휴게변동 && (
+            <L label="휴게 (분)">
+              <input className="input" inputMode="numeric" placeholder="0" value={f.휴게분}
+                     disabled={!editable}
+                     onChange={(e) => setF({ ...f, 휴게분: e.target.value.replace(/[^0-9]/g, "") })} />
+            </L>
+          )}
+          <L label="휴게 방식" full>
+            <label className="chk">
+              <input type="checkbox" checked={f.휴게변동} disabled={!editable}
+                     onChange={(e) =>
+                       setF({ ...f, 휴게변동: e.target.checked, 휴게분: e.target.checked ? "" : f.휴게분 })
+                     } />
+              <span>
+                <b>휴게 시간이 날마다 다릅니다</b>
+                <em>
+                  근태 화면에 「휴게 시작 · 끝」 버튼이 나오고, 찍은 만큼만 빠집니다.
+                  체크를 풀면 위에 적은 분이 매일 자동으로 빠집니다.
+                </em>
+              </span>
+            </label>
           </L>
         </div>
         <p className="stat-note">
-          이 시각을 넘겨 찍으면 <b>지각</b>, 이르게 퇴근하면 <b>조퇴</b>로 표시됩니다.
+          출근·퇴근 시각을 넘겨 찍으면 <b>지각</b>, 이르게 퇴근하면 <b>조퇴</b>로 표시됩니다.
           비워두면 시각만 기록하고 아무 판정도 하지 않습니다.
-          <br />
-          휴게는 일한 시간에서 자동으로 뺍니다. 날마다 다른 분은 비워두고
-          근태 화면에서 <b>휴게 시작 · 끝</b>을 찍으면 그 값이 우선합니다.
         </p>
 
         {isSelf && (
