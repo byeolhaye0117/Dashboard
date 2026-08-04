@@ -4,6 +4,7 @@ import { abilitiesForStaff } from "@/lib/menu";
 import { getStaffAll, getStaffBranches } from "@/lib/data";
 import {
   createLesson, setJoinState, patchLesson, softDeleteLesson, listLessons, completeLesson,
+  reportGroup,
 } from "@/lib/lessons";
 
 export const dynamic = "force-dynamic";
@@ -89,6 +90,29 @@ export async function POST(req: Request) {
       if (no) return NextResponse.json({ error: no }, { status: 403 });
       await setJoinState(참석번호, 상태, session.staffId);
       return NextResponse.json({ ok: true });
+    }
+
+    if (action === "report-group") {
+      if (!mine.create) {
+        return NextResponse.json({ error: "수업을 보고할 권한이 없습니다." }, { status: 403 });
+      }
+      // 남의 이름으로 보고하려면 수정 권한이 있어야 한다. 보고는 본인이 한 일의 기록이다
+      const who = body.사번 || session.staffId;
+      if (who !== session.staffId && !mine.update) {
+        return NextResponse.json({ error: "다른 사람 이름으로는 보고할 수 없습니다." }, { status: 403 });
+      }
+      const n = await reportGroup(
+        {
+          사번: who,
+          지점코드: body.지점코드 ?? session.currentBranch,
+          날짜: body.날짜,
+          slots: Array.isArray(body.slots) ? body.slots.map(String) : [],
+          사진파일: String(body.사진파일 ?? ""),
+          메모: String(body.메모 ?? ""),
+        },
+        session.staffId
+      );
+      return NextResponse.json({ ok: true, count: n });
     }
 
     if (action === "complete") {

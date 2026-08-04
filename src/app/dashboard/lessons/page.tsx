@@ -12,7 +12,8 @@ import { listMembers, listTickets } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
 import { listLessons, SHEET_L } from "@/lib/lessons";
 import { listSheetNames } from "@/lib/sheets";
-import { KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
+import { KIND_PT, KIND_GROUP, parseSlots } from "@/lib/lessonMeta";
+import { photoFolderReady } from "@/lib/drive";
 import Shell from "../Shell";
 import Client from "./Client";
 import { guard } from "../guard";
@@ -57,6 +58,15 @@ async function body() {
       name: s.name,
       branch: (branchMap.get(s.id) ?? [])[0] || s.mainBranch || "",
     }));
+
+  /** 사번 → 맡은 그룹수업 시간대. 화면에서는 이걸 단추로 고른다 */
+  const groupSlots: Record<string, string[]> = {};
+  staff.filter((s) => s.active && s.trainer).forEach((s) => {
+    groupSlots[s.id] = parseSlots(s.groupSlots);
+  });
+
+  // 사진 폴더가 준비 안 됐으면 무엇을 해야 하는지 화면에서 알려준다
+  const photoProblem = await photoFolderReady();
 
   /** 수업으로 팔 수 있는 상품만 — 회원권·락커는 여기 안 온다 */
   const lessonProducts = products
@@ -116,6 +126,8 @@ async function body() {
         tickets={tickets}
         products={lessonProducts}
         can={{ create: Boolean(mine.create), update: Boolean(mine.update), remove: Boolean(mine.remove) }}
+        groupSlots={groupSlots}
+        photoProblem={photoProblem}
         canSetup={Boolean(ab.get("직원관리")?.update)}
         ready={ready}
         problem={problem}

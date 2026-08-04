@@ -50,6 +50,8 @@ export type Staff = {
   workDays: string;
   /** 수업을 맡는 사람인가 — 직급과 별개로 사람마다 정한다 */
   trainer: boolean;
+  /** 맡은 그룹수업 시간대 "06:00,10:00,19:00" */
+  groupSlots: string;
   /** 시트에서 이 직원이 몇 번째 줄인지 (비밀번호를 고칠 때 쓴다) */
   rowNumber: number;
 };
@@ -134,6 +136,7 @@ async function _getStaffAll(): Promise<Staff[]> {
       restVary: yes(r["휴게변동"] ?? ""),
       workDays: (r["근무요일"] ?? "").replace(/[^월화수목금토일]/g, ""),
       trainer: yes(r["트레이너"] ?? ""),
+      groupSlots: (r["그룹수업시간"] ?? "").trim(),
       rowNumber: rowNumbers[i],
     });
   });

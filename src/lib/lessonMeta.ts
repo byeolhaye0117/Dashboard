@@ -17,9 +17,34 @@ export const SHEET_LA = "수업참석";
 export const L_HEADERS = [
   "수업번호", "지점코드", "수업구분", "상품코드", "트레이너사번",
   "날짜", "시작시각", "종료시각", "정원",
-  "진행상태", "메모",
+  "진행상태", "메모", "사진파일",
   "등록일시", "등록자", "수정일시", "수정자", "삭제여부",
 ];
+
+/**
+ * 그룹수업 시간대를 한 줄 글로 다룬다
+ *
+ * "06:00,10:00,19:00" 처럼 시트에 적어두고, 화면에서는 단추로 고른다.
+ * 직원마다 맡는 타임이 정해져 있어서 매번 시각을 입력할 이유가 없다.
+ */
+export function parseSlots(v: string): string[] {
+  return (v ?? "")
+    .split(/[,·\s]+/)
+    .map((x) => normalizeTime(x))
+    .filter(Boolean)
+    .filter((x, i, all) => all.indexOf(x) === i)
+    .sort();
+}
+
+export function slotsText(v: string): string {
+  const list = parseSlots(v);
+  return list.length === 0 ? "정하지 않음" : list.join(" · ");
+}
+
+/** 고른 시간대 중 가장 늦은 것 — 사진은 여기에 붙는다 */
+export function lastSlot(slots: string[]): string {
+  return [...slots].sort().slice(-1)[0] ?? "";
+}
 
 /**
  * 참석 한 줄 = "그 수업에 이 회원이" 한 칸

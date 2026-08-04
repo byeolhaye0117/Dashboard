@@ -41,7 +41,7 @@ const SETS: Record<string, Job> = {
       { tab: SHEET_LA, headers: LA_HEADERS },
     ],
     // 누가 수업을 맡는지는 직급이 아니라 사람마다 정한다
-    extra: { tab: SHEET.직원, names: ["트레이너"] },
+    extra: { tab: SHEET.직원, names: ["트레이너", "그룹수업시간"] },
   },
 };
 
