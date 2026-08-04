@@ -27,6 +27,7 @@ const T_COLS: ColumnSpec = {
   퇴근시각: { names: ["퇴근"] },
   휴게시작: { names: ["휴게시작시각"] },
   휴게분: { names: ["휴게(분)", "휴게시간"] },
+  휴게내역: { names: ["휴게기록"] },
   근무구분: { names: ["구분", "근태구분"] },
   지각분: { names: ["지각(분)", "지각시간"] },
   조퇴분: { names: ["조퇴(분)", "조퇴시간"] },
@@ -48,6 +49,8 @@ export type Attendance = {
   퇴근시각: string;
   휴게시작: string;
   휴게분: string;
+  /** "09:30~10:05 · 12:40~13:00" — 언제 쉬었는지 그대로 남긴다 */
+  휴게내역: string;
   근무구분: string;
   지각분: string;
   조퇴분: string;
@@ -72,6 +75,7 @@ export async function listAttendance(): Promise<Attendance[]> {
       퇴근시각: normalizeTime(get(r, cols, "퇴근시각")),
       휴게시작: normalizeTime(get(r, cols, "휴게시작")),
       휴게분: get(r, cols, "휴게분"),
+      휴게내역: get(r, cols, "휴게내역"),
       근무구분: get(r, cols, "근무구분"),
       지각분: get(r, cols, "지각분"),
       조퇴분: get(r, cols, "조퇴분"),
@@ -88,6 +92,12 @@ function nextId(existing: string[]): string {
     if (m) max = Math.max(max, Number(m[1]));
   });
   return "T" + String(max + 1).padStart(6, "0");
+}
+
+/** "09:30~10:05" 를 기존 기록 뒤에 잇는다 */
+function joinSpan(prev: string, from: string, to: string): string {
+  const one = `${from}~${to}`;
+  return prev ? `${prev} · ${one}` : one;
 }
 
 /** 지각인지 본다 — 기준 시각이 없으면 판정하지 않는다 */
@@ -199,7 +209,8 @@ export async function punchIn(
  */
 export async function punchOut(
   staffId: string,
-  outBaseline: string
+  outBaseline: string,
+  restOverride = 0
 ): Promise<{ time: string; early: number }> {
   const { headers, rows, rowNumbers } = await readSheet(SHEET_T);
   const cols = resolve(SHEET_T, headers, T_COLS);
@@ -215,11 +226,15 @@ export async function punchOut(
   // 휴게가 열려 있으면 여기서 닫는다
   const started = get(open.r, cols, "휴게시작");
   let rest = Number(get(open.r, cols, "휴게분")) || 0;
+  let spans = get(open.r, cols, "휴게내역");
   if (started) {
     const a = toMinutes(started);
     const b = toMinutes(time);
     if (a !== null && b !== null && b > a) rest += b - a;
+    spans = joinSpan(spans, started, time);
   }
+  // 화면에서 "휴게 30분 적고 퇴근"을 고른 경우 — 찍은 휴게가 없을 때만 받는다
+  if (restOverride && restOverride > 0 && rest === 0) rest = restOverride;
 
   await updateRow(SHEET_T, open.n, headers, {
     ...open.r,
@@ -228,6 +243,7 @@ export async function punchOut(
         퇴근시각: time,
         휴게시작: "",
         휴게분: rest > 0 ? String(rest) : "",
+        휴게내역: spans,
         수정일시: stamp,
         수정자: staffId,
       },
@@ -300,7 +316,13 @@ export async function breakToggle(
   await updateRow(SHEET_T, open.n, headers, {
     ...open.r,
     ...toSheetRow(
-      { 휴게시작: "", 휴게분: total > 0 ? String(total) : "", 수정일시: stamp, 수정자: staffId },
+      {
+        휴게시작: "",
+        휴게분: total > 0 ? String(total) : "",
+        휴게내역: joinSpan(get(open.r, cols, "휴게내역"), started, time),
+        수정일시: stamp,
+        수정자: staffId,
+      },
       cols
     ),
   });
