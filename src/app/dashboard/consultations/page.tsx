@@ -11,10 +11,15 @@ import { getBranches, getAllOptions, getStaffNames, getStaffAll } from "@/lib/da
 import { listConsultations, listActivities } from "@/lib/consultations";
 import Shell from "../Shell";
 import Client from "./Client";
+import { guard } from "../guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConsultationsPage() {
+  return guard("상담", body);
+}
+
+async function body() {
   const session = await readSession();
   if (!session) redirect("/");
 

@@ -12,10 +12,15 @@ import { listAttendance, SHEET_T } from "@/lib/attendance";
 import { listSheetNames } from "@/lib/sheets";
 import Shell from "../Shell";
 import Client from "./Client";
+import { guard } from "../guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function AttendancePage() {
+  return guard("근태", body);
+}
+
+async function body() {
   const session = await readSession();
   if (!session) redirect("/");
 
