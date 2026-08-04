@@ -434,7 +434,12 @@ function AddBox(props: {
   const [trainer, setTrainer] = useState(props.me);
   const [date, setDate] = useState(props.day);
   const [start, setStart] = useState("");
-  const [span, setSpan] = useState(50);
+  /*
+    끝나는 시각은 시작 + 50분을 먼저 채워두되, 손대면 그 값을 그대로 쓴다.
+    수업료를 시간으로 계산하게 되면 이 값이 곧 돈이라, 짐작한 값을 쓰면 안 된다.
+  */
+  const [end, setEnd] = useState("");
+  const [touched, setTouched] = useState(false);
   const [product, setProduct] = useState("");
   const [cap, setCap] = useState(8);
   const [memo, setMemo] = useState("");
@@ -481,6 +486,10 @@ function AddBox(props: {
 
   function save() {
     if (!start) return setErr("시작 시각을 정해주세요.");
+    if (!end) return setErr("끝나는 시각을 정해주세요.");
+    if (toMinutes(end) <= toMinutes(start)) {
+      return setErr("끝나는 시각이 시작보다 빠릅니다.");
+    }
     if (picked.length === 0) return setErr("회원을 한 명 이상 골라주세요.");
     props.onSave({
       지점코드: props.myBranch,
@@ -489,7 +498,7 @@ function AddBox(props: {
       트레이너사번: trainer,
       날짜: date,
       시작시각: start,
-      종료시각: addMinutes(start, span),
+      종료시각: end,
       정원: limit,
       메모: memo,
       members: picked,
@@ -521,14 +530,15 @@ function AddBox(props: {
           <div className="field">
             <label htmlFor="lt">시작 시각</label>
             <input id="lt" className="input" type="time" value={start}
-                   onChange={(e) => setStart(e.target.value)} />
+                   onChange={(e) => {
+                     setStart(e.target.value);
+                     if (!touched) setEnd(addMinutes(e.target.value, 50));
+                   }} />
           </div>
           <div className="field">
-            <label htmlFor="ls">수업 길이</label>
-            <select id="ls" className="select" value={span}
-                    onChange={(e) => setSpan(Number(e.target.value))}>
-              {[30, 50, 60, 90].map((n) => <option key={n} value={n}>{n}분</option>)}
-            </select>
+            <label htmlFor="le">끝나는 시각</label>
+            <input id="le" className="input" type="time" value={end}
+                   onChange={(e) => { setEnd(e.target.value); setTouched(true); }} />
           </div>
           <div className="field">
             <label htmlFor="lr">담당 트레이너</label>
