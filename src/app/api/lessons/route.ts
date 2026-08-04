@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
-import { abilitiesFor } from "@/lib/menu";
+import { abilitiesForStaff } from "@/lib/menu";
 import { getStaffAll, getStaffBranches } from "@/lib/data";
 import { createLesson, setJoinState, patchLesson, softDeleteLesson, listLessons } from "@/lib/lessons";
 
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const action = body.action as string;
-    const ab = await abilitiesFor(session.roleCode);
+    const ab = await abilitiesForStaff(session);
     const mine = ab.get("PT·수업");
     if (!mine?.view) {
       return NextResponse.json({ error: "PT·수업을 쓸 수 없는 계정입니다." }, { status: 403 });

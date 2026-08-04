@@ -3,6 +3,7 @@
  *
  * 화면 코드는 시트 구조를 몰라도 되도록, 여기서만 시트 이름과 칸 이름을 다룬다.
  */
+import { cache } from "react";
 import { readSheet, alive, Row } from "./sheets";
 import { normalizeTime } from "./attendanceMeta";
 
@@ -47,6 +48,8 @@ export type Staff = {
   restVary: boolean;
   /** 근무하는 요일 "월화수목금" — 비어 있으면 정하지 않은 것 */
   workDays: string;
+  /** 수업을 맡는 사람인가 — 직급과 별개로 사람마다 정한다 */
+  trainer: boolean;
   /** 시트에서 이 직원이 몇 번째 줄인지 (비밀번호를 고칠 때 쓴다) */
   rowNumber: number;
 };
@@ -101,7 +104,16 @@ export async function getRoles(): Promise<Role[]> {
     .sort((a, b) => a.order - b.order);
 }
 
-export async function getStaffAll(): Promise<Staff[]> {
+/*
+ * 한 번의 화면 요청 안에서는 같은 탭을 두 번 읽지 않는다
+ *
+ * 권한 판정과 화면 본문이 같은 탭을 각각 읽는다. 그대로 두면 화면 하나에
+ * 구글 시트 요청이 두 배로 나가고, 그만큼 화면이 늦게 뜬다.
+ * cache() 는 요청 하나 안에서만 기억하므로, 다음 새로고침에는 새로 읽는다.
+ */
+export const getStaffAll = cache(_getStaffAll);
+
+async function _getStaffAll(): Promise<Staff[]> {
   const { rows, rowNumbers } = await readSheet(SHEET.직원);
   const out: Staff[] = [];
   rows.forEach((r, i) => {
@@ -121,6 +133,7 @@ export async function getStaffAll(): Promise<Staff[]> {
       restMin: (r["휴게분"] ?? "").trim(),
       restVary: yes(r["휴게변동"] ?? ""),
       workDays: (r["근무요일"] ?? "").replace(/[^월화수목금토일]/g, ""),
+      trainer: yes(r["트레이너"] ?? ""),
       rowNumber: rowNumbers[i],
     });
   });
@@ -141,7 +154,9 @@ export async function getStaffBranches(): Promise<Map<string, string[]>> {
   return map;
 }
 
-export async function getPermissions(): Promise<Permission[]> {
+export const getPermissions = cache(_getPermissions);
+
+async function _getPermissions(): Promise<Permission[]> {
   const { rows } = await readSheet(SHEET.권한);
   return alive(rows).map((r) => ({
     roleCode: r["직급코드"],

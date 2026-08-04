@@ -175,6 +175,29 @@ export default function Client(p: Props) {
     );
   }
 
+  // 트레이너가 한 명도 없으면 시간표를 그릴 세로줄이 없다.
+  // "수업이 없습니다"로 보이면 원인을 못 찾으므로 무엇을 해야 하는지 적는다
+  if (p.trainers.length === 0) {
+    return (
+      <>
+        <div className="page-head">
+          <div><h1 className="page-title">PT · 수업</h1>
+            <p className="page-sub">수업을 맡을 사람이 아직 없습니다</p></div>
+        </div>
+        <div className="setup">
+          <div>
+            <b>「트레이너」로 체크된 직원이 없습니다</b>
+            <p>
+              <b>직원 관리</b>에서 직원을 열고 <b>트레이너</b>를 체크하면, 그 사람이 이 시간표에
+              나오고 PT·수업을 쓸 수 있게 됩니다. 직급과는 상관없이 사람마다 정합니다.
+            </p>
+          </div>
+          {p.canSetup && <a className="btn-dark" href="/dashboard/staff">직원 관리로 가기</a>}
+        </div>
+      </>
+    );
+  }
+
   const [lo, hi] = dayRange(dayList);
   const hours = Array.from({ length: hi - lo }, (_, i) => lo + i);
   const openLesson = dayList.find((l) => l.id === open);

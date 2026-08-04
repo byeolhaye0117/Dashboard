@@ -6,7 +6,7 @@
  */
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
-import { visibleMenus, abilitiesFor } from "@/lib/menu";
+import { visibleMenus, abilitiesForStaff } from "@/lib/menu";
 import { getBranches, getStaffAll, getStaffBranches, getProducts } from "@/lib/data";
 import { listMembers, listTickets } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
@@ -27,7 +27,8 @@ async function body() {
   const session = await readSession();
   if (!session) redirect("/");
 
-  const ab = await abilitiesFor(session.roleCode);
+  // 직급 권한만이 아니라 「트레이너」 체크도 같이 본다
+  const ab = await abilitiesForStaff(session);
   const mine = ab.get("PT·수업");
   if (!mine?.view) redirect("/dashboard");
 
@@ -43,9 +44,9 @@ async function body() {
     session.scope === "전체" ? branches : branches.filter((b) => session.branches.includes(b.code));
   const allowed = new Set(myBranches.map((b) => b.code));
 
-  /** 수업을 맡을 수 있는 사람 — 담당 지점 재직자 */
+  /** 수업을 맡는 사람 — 직원 관리에서 「트레이너」로 체크된 담당 지점 재직자 */
   const trainers = staff
-    .filter((s) => s.active)
+    .filter((s) => s.active && s.trainer)
     .filter((s) => {
       if (s.id === session.staffId) return true;
       const where = [...(branchMap.get(s.id) ?? []), s.mainBranch].filter(Boolean);

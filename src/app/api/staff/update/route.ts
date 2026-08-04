@@ -69,6 +69,7 @@ export async function POST(req: Request) {
         휴게분: c.휴게분 === undefined ? undefined : String(c.휴게분),
         휴게변동: c.휴게변동 === undefined ? undefined : Boolean(c.휴게변동),
         근무요일: c.근무요일 === undefined ? undefined : String(c.근무요일),
+        트레이너: c.트레이너 === undefined ? undefined : Boolean(c.트레이너),
       },
       g.session.staffId
     );
