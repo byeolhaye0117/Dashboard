@@ -13,9 +13,9 @@
 import { readSheet, appendRow, updateRow } from "./sheets";
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now, today } from "./time";
-import { SHEET_T, toMinutes, type WorkKind } from "./attendanceMeta";
+import { SHEET_T, toMinutes, normalizeTime, type WorkKind } from "./attendanceMeta";
 
-export { SHEET_T, WORK_KINDS, T_HEADERS, toMinutes, hourText } from "./attendanceMeta";
+export { SHEET_T, WORK_KINDS, T_HEADERS, toMinutes, hourText, normalizeTime } from "./attendanceMeta";
 
 const T_COLS: ColumnSpec = {
   근태번호: { names: ["근태 번호", "근태ID"], required: true },
@@ -68,9 +68,9 @@ export async function listAttendance(): Promise<Attendance[]> {
       지점코드: get(r, cols, "지점코드"),
       날짜: get(r, cols, "날짜").slice(0, 10),
       회차: Number(get(r, cols, "회차")) || 1,
-      출근시각: get(r, cols, "출근시각"),
-      퇴근시각: get(r, cols, "퇴근시각"),
-      휴게시작: get(r, cols, "휴게시작"),
+      출근시각: normalizeTime(get(r, cols, "출근시각")),
+      퇴근시각: normalizeTime(get(r, cols, "퇴근시각")),
+      휴게시작: normalizeTime(get(r, cols, "휴게시작")),
       휴게분: get(r, cols, "휴게분"),
       근무구분: get(r, cols, "근무구분"),
       지각분: get(r, cols, "지각분"),

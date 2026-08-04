@@ -10,6 +10,7 @@ import { readSheet, appendRow, updateRow, updateCell, addColumns, type Row } fro
 import { SHEET } from "./data";
 import { now } from "./time";
 import { formatPhone } from "./phone";
+import { normalizeTime } from "./attendanceMeta";
 
 /** 시트 칸 이름 */
 export const PW_COLUMN = "비밀번호(자동암호화)";
@@ -78,8 +79,8 @@ export async function listStaffAdmin(): Promise<{
       accountOn: yes(r["계정사용"] || "Y"),
       hasPassword: Boolean((r[PW_COLUMN] ?? "").trim()),
       temp: yes(r[TEMP_COLUMN] ?? ""),
-      baseTime: (r["출근기준시각"] ?? "").trim(),
-      outTime: (r["퇴근기준시각"] ?? "").trim(),
+      baseTime: normalizeTime(r["출근기준시각"] ?? ""),
+      outTime: normalizeTime(r["퇴근기준시각"] ?? ""),
       restMin: (r["휴게분"] ?? "").trim(),
       rowNumber: staffSheet.rowNumbers[i],
     });
