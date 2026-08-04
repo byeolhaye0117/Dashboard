@@ -132,7 +132,7 @@ async function body() {
 }
 
 /** 지금 실제로 쓸 수 있는 메뉴 */
-const READY = new Set(["상담", "직원관리", "회원", "매출", "근태", "권한설정"]);
+const READY = new Set(["상담", "직원관리", "회원", "매출", "근태", "권한설정", "PT·수업"]);
 
 /** 카드에 붙는 한 줄 설명 */
 const MENU_NOTE: Record<string, string> = {
