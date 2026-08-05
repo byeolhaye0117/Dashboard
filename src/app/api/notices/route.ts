@@ -1,0 +1,113 @@
+import { NextResponse } from "next/server";
+import { readSession } from "@/lib/session";
+import { abilitiesFor } from "@/lib/menu";
+import {
+  createNotice, patchNotice, softDeleteNotice, markRead,
+  createTask, patchTask, softDeleteTask, setTaskDone,
+} from "@/lib/notices";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * 공지 · 업무
+ *
+ * 읽음 남기기와 업무 체크는 "보기" 권한이면 된다 — 직원이 제 손으로 하는 일이다.
+ * 공지를 올리고 업무를 정하는 것은 "등록 · 수정" 권한이 있어야 한다.
+ */
+export async function POST(req: Request) {
+  const session = await readSession();
+  if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+
+  try {
+    const body = await req.json();
+    const action = body.action as string;
+    const ab = await abilitiesFor(session.roleCode);
+    const mine = ab.get("공지");
+    if (!mine?.view) {
+      return NextResponse.json({ error: "공지·업무를 쓸 수 없는 계정입니다." }, { status: 403 });
+    }
+
+    /** 담당 지점 안인가 — 화면이 보낸 지점을 그대로 믿지 않는다 */
+    const inScope = (branch: string) =>
+      !branch || session.scope === "전체" || session.branches.includes(branch);
+
+    if (action === "read") {
+      if (!body.공지번호) return NextResponse.json({ error: "공지번호가 필요합니다." }, { status: 400 });
+      await markRead(String(body.공지번호), session.staffId);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === "check") {
+      const { 업무번호, 날짜, done } = body;
+      if (!업무번호 || !날짜) {
+        return NextResponse.json({ error: "업무와 날짜가 필요합니다." }, { status: 400 });
+      }
+      await setTaskDone(String(업무번호), String(날짜), Boolean(done), session.staffId);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === "notice-add") {
+      if (!mine.create) {
+        return NextResponse.json({ error: "공지를 올릴 권한이 없습니다." }, { status: 403 });
+      }
+      if (!inScope(body.지점코드)) {
+        return NextResponse.json({ error: "담당 지점에만 올릴 수 있습니다." }, { status: 403 });
+      }
+      const id = await createNotice(
+        {
+          지점코드: String(body.지점코드 ?? ""),
+          제목: String(body.제목 ?? ""),
+          내용: String(body.내용 ?? ""),
+          중요: Boolean(body.중요),
+          마감일: String(body.마감일 ?? ""),
+        },
+        session.staffId
+      );
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (action === "notice-edit" || action === "notice-del") {
+      if (!mine.update) {
+        return NextResponse.json({ error: "공지를 고칠 권한이 없습니다." }, { status: 403 });
+      }
+      if (!body.공지번호) return NextResponse.json({ error: "공지번호가 필요합니다." }, { status: 400 });
+      if (action === "notice-del") await softDeleteNotice(String(body.공지번호), session.staffId);
+      else await patchNotice(String(body.공지번호), body.changes ?? {}, session.staffId);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === "task-add") {
+      if (!mine.create) {
+        return NextResponse.json({ error: "업무를 정할 권한이 없습니다." }, { status: 403 });
+      }
+      if (!inScope(body.지점코드)) {
+        return NextResponse.json({ error: "담당 지점 업무만 정할 수 있습니다." }, { status: 403 });
+      }
+      const id = await createTask(
+        {
+          지점코드: String(body.지점코드 ?? ""),
+          업무명: String(body.업무명 ?? ""),
+          담당사번: String(body.담당사번 ?? ""),
+          순서: Number(body.순서) || 99,
+          메모: String(body.메모 ?? ""),
+        },
+        session.staffId
+      );
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (action === "task-edit" || action === "task-del") {
+      if (!mine.update) {
+        return NextResponse.json({ error: "업무를 고칠 권한이 없습니다." }, { status: 403 });
+      }
+      if (!body.업무번호) return NextResponse.json({ error: "업무번호가 필요합니다." }, { status: 400 });
+      if (action === "task-del") await softDeleteTask(String(body.업무번호), session.staffId);
+      else await patchTask(String(body.업무번호), body.changes ?? {}, session.staffId);
+      return NextResponse.json({ ok: true });
+    }
+
+    return NextResponse.json({ error: "알 수 없는 요청입니다." }, { status: 400 });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message ?? "처리하지 못했습니다." }, { status: 500 });
+  }
+}
