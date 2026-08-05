@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffAll, getStaffBranches } from "@/lib/data";
-import { loadAll, SHEET_N } from "@/lib/notices";
+import { loadAll, SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG } from "@/lib/notices";
 import { listSheetNames } from "@/lib/sheets";
 import Shell from "../Shell";
 import Client from "./Client";
@@ -55,10 +55,17 @@ async function body() {
   let tasks: any[] = [];
   let logs: any[] = [];
   let ready = true;
+  let missing: string[] = [];
   let problem = "";
   try {
+    /*
+      탭 하나만 보고 판단하면 안 된다. 넷 중 하나라도 없으면 읽다가 멈춘다.
+      「공지」는 예전 시트에 이미 있을 수도 있어서, 그것만 보고 준비됐다고
+      넘어가면 나머지를 읽는 순간 오류가 난다.
+    */
     const names = await listSheetNames();
-    ready = names.includes(SHEET_N);
+    missing = [SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG].filter((t) => !names.includes(t));
+    ready = missing.length === 0;
     if (ready) {
       const got = await loadAll();
       // 전체 공지(지점 비어 있음)와 내 지점 것만
@@ -88,6 +95,7 @@ async function body() {
         logs={logs}
         can={{ create: Boolean(mine.create), update: Boolean(mine.update), remove: Boolean(mine.remove) }}
         canSetup={Boolean(ab.get("직원관리")?.update)}
+        missing={missing}
         ready={ready}
         problem={problem}
       />
