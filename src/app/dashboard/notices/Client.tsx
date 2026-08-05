@@ -45,7 +45,7 @@ function shiftDay(d: string, n: number): string {
 
 export default function Client(p: Props) {
   const now = today();
-  const [tab, setTab] = useState<"today" | "notice" | "check" | "task">("today");
+  const [tab, setTab] = useState<"notice" | "check" | "today">("notice");
   const [day, setDay] = useState(now);
   const [open, setOpen] = useState<string | null>(null);
   const [writing, setWriting] = useState<Notice | "new" | null>(null);
@@ -126,27 +126,23 @@ export default function Client(p: Props) {
       <div className="page-head">
         <div>
           <h1 className="page-title">공지 · 업무</h1>
-          <p className="page-sub">오늘 할 일을 체크하고, 공지를 읽습니다</p>
+          <p className="page-sub">공지를 읽고, 오늘 업무를 완료로 체크합니다</p>
         </div>
       </div>
 
       <div className="pick-row" style={{ marginBottom: 14 }}>
-        <button className={`mini-tab${tab === "today" ? " on" : ""}`} onClick={() => setTab("today")}>
-          오늘 할 일{left.length > 0 && <span className="dot">{left.length}</span>}
-        </button>
         <button className={`mini-tab${tab === "notice" ? " on" : ""}`} onClick={() => setTab("notice")}>
           공지{unread.length > 0 && <span className="dot">{unread.length}</span>}
         </button>
+        {/* 업무를 배정하고 지점 전체를 살피는 자리 — 대표 · 매니저 몫이다 */}
         {p.can.update && (
-          <>
-            <button className={`mini-tab${tab === "check" ? " on" : ""}`} onClick={() => setTab("check")}>
-              업무 확인
-            </button>
-            <button className={`mini-tab${tab === "task" ? " on" : ""}`} onClick={() => setTab("task")}>
-              업무 정하기
-            </button>
-          </>
+          <button className={`mini-tab${tab === "check" ? " on" : ""}`} onClick={() => setTab("check")}>
+            업무 확인
+          </button>
         )}
+        <button className={`mini-tab${tab === "today" ? " on" : ""}`} onClick={() => setTab("today")}>
+          업무 완료{left.length > 0 && <span className="dot">{left.length}</span>}
+        </button>
       </div>
 
       {msg && <div className="alert-bad" style={{ marginBottom: 14 }}>{msg}</div>}
@@ -175,12 +171,12 @@ export default function Client(p: Props) {
               <div>
                 <b>이 지점에 정해진 업무가 없습니다</b>
                 <p>
-                  매일 반복되는 일을 <b>업무 정하기</b>에서 넣어두면, 여기 체크리스트로 나옵니다.
-                  담당자를 정해두면 그 사람 이름이 같이 보입니다.
+                  대표님이나 매니저가 <b>업무 확인 → 업무 배정</b>에서 넣어두면
+                  여기 체크리스트로 나옵니다. 담당자를 정해두면 그 사람 이름이 같이 보입니다.
                 </p>
               </div>
               {p.can.update && (
-                <button className="btn-dark" onClick={() => setTab("task")}>업무 정하기</button>
+                <button className="btn-dark" onClick={() => setTab("check")}>업무 배정</button>
               )}
             </div>
           ) : (
@@ -260,42 +256,10 @@ export default function Client(p: Props) {
           people={p.people}
           tasks={p.tasks}
           logs={p.logs}
+          canAdd={p.can.create}
+          onAdd={() => setTaskBox("new")}
+          onEdit={(t) => setTaskBox(t)}
         />
-      )}
-
-      {/* ── 업무 정하기 ─────────────────────── */}
-      {tab === "task" && p.can.update && (
-        <>
-          <div className="pick-row" style={{ marginBottom: 12 }}>
-            <span className="spacer" />
-            {p.can.create && (
-              <button className="btn-dark" onClick={() => setTaskBox("new")}>
-                <Icon name="plus" size={14} /> 업무 추가
-              </button>
-            )}
-          </div>
-
-          {p.tasks.length === 0 ? (
-            <div className="norow">정해진 업무가 없습니다</div>
-          ) : (
-            <div className="lwrap">
-              {p.tasks.map((t) => (
-                <div className="jrow" key={t.id}>
-                  <div className="jtop">
-                    <b>{t.업무명}</b>
-                    <span>
-                      {branchOf.get(t.지점코드) ?? t.지점코드}
-                      {" · "}
-                      {nameOf.get(t.담당사번) ? `담당 ${nameOf.get(t.담당사번)}` : "담당 없음"}
-                      {` · 순서 ${t.순서}`}
-                    </span>
-                  </div>
-                  <button className="mk-btn" onClick={() => setTaskBox(t)}>고치기</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
       )}
 
       {openOne && (
@@ -366,6 +330,9 @@ function TaskBoard(props: {
   people: Person[];
   tasks: Task[];
   logs: Log[];
+  canAdd: boolean;
+  onAdd: () => void;
+  onEdit: (t: Task) => void;
 }) {
   const nowDay = today();
   const [day, setDay] = useState(nowDay);
@@ -415,6 +382,12 @@ function TaskBoard(props: {
         {day !== nowDay && (
           <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setDay(nowDay)}>오늘</button>
         )}
+        <span className="spacer" />
+        {props.canAdd && (
+          <button className="btn-dark" onClick={props.onAdd}>
+            <Icon name="plus" size={14} /> 업무 배정
+          </button>
+        )}
       </div>
 
       <p className="page-sub" style={{ margin: "0 0 12px" }}>
@@ -424,7 +397,16 @@ function TaskBoard(props: {
       </p>
 
       {groups.length === 0 ? (
-        <div className="norow">정해진 업무가 없습니다</div>
+        <div className="setup">
+          <div>
+            <b>아직 배정된 업무가 없습니다</b>
+            <p>
+              매일 반복되는 일을 <b>업무 배정</b>으로 넣어두면, 직원 화면의
+              <b> 업무 완료</b>에 체크리스트로 나옵니다. 지점마다 따로 넣습니다.
+            </p>
+          </div>
+          {props.canAdd && <button className="btn-dark" onClick={props.onAdd}>업무 배정</button>}
+        </div>
       ) : (
         groups.map(({ b, list }) => {
           const left = list.filter((t) => !doneOn.has(t.id));
@@ -456,6 +438,8 @@ function TaskBoard(props: {
                           <span className="pill bad">안 함</span>
                         )}
                         {miss > 0 && <span className="pill">이 달 {miss}일 빠짐</span>}
+                        <span className="spacer" />
+                        <button className="mk-btn" onClick={() => props.onEdit(t)}>고치기</button>
                       </div>
                     </div>
                   );
@@ -715,7 +699,7 @@ function TaskForm(props: {
   return (
     <div className="modal-back" onClick={props.onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>{t ? "업무 고치기" : "업무 추가"}</h3>
+        <h3>{t ? "업무 고치기" : "업무 배정"}</h3>
 
         <div className="field">
           <label htmlFor="tn">업무 이름</label>
