@@ -134,8 +134,11 @@ export default function Client(p: Props) {
         <button className={`mini-tab${tab === "notice" ? " on" : ""}`} onClick={() => setTab("notice")}>
           공지{unread.length > 0 && <span className="dot">{unread.length}</span>}
         </button>
-        {/* 업무를 배정하고 지점 전체를 살피는 자리 — 대표 · 매니저 몫이다 */}
-        {p.can.update && (
+        {/*
+          업무를 배정하고 지점 전체를 살피는 자리 — 대표 · 매니저 몫이다.
+          등록만 있고 수정이 없는 사람도 배정은 해야 하므로 둘 중 하나면 연다.
+        */}
+        {(p.can.update || p.can.create) && (
           <button className={`mini-tab${tab === "check" ? " on" : ""}`} onClick={() => setTab("check")}>
             업무 확인
           </button>
@@ -175,7 +178,7 @@ export default function Client(p: Props) {
                   여기 체크리스트로 나옵니다. 담당자를 정해두면 그 사람 이름이 같이 보입니다.
                 </p>
               </div>
-              {p.can.update && (
+              {(p.can.update || p.can.create) && (
                 <button className="btn-dark" onClick={() => setTab("check")}>업무 배정</button>
               )}
             </div>
@@ -250,7 +253,7 @@ export default function Client(p: Props) {
       )}
 
       {/* ── 업무 확인 (점장 · 대표) ──────────── */}
-      {tab === "check" && p.can.update && (
+      {tab === "check" && (p.can.update || p.can.create) && (
         <TaskBoard
           branches={p.branches}
           people={p.people}
