@@ -9,7 +9,7 @@
  * 결과 찍기는 수업 칸을 눌러서 한다. 완료·노쇼·취소 세 단추뿐이다.
  * 회차는 완료일 때만 빠진다 — 대표님과 정한 규칙이다.
  */
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today } from "@/lib/time";
 import {
@@ -837,6 +837,28 @@ function GroupBoard(props: {
   const nowDay = today();
   const [day, setDay] = useState(nowDay);
   const [zoom, setZoom] = useState("");
+  /** 지우기는 되돌릴 수 없으니 한 번 더 묻는다 */
+  const [killing, setKilling] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  async function remove(사번: string) {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/lessons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete-group", 사번, 날짜: day }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "지우지 못했습니다.");
+      location.reload();
+    } catch (e: any) {
+      setMsg(e.message);
+      setBusy(false);
+    }
+  }
 
   // 그룹수업 시간이 정해진 사람만 본다. 1:1 만 하는 사람은 보고할 것이 없다
   const people = props.trainers.filter((t) => (props.slotsOf.get(t.id) ?? []).length > 0);
@@ -898,14 +920,24 @@ function GroupBoard(props: {
                   </span>
                 </div>
                 {got ? (
-                  got.photo ? (
-                    <button className="thumb" onClick={() => setZoom(got.photo)}>
-                      <img src={`/api/lesson-photo?id=${encodeURIComponent(got.photo)}`} alt={`${t.name} 수업 후 사진`} />
-                      <span>눌러서 크게 보기</span>
-                    </button>
-                  ) : (
-                    <span className="pill bad">사진 없음</span>
-                  )
+                  <div className="shotrow">
+                    {got.photo ? (
+                      <button className="thumb" onClick={() => setZoom(got.photo)}>
+                        <img src={`/api/lesson-photo?id=${encodeURIComponent(got.photo)}`} alt={`${t.name} 수업 후 사진`} />
+                        <span>눌러서 크게 보기</span>
+                      </button>
+                    ) : (
+                      <span className="pill bad">사진 없음</span>
+                    )}
+                    <span className="spacer" />
+                    {killing === t.id ? (
+                      <button className="mk-btn miss on" disabled={busy} onClick={() => remove(t.id)}>
+                        정말 지웁니다
+                      </button>
+                    ) : (
+                      <button className="mk-btn" onClick={() => setKilling(t.id)}>지우기</button>
+                    )}
+                  </div>
                 ) : (
                   <span className="pill bad">아직 보고 안 함</span>
                 )}
@@ -914,6 +946,8 @@ function GroupBoard(props: {
           </div>
         </>
       )}
+
+      {msg && <div className="alert-bad" style={{ marginTop: 12 }}>{msg}</div>}
 
       {zoom && (
         <div className="modal-back" onClick={() => setZoom("")}>
@@ -954,10 +988,45 @@ function GroupReport(props: {
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [killing, setKilling] = useState(false);
 
   const slots = props.slotsOf.get(who) ?? [];
   const already = props.reported.get(`${who}|${day}`);
   const last = lastSlot(picked);
+
+  /*
+    이미 보고한 날을 열면 그때 고른 값을 채워 넣는다.
+    빈 화면에서 다시 고르게 하면 "고치기"가 아니라 "처음부터 다시"가 되고,
+    한 타임만 바꾸려던 사람이 나머지를 빠뜨린다.
+  */
+  const [filled, setFilled] = useState("");
+  const key = `${who}|${day}`;
+  useEffect(() => {
+    if (filled === key) return;
+    setFilled(key);
+    setPicked(already ? already.slots : []);
+    setPhoto(already ? already.photo : "");
+    setMsg("");
+    setKilling(false);
+  }, [key, already, filled]);
+
+  async function remove() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/lessons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete-group", 사번: who, 날짜: day }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "지우지 못했습니다.");
+      props.onDone();
+    } catch (e: any) {
+      setMsg(e.message);
+      setBusy(false);
+    }
+  }
 
   async function upload(file: File) {
     setBusy(true);
@@ -1012,12 +1081,12 @@ function GroupReport(props: {
         <div className="field">
           <label htmlFor="gd">날짜</label>
           <input id="gd" className="input" type="date" value={day} max={nowDay}
-                 onChange={(e) => { setDay(e.target.value || nowDay); setPicked([]); setPhoto(""); }} />
+                 onChange={(e) => setDay(e.target.value || nowDay)} />
         </div>
         <div className="field">
           <label htmlFor="gw">수업한 사람</label>
           <select id="gw" className="select" value={who} disabled={!props.canPickOther}
-                  onChange={(e) => { setWho(e.target.value); setPicked([]); setPhoto(""); }}>
+                  onChange={(e) => setWho(e.target.value)}>
             {props.trainers.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
@@ -1030,8 +1099,22 @@ function GroupReport(props: {
           <span className="lead"><Icon name="check" size={18} /></span>
           <div>
             <b>이 날은 이미 보고했습니다 — {already.slots.join(" · ")}</b>
-            <p>다시 보고하면 이 날 기록을 지우고 새로 씁니다. 타임을 잘못 고르셨을 때 고쳐 보내시면 됩니다.</p>
+            <p>
+              아래에 그때 고른 값이 그대로 채워져 있습니다. 고쳐서 다시 보내시면 이 날 기록이
+              새것으로 바뀝니다. 아예 없던 일로 하시려면 지우시면 됩니다.
+            </p>
           </div>
+          {killing ? (
+            <button className="btn-danger" style={{ marginTop: 0, whiteSpace: "nowrap" }}
+                    disabled={busy} onClick={remove}>
+              정말 지웁니다
+            </button>
+          ) : (
+            <button className="btn-ghost" style={{ marginTop: 0, whiteSpace: "nowrap" }}
+                    onClick={() => setKilling(true)}>
+              보고 지우기
+            </button>
+          )}
         </div>
       )}
 
@@ -1105,7 +1188,7 @@ function GroupReport(props: {
 
           <button className="btn-primary" disabled={busy || !photo || picked.length === 0}
                   onClick={send}>
-            {busy ? "보내는 중…" : `보고 (${picked.length}타임)`}
+            {busy ? "보내는 중…" : already ? `보고 고치기 (${picked.length}타임)` : `보고 (${picked.length}타임)`}
           </button>
           {!photo && picked.length > 0 && (
             <p className="stat-note" style={{ marginTop: 8 }}>

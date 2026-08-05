@@ -1574,3 +1574,7 @@ table.cal .sticky .wd {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 42px; width: 42px; padding: 0;
 }
+
+/* 보고 확인 — 사진과 지우기를 한 줄에 */
+.shotrow { display: flex; align-items: center; gap: 10px; }
+.shotrow .mk-btn { flex: 0 0 auto; padding: 6px 14px; }
