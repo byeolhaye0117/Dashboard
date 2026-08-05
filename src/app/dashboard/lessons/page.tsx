@@ -73,8 +73,15 @@ async function body() {
    */
   const iAmTrainer = staff.some((s) => s.id === session.staffId && s.trainer);
 
-  // 사진 폴더가 준비 안 됐으면 무엇을 해야 하는지 화면에서 알려준다 (보고하는 사람에게만 쓸모 있다)
-  const photoProblem = iAmTrainer ? await photoFolderReady() : "";
+  /*
+   * 사진 폴더가 준비 안 됐으면 무엇을 해야 하는지 화면에서 알려준다
+   *
+   * 보고하는 사람뿐 아니라 준비하는 사람(대표님)에게도 보여야 한다.
+   * 폴더를 만들고 공유하는 것은 대표님 일인데, 정작 그분 화면에 안내가 없으면
+   * 무엇을 어디에 만들어야 하는지 알 길이 없다.
+   */
+  const canSetup = Boolean(ab.get("직원관리")?.update);
+  const photoProblem = iAmTrainer || canSetup ? await photoFolderReady() : "";
 
   /** 수업으로 팔 수 있는 상품만 — 회원권·락커는 여기 안 온다 */
   const lessonProducts = products
@@ -137,7 +144,7 @@ async function body() {
         iAmTrainer={iAmTrainer}
         groupSlots={groupSlots}
         photoProblem={photoProblem}
-        canSetup={Boolean(ab.get("직원관리")?.update)}
+        canSetup={canSetup}
         ready={ready}
         problem={problem}
       />

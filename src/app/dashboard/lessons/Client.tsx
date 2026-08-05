@@ -310,7 +310,8 @@ export default function Client(p: Props) {
 
       {shown === "group" ? (
         view === "check" ? (
-          <GroupBoard trainers={p.trainers} slotsOf={slotsOf} reported={reported} />
+          <GroupBoard trainers={p.trainers} slotsOf={slotsOf} reported={reported}
+                    photoProblem={p.photoProblem} />
         ) : (
           <GroupReport
             me={p.me}
@@ -797,6 +798,8 @@ function GroupBoard(props: {
   trainers: Person[];
   slotsOf: Map<string, string[]>;
   reported: Map<string, { slots: string[]; photo: string }>;
+  /** 사진 폴더가 준비 안 됐으면 그 이유 — 준비는 대표님 일이라 여기에도 띄운다 */
+  photoProblem: string;
 }) {
   const nowDay = today();
   const [day, setDay] = useState(nowDay);
@@ -810,6 +813,18 @@ function GroupBoard(props: {
 
   return (
     <>
+      {props.photoProblem && (
+        <div className="setup" style={{ marginBottom: 14 }}>
+          <div>
+            <b>사진을 올릴 폴더가 아직 없습니다</b>
+            <p style={{ whiteSpace: "pre-line", wordBreak: "break-all" }}>{props.photoProblem}</p>
+          </div>
+          <a className="btn-dark" href="https://drive.google.com" target="_blank" rel="noreferrer">
+            드라이브 열기
+          </a>
+        </div>
+      )}
+
       <div className="pick-row" style={{ marginBottom: 14 }}>
         <button className="icon-btn" onClick={() => setDay(shiftDay(day, -1))} aria-label="어제">‹</button>
         <input className="input" type="date" value={day} style={{ width: 148 }}
