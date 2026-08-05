@@ -104,6 +104,43 @@ async function shrink(file: File): Promise<Blob> {
   }
 }
 
+/** 달을 앞뒤로 옮긴다 */
+function shiftMonth(ym: string, n: number): string {
+  const y = Number(ym.slice(0, 4));
+  const m = Number(ym.slice(5, 7)) - 1 + n;
+  const d = new Date(Date.UTC(y, m, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * 확인 화면의 기간 고르개
+ *
+ * 기본은 달이다. 하루씩만 볼 수 있으면 "이 달에 몇 번 했나"를 보려고 서른 번을
+ * 넘겨야 한다. 특정 날이 궁금할 때만 날짜를 찍는다.
+ */
+function RangePick({ month, day, onMonth, onDay }: {
+  month: string;
+  day: string;
+  onMonth: (v: string) => void;
+  onDay: (v: string) => void;
+}) {
+  return (
+    <div className="pick-row" style={{ marginBottom: 14 }}>
+      <button className="icon-btn" onClick={() => onMonth(shiftMonth(month, -1))} aria-label="지난달">‹</button>
+      <b className="mon">{month.slice(0, 4)}년 {Number(month.slice(5, 7))}월</b>
+      <button className="icon-btn" onClick={() => onMonth(shiftMonth(month, 1))} aria-label="다음달">›</button>
+      <span className="spacer" />
+      <label className="daypick">
+        <span>날짜로 찾기</span>
+        <input className="input" type="date" value={day} onChange={(e) => onDay(e.target.value)} />
+      </label>
+      {day && (
+        <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => onDay("")}>달 전체</button>
+      )}
+    </div>
+  );
+}
+
 function shiftDay(d: string, n: number): string {
   const x = new Date(`${d}T00:00:00+09:00`);
   x.setDate(x.getDate() + n);
@@ -751,14 +788,17 @@ function PtBoard(props: {
   /** 남의 것까지 볼 수 있는가 — 아니면 본인 것만 본다 */
   seeAll: boolean;
 }) {
-  const [day, setDay] = useState(props.day);
   const nowDay = today();
+  const [month, setMonth] = useState(nowDay.slice(0, 7));
+  const [day, setDay] = useState("");
+  // 날짜를 찍으면 그 하루만, 아니면 그 달 전체
+  const inRange = (d: string) => (day ? d === day : d.startsWith(month));
 
   const rows = props.trainers
     .filter((t) => props.seeAll || t.id === props.me)
     .map((t) => {
     const mine = props.lessons.filter(
-      (l) => l.수업구분 !== KIND_GROUP && l.날짜 === day && l.트레이너사번 === t.id
+      (l) => l.수업구분 !== KIND_GROUP && inRange(l.날짜) && l.트레이너사번 === t.id
     );
     let done = 0;
     let miss = 0;
@@ -777,25 +817,21 @@ function PtBoard(props: {
 
   return (
     <>
-      <div className="pick-row" style={{ marginBottom: 14 }}>
-        <button className="icon-btn" onClick={() => setDay(shiftDay(day, -1))} aria-label="어제">‹</button>
-        <input className="input" type="date" value={day} style={{ width: 148 }}
-               onChange={(e) => setDay(e.target.value || nowDay)} />
-        <button className="icon-btn" onClick={() => setDay(shiftDay(day, 1))} aria-label="내일">›</button>
-        {day !== nowDay && (
-          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setDay(nowDay)}>오늘</button>
-        )}
-      </div>
+      <RangePick month={month} day={day} onMonth={setMonth} onDay={(v) => {
+        setDay(v);
+        if (v) setMonth(v.slice(0, 7));
+      }} />
 
       <p className="page-sub" style={{ margin: "0 0 12px" }}>
-        {korDate(day)} · {props.seeAll ? "" : "내 "}1:1 PT {rows.reduce((n, r) => n + r.total, 0)}건
+        {day ? korDate(day) : `${Number(month.slice(5, 7))}월 한 달`}
+        {" · "}{props.seeAll ? "" : "내 "}1:1 PT {rows.reduce((n, r) => n + r.total, 0)}건
       </p>
 
       {rows.length === 0 ? (
-        <div className="norow">이 날에 잡힌 1:1 PT가 없습니다</div>
+        <div className="norow">{day ? "이 날에" : "이 달에"} 잡힌 1:1 PT가 없습니다</div>
       ) : (
         <>
-          {props.seeAll && left > 0 && day <= nowDay && (
+          {props.seeAll && left > 0 && (
             <div className="banner">
               <span className="lead"><Icon name="warn" size={18} /></span>
               <div>
@@ -850,21 +886,22 @@ function GroupBoard(props: {
   seeAll: boolean;
 }) {
   const nowDay = today();
-  const [day, setDay] = useState(nowDay);
+  const [month, setMonth] = useState(nowDay.slice(0, 7));
+  const [day, setDay] = useState("");
   const [zoom, setZoom] = useState("");
   /** 지우기는 되돌릴 수 없으니 한 번 더 묻는다 */
   const [killing, setKilling] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
-  async function remove(사번: string) {
+  async function remove(사번: string, 날짜: string) {
     setBusy(true);
     setMsg("");
     try {
       const res = await fetch("/api/lessons", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete-group", 사번, 날짜: day }),
+        body: JSON.stringify({ action: "delete-group", 사번, 날짜 }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "지우지 못했습니다.");
@@ -882,9 +919,24 @@ function GroupBoard(props: {
   const people = props.trainers
     .filter((t) => (props.slotsOf.get(t.id) ?? []).length > 0)
     .filter((t) => props.seeAll || t.id === props.me);
-  const rows = people.map((t) => ({ t, got: props.reported.get(`${t.id}|${day}`) }));
-  const done = rows.filter((r) => r.got).length;
-  const missing = rows.filter((r) => !r.got);
+
+  /*
+    달로 볼 때는 "보고한 날"이 한 줄이 된다. 사람을 한 줄로 두면 그 달 열흘치
+    보고가 한 칸에 뭉쳐서, 언제 사진을 올렸는지 알 수가 없다.
+  */
+  const inRange = (d: string) => (day ? d === day : d.startsWith(month));
+  const seen = new Set(people.map((t) => t.id));
+  const log: { t: Person; 날짜: string; got: { slots: string[]; photo: string } }[] = [];
+  props.reported.forEach((got, key) => {
+    const [사번, 날짜] = key.split("|");
+    if (!seen.has(사번) || !inRange(날짜)) return;
+    const t = people.find((x) => x.id === 사번);
+    if (t) log.push({ t, 날짜, got });
+  });
+  log.sort((a, b) => (b.날짜 + b.t.name).localeCompare(a.날짜 + a.t.name));
+
+  // 하루를 찍어 볼 때만 "안 한 사람"을 셀 수 있다. 달 전체는 근무일을 알아야 한다
+  const missing = day ? people.filter((t) => !props.reported.get(`${t.id}|${day}`)) : [];
 
   return (
     <>
@@ -900,74 +952,67 @@ function GroupBoard(props: {
         </div>
       )}
 
-      <div className="pick-row" style={{ marginBottom: 14 }}>
-        <button className="icon-btn" onClick={() => setDay(shiftDay(day, -1))} aria-label="어제">‹</button>
-        <input className="input" type="date" value={day} style={{ width: 148 }}
-               onChange={(e) => setDay(e.target.value || nowDay)} />
-        <button className="icon-btn" onClick={() => setDay(shiftDay(day, 1))} aria-label="내일">›</button>
-        {day !== nowDay && (
-          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setDay(nowDay)}>오늘</button>
-        )}
-      </div>
+      <RangePick month={month} day={day} onMonth={setMonth} onDay={(v) => {
+        setDay(v);
+        if (v) setMonth(v.slice(0, 7));
+      }} />
 
       <p className="page-sub" style={{ margin: "0 0 12px" }}>
-        {korDate(day)}
-        {props.seeAll
-          ? ` · 그룹수업 담당 ${people.length}명 중 `
-          : " · 내 보고 "}
-        {props.seeAll ? <b>{done}명 보고</b> : <b>{done > 0 ? "보고함" : "아직 안 함"}</b>}
+        {day ? korDate(day) : `${Number(month.slice(5, 7))}월 한 달`}
+        {" · "}{props.seeAll ? "" : "내 "}보고 <b>{log.length}건</b>
       </p>
 
       {people.length === 0 ? (
         <div className="norow">그룹수업 시간이 정해진 직원이 없습니다</div>
       ) : (
         <>
-          {props.seeAll && missing.length > 0 && day <= nowDay && (
+          {props.seeAll && day && missing.length > 0 && day <= nowDay && (
             <div className="banner">
               <span className="lead"><Icon name="warn" size={18} /></span>
               <div>
                 <b>아직 보고하지 않은 사람 {missing.length}명</b>
-                <p>{missing.map((r) => r.t.name).join(" · ")}</p>
+                <p>{missing.map((t) => t.name).join(" · ")}</p>
               </div>
             </div>
           )}
 
-          <div className="lwrap">
-            {rows.map(({ t, got }) => (
-              <div className="jrow" key={t.id}>
-                <div className="jtop">
-                  <b>{t.name}</b>
-                  <span>
-                    {got
-                      ? `${got.slots.length}타임 · ${got.slots.join(" · ")}`
-                      : `맡은 타임 ${(props.slotsOf.get(t.id) ?? []).join(" · ")}`}
-                  </span>
-                </div>
-                {got ? (
-                  <div className="shotrow">
-                    {got.photo ? (
-                      <button className="thumb" onClick={() => setZoom(got.photo)}>
-                        <img src={`/api/lesson-photo?id=${encodeURIComponent(got.photo)}`} alt={`${t.name} 수업 후 사진`} />
-                        <span>눌러서 크게 보기</span>
-                      </button>
-                    ) : (
-                      <span className="pill bad">사진 없음</span>
-                    )}
-                    <span className="spacer" />
-                    {killing === t.id ? (
-                      <button className="mk-btn miss on" disabled={busy} onClick={() => remove(t.id)}>
-                        정말 지웁니다
-                      </button>
-                    ) : (
-                      <button className="mk-btn" onClick={() => setKilling(t.id)}>지우기</button>
-                    )}
+          {log.length === 0 ? (
+            <div className="norow">{day ? "이 날" : "이 달"} 올라온 보고가 없습니다</div>
+          ) : (
+            <div className="lwrap">
+              {log.map(({ t, 날짜, got }) => {
+                const key = `${t.id}|${날짜}`;
+                return (
+                  <div className="jrow" key={key}>
+                    <div className="jtop">
+                      <b>{korDate(날짜)}</b>
+                      <span>{t.name} · {got.slots.length}타임 · {got.slots.join(" · ")}</span>
+                    </div>
+                    <div className="shotrow">
+                      {got.photo ? (
+                        <button className="thumb" onClick={() => setZoom(got.photo)}>
+                          <img src={`/api/lesson-photo?id=${encodeURIComponent(got.photo)}`}
+                               alt={`${t.name} 수업 후 사진`} />
+                          <span>눌러서 크게 보기</span>
+                        </button>
+                      ) : (
+                        <span className="pill bad">사진 없음</span>
+                      )}
+                      <span className="spacer" />
+                      {killing === key ? (
+                        <button className="mk-btn miss on" disabled={busy}
+                                onClick={() => remove(t.id, 날짜)}>
+                          정말 지웁니다
+                        </button>
+                      ) : (
+                        <button className="mk-btn" onClick={() => setKilling(key)}>지우기</button>
+                      )}
+                    </div>
                   </div>
-                ) : (
-                  <span className="pill bad">아직 보고 안 함</span>
-                )}
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 

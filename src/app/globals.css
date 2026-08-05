@@ -1578,3 +1578,9 @@ table.cal .sticky .wd {
 /* 보고 확인 — 사진과 지우기를 한 줄에 */
 .shotrow { display: flex; align-items: center; gap: 10px; }
 .shotrow .mk-btn { flex: 0 0 auto; padding: 6px 14px; }
+
+/* 확인 화면 기간 고르개 */
+.mon { font-size: 14px; font-weight: 800; letter-spacing: -.02em; min-width: 92px; text-align: center; }
+.daypick { display: inline-flex; align-items: center; gap: 8px; }
+.daypick span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.daypick .input { width: 150px; }
