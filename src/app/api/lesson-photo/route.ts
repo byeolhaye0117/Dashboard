@@ -44,7 +44,16 @@ export async function POST(req: Request) {
     const id = await uploadPhoto(name, file.type, await file.arrayBuffer());
     return NextResponse.json({ ok: true, id });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? "사진을 올리지 못했습니다." }, { status: 500 });
+    /*
+      올리기가 막히는 이유는 여러 가지다 (연결 안 됨 · 권한 · 용량 · 잘못된 파일).
+      한 문장으로 뭉뚱그리면 무엇을 고쳐야 하는지 알 수가 없으므로,
+      저장소가 알려준 말을 그대로 붙여서 내보낸다.
+    */
+    const why = [e?.name, e?.message].filter(Boolean).join(": ");
+    return NextResponse.json(
+      { error: `사진을 올리지 못했습니다. ${why || "이유를 알 수 없습니다."}` },
+      { status: 500 }
+    );
   }
 }
 

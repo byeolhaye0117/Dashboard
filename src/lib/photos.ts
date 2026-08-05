@@ -32,13 +32,22 @@ function blobToken(): string {
   return "";
 }
 
-/** 저장소가 준비됐는지 — 화면에서 안내를 띄울지 정할 때 쓴다 */
+/**
+ * 저장소가 준비됐는지
+ *
+ * 연결 방식이 한 가지가 아니다. 열쇠를 환경변수로 주기도 하고, 요즘은 열쇠 없이
+ * 다른 방식으로 이어주기도 한다. 내가 아는 한 가지가 없다고 막아버리면,
+ * 실제로는 잘 연결돼 있는데도 쓰는 분은 아무것도 못 하게 된다.
+ *
+ * 그래서 "확실히 아무것도 없을 때"만 막는다. 애매하면 일단 해보고,
+ * 안 되면 그때 진짜 이유를 보여준다. 짐작으로 막는 것보다 낫다.
+ */
 export function photoStoreReady(): string {
   if (blobToken()) return "";
+  if (process.env.BLOB_STORE_ID || process.env.VERCEL_OIDC_TOKEN || process.env.VERCEL) return "";
   return (
     "사진을 보관할 곳이 아직 연결되지 않았습니다. " +
-    "vercel.com 에서 이 프로젝트를 열고 Storage 탭 → Create → Blob 을 만들어주세요. " +
-    "이미 만드셨다면 새로 배포되어야 연결됩니다."
+    "vercel.com 에서 이 프로젝트를 열고 Storage 탭 → Create → Blob 을 만들어주세요."
   );
 }
 
@@ -50,6 +59,7 @@ export async function uploadPhoto(
 ): Promise<string> {
   const why = photoStoreReady();
   if (why) throw new Error(why);
+  const token = blobToken() || undefined;
 
   /*
     비공개로 올린다. 회원이 찍힌 사진이라 주소를 알아낸다고 열리면 안 된다.
@@ -57,7 +67,7 @@ export async function uploadPhoto(
   */
   const { url } = await put(`lesson/${name}`, bytes, {
     access: "private",
-    token: blobToken(),
+    ...(token ? { token } : {}),
     contentType: mime,
     // 같은 날 다시 보고해도 앞의 사진을 덮지 않도록 이름 뒤에 임의의 글자를 붙인다
     addRandomSuffix: true,
@@ -83,7 +93,8 @@ export async function readPhoto(url: string): Promise<{ body: ArrayBuffer; mime:
     throw new Error("우리 저장소의 사진이 아닙니다.");
   }
 
-  const got = await get(url, { access: "private", token: blobToken() });
+  const token = blobToken() || undefined;
+  const got = await get(url, { access: "private", ...(token ? { token } : {}) });
   if (!got) throw new Error("사진을 찾지 못했습니다.");
   return {
     body: await new Response(got.stream).arrayBuffer(),
