@@ -31,6 +31,8 @@ type Props = {
   logs: Log[];
   can: { create: boolean; update: boolean; remove: boolean };
   canSetup: boolean;
+  /** 아직 없는 탭 이름들 */
+  missing: string[];
   ready: boolean;
   problem: string;
 };
@@ -112,7 +114,7 @@ export default function Client(p: Props) {
           <div><h1 className="page-title">공지 · 업무</h1>
             <p className="page-sub">아직 준비되지 않았습니다</p></div>
         </div>
-        <SetupTab can={p.canSetup} />
+        <SetupTab can={p.canSetup} missing={p.missing} />
       </>
     );
   }
@@ -778,7 +780,7 @@ function TaskForm(props: {
 
 /* ── 탭이 아직 없을 때 ─────────────────────── */
 
-function SetupTab({ can }: { can: boolean }) {
+function SetupTab({ can, missing }: { can: boolean; missing: string[] }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [done, setDone] = useState("");
@@ -813,10 +815,14 @@ function SetupTab({ can }: { can: boolean }) {
   return (
     <div className="setup">
       <div>
-        <b>공지 탭이 시트에 없습니다</b>
+        <b>
+          {missing.length > 0
+            ? `시트에 ${missing.join(" · ")} 탭이 없습니다`
+            : "공지 탭이 시트에 없습니다"}
+        </b>
         <p>
           누르면 구글 시트에 <b>공지 · 공지읽음 · 업무 · 업무기록</b> 네 탭을 만듭니다.
-          이미 있으면 건너뜁니다.
+          이미 있는 것은 건너뛰고 없는 것만 만듭니다.
         </p>
         {msg && <p className="err">{msg}</p>}
       </div>
