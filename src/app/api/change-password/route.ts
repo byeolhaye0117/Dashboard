@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { checkPassword } from "@/lib/password";
 import { readSheet, updateCell } from "@/lib/sheets";
 import { SHEET, getStaffAll } from "@/lib/data";
 import { readSession, createSession } from "@/lib/session";
@@ -28,9 +29,6 @@ export async function POST(req: Request) {
 
   try {
     const { newPassword } = await req.json();
-    if (!newPassword || String(newPassword).length < 4) {
-      return NextResponse.json({ error: "비밀번호는 4자 이상으로 정해주세요." }, { status: 400 });
-    }
 
     const { headers } = await readSheet(SHEET.직원);
     const col = headers.indexOf(PW_COLUMN);
@@ -43,6 +41,10 @@ export async function POST(req: Request) {
 
     const staff = (await getStaffAll()).find((s) => s.id === session.staffId);
     if (!staff) return NextResponse.json({ error: "직원 정보를 찾지 못했습니다." }, { status: 404 });
+
+    // 규칙은 화면과 서버 양쪽에서 본다. 화면만 보면 우회할 수 있다
+    const bad = checkPassword(String(newPassword ?? ""), { phone: staff.phone, name: staff.name });
+    if (bad) return NextResponse.json({ error: bad }, { status: 400 });
 
     const hash = await bcrypt.hash(String(newPassword), 10);
     await updateCell(SHEET.직원, staff.rowNumber, col, hash);

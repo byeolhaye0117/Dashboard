@@ -325,3 +325,65 @@ async function syncBranches(id: string, want: string[], byId: string): Promise<v
     });
   }
 }
+
+/**
+ * 로그인 실패 기록 (비밀번호 무한 시도 막기)
+ *
+ * 서버가 여러 대로 나뉘어 돌기 때문에, 서버 안 기억에만 세면 소용이 없다.
+ * 다른 서버로 넘어가는 순간 처음부터 다시 셀 수 있다. 그래서 시트에 적는다.
+ *
+ * 칸이 없으면 만든다. 없다고 로그인을 막아버리면 아무도 못 들어온다.
+ */
+const LOCK_COLUMNS = ["로그인실패", "잠금해제시각"];
+
+async function writeLoginState(id: string, fail: string, until: string): Promise<void> {
+  const pre = await readSheet(SHEET.직원);
+  const missing = LOCK_COLUMNS.filter((c) => !pre.headers.includes(c));
+  if (missing.length > 0) await addColumns(SHEET.직원, missing);
+
+  const { headers, rows, rowNumbers } = missing.length > 0 ? await readSheet(SHEET.직원) : pre;
+  const i = rows.findIndex((r) => r["사번"] === id);
+  if (i < 0) return;
+
+  await updateRow(SHEET.직원, rowNumbers[i], headers, {
+    ...rows[i],
+    로그인실패: fail,
+    잠금해제시각: until,
+  });
+}
+
+/** 몇 번까지 봐주는가 · 얼마나 잠그는가 */
+export const FAIL_LIMIT = 5;
+export const LOCK_MINUTES = 10;
+
+/** 틀렸다. 한도를 넘으면 잠근다. 잠갔으면 풀리는 시각을 돌려준다 */
+export async function noteLoginFail(id: string, was: number): Promise<string> {
+  const next = was + 1;
+  if (next < FAIL_LIMIT) {
+    await writeLoginState(id, String(next), "");
+    return "";
+  }
+  const until = new Date(Date.now() + LOCK_MINUTES * 60_000);
+  const text = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Seoul",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(until).replace("T", " ");
+  await writeLoginState(id, "0", text);
+  return text;
+}
+
+/** 잘 들어왔다. 센 것을 지운다 */
+export async function clearLoginFail(id: string): Promise<void> {
+  await writeLoginState(id, "", "");
+}
+
+/** 아직 잠겨 있으면 남은 분, 아니면 0 */
+export function lockLeft(until: string): number {
+  const t = (until ?? "").trim();
+  if (!t) return 0;
+  const end = new Date(t.replace(" ", "T") + "+09:00").getTime();
+  if (Number.isNaN(end)) return 0;
+  const left = Math.ceil((end - Date.now()) / 60_000);
+  return left > 0 ? left : 0;
+}

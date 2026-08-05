@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getStaffAll, getStaffBranches, getRoles } from "@/lib/data";
 import { createSession } from "@/lib/session";
-import { setPassword } from "@/lib/staffAdmin";
+import { setPassword, noteLoginFail, clearLoginFail, lockLeft, FAIL_LIMIT, LOCK_MINUTES } from "@/lib/staffAdmin";
 import { abilitiesFor } from "@/lib/menu";
 
 export const dynamic = "force-dynamic";
@@ -37,28 +37,50 @@ export async function POST(req: Request) {
     ]);
 
     const staff = staffList.find((s) => s.id === staffId);
-    // 어떤 경우든 같은 메시지를 준다. "그 직원은 없다"는 정보도 흘리지 않기 위해서다.
-    const fail = () =>
-      NextResponse.json({ error: "비밀번호가 올바르지 않습니다." }, { status: 401 });
 
-    if (!staff || !staff.active) return fail();
+    /*
+      비밀번호를 무한정 넣어볼 수 있으면, 직원 목록이 공개된 이 화면에서는
+      시간만 있으면 뚫린다. 연달아 틀린 횟수를 세어 잠시 잠근다.
+      횟수는 시트에 적는다 — 서버가 여러 대라 서버 안 기억으로는 셀 수 없다.
+    */
+    const fail = async () => {
+      if (staff) await noteLoginFail(staff.id, staff.loginFail).catch(() => {});
+      // 어떤 경우든 같은 메시지를 준다. "그 직원은 없다"는 정보도 흘리지 않기 위해서다.
+      return NextResponse.json({ error: "비밀번호가 올바르지 않습니다." }, { status: 401 });
+    };
+
+    if (!staff || !staff.active) {
+      return NextResponse.json({ error: "비밀번호가 올바르지 않습니다." }, { status: 401 });
+    }
+
+    const left = lockLeft(staff.lockUntil);
+    if (left > 0) {
+      return NextResponse.json(
+        {
+          error:
+            `비밀번호를 ${FAIL_LIMIT}번 잘못 넣어 ${LOCK_MINUTES}분 동안 잠겼습니다. ` +
+            `${left}분 뒤에 다시 해주세요. 급하시면 대표님께 비밀번호를 새로 받으시면 바로 풀립니다.`,
+        },
+        { status: 429 }
+      );
+    }
 
     const myBranches = branchMap.get(staff.id) ?? [];
     if (staff.mainBranch && !myBranches.includes(staff.mainBranch)) myBranches.push(staff.mainBranch);
-    if (!myBranches.includes(branch)) return fail();
+    if (!myBranches.includes(branch)) return await fail();
 
     let mustChangePassword = false;
 
     if (staff.passwordHash && looksEncrypted(staff.passwordHash)) {
       const ok = await bcrypt.compare(password, staff.passwordHash);
-      if (!ok) return fail();
+      if (!ok) return await fail();
       // 관리자가 발급해준 임시 비밀번호면 본인 것으로 바꾸게 한다
       mustChangePassword = staff.temp;
     } else if (staff.passwordHash) {
       // 시트 비밀번호 칸에 사람이 직접 적어 넣은 경우.
       // 맞으면 받아주되, 그 자리에서 암호로 바꿔 저장한다.
       // 시트에 비밀번호가 글자 그대로 남아 있으면 시트를 여는 사람 누구나 볼 수 있다.
-      if (password !== staff.passwordHash) return fail();
+      if (password !== staff.passwordHash) return await fail();
       await setPassword(staff.id, password, true);
       mustChangePassword = true;
     } else {
@@ -73,6 +95,9 @@ export async function POST(req: Request) {
       }
       mustChangePassword = true;
     }
+
+    // 제대로 들어왔으니 그동안 센 실패는 지운다
+    if (staff.loginFail > 0 || staff.lockUntil) await clearLoginFail(staff.id).catch(() => {});
 
     const role = roles.find((r) => r.code === staff.roleCode);
     const scope = role?.scope ?? "담당지점";
