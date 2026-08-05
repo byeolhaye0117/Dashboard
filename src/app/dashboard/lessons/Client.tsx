@@ -344,7 +344,7 @@ export default function Client(p: Props) {
       {shown === "group" ? (
         view === "check" ? (
           <GroupBoard trainers={p.trainers} slotsOf={slotsOf} reported={reported}
-                    photoProblem={p.photoProblem} />
+                    photoProblem={p.photoProblem} me={p.me} seeAll={p.canSetup} />
         ) : (
           <GroupReport
             me={p.me}
@@ -358,7 +358,8 @@ export default function Client(p: Props) {
           />
         )
       ) : shown === "pt" && view === "check" ? (
-        <PtBoard day={day} trainers={p.trainers} lessons={p.lessons} joinsOf={joinsOf} />
+        <PtBoard day={day} trainers={p.trainers} lessons={p.lessons} joinsOf={joinsOf}
+                 me={p.me} seeAll={p.canSetup} />
       ) : (
       <>
       {/* 수업을 잡고 거르는 일은 수업하는 사람 몫이다.
@@ -740,11 +741,16 @@ function PtBoard(props: {
   trainers: Person[];
   lessons: Lesson[];
   joinsOf: Map<string, Join[]>;
+  me: string;
+  /** 남의 것까지 볼 수 있는가 — 아니면 본인 것만 본다 */
+  seeAll: boolean;
 }) {
   const [day, setDay] = useState(props.day);
   const nowDay = today();
 
-  const rows = props.trainers.map((t) => {
+  const rows = props.trainers
+    .filter((t) => props.seeAll || t.id === props.me)
+    .map((t) => {
     const mine = props.lessons.filter(
       (l) => l.수업구분 !== KIND_GROUP && l.날짜 === day && l.트레이너사번 === t.id
     );
@@ -776,14 +782,14 @@ function PtBoard(props: {
       </div>
 
       <p className="page-sub" style={{ margin: "0 0 12px" }}>
-        {korDate(day)} · 1:1 PT {rows.reduce((n, r) => n + r.total, 0)}건
+        {korDate(day)} · {props.seeAll ? "" : "내 "}1:1 PT {rows.reduce((n, r) => n + r.total, 0)}건
       </p>
 
       {rows.length === 0 ? (
         <div className="norow">이 날에 잡힌 1:1 PT가 없습니다</div>
       ) : (
         <>
-          {left > 0 && day <= nowDay && (
+          {props.seeAll && left > 0 && day <= nowDay && (
             <div className="banner">
               <span className="lead"><Icon name="warn" size={18} /></span>
               <div>
@@ -833,6 +839,9 @@ function GroupBoard(props: {
   reported: Map<string, { slots: string[]; photo: string }>;
   /** 사진 폴더가 준비 안 됐으면 그 이유 — 준비는 대표님 일이라 여기에도 띄운다 */
   photoProblem: string;
+  me: string;
+  /** 남의 보고까지 볼 수 있는가 — 아니면 본인 것만 본다 */
+  seeAll: boolean;
 }) {
   const nowDay = today();
   const [day, setDay] = useState(nowDay);
@@ -860,8 +869,13 @@ function GroupBoard(props: {
     }
   }
 
-  // 그룹수업 시간이 정해진 사람만 본다. 1:1 만 하는 사람은 보고할 것이 없다
-  const people = props.trainers.filter((t) => (props.slotsOf.get(t.id) ?? []).length > 0);
+  /*
+    그룹수업 시간이 정해진 사람만 본다. 1:1 만 하는 사람은 보고할 것이 없다.
+    남의 보고는 관리하는 사람만 본다 — 트레이너끼리 서로의 기록을 들여다볼 이유가 없다.
+  */
+  const people = props.trainers
+    .filter((t) => (props.slotsOf.get(t.id) ?? []).length > 0)
+    .filter((t) => props.seeAll || t.id === props.me);
   const rows = people.map((t) => ({ t, got: props.reported.get(`${t.id}|${day}`) }));
   const done = rows.filter((r) => r.got).length;
   const missing = rows.filter((r) => !r.got);
@@ -891,14 +905,18 @@ function GroupBoard(props: {
       </div>
 
       <p className="page-sub" style={{ margin: "0 0 12px" }}>
-        {korDate(day)} · 그룹수업 담당 {people.length}명 중 <b>{done}명</b> 보고
+        {korDate(day)}
+        {props.seeAll
+          ? ` · 그룹수업 담당 ${people.length}명 중 `
+          : " · 내 보고 "}
+        {props.seeAll ? <b>{done}명 보고</b> : <b>{done > 0 ? "보고함" : "아직 안 함"}</b>}
       </p>
 
       {people.length === 0 ? (
         <div className="norow">그룹수업 시간이 정해진 직원이 없습니다</div>
       ) : (
         <>
-          {missing.length > 0 && day <= nowDay && (
+          {props.seeAll && missing.length > 0 && day <= nowDay && (
             <div className="banner">
               <span className="lead"><Icon name="warn" size={18} /></span>
               <div>
