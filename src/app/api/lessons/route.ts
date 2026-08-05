@@ -4,7 +4,7 @@ import { abilitiesForStaff } from "@/lib/menu";
 import { getStaffAll, getStaffBranches } from "@/lib/data";
 import {
   createLesson, setJoinState, patchLesson, softDeleteLesson, listLessons, completeLesson,
-  reportGroup,
+  reportGroup, deleteGroupReport,
 } from "@/lib/lessons";
 
 export const dynamic = "force-dynamic";
@@ -112,6 +112,17 @@ export async function POST(req: Request) {
         },
         session.staffId
       );
+      return NextResponse.json({ ok: true, count: n });
+    }
+
+    if (action === "delete-group") {
+      // 본인 보고는 스스로 지운다. 남의 것을 지우려면 수정 권한이 있어야 한다
+      const who = body.사번 || session.staffId;
+      if (who !== session.staffId && !mine.update) {
+        return NextResponse.json({ error: "다른 사람의 보고는 지울 수 없습니다." }, { status: 403 });
+      }
+      if (!body.날짜) return NextResponse.json({ error: "날짜가 필요합니다." }, { status: 400 });
+      const n = await deleteGroupReport(who, String(body.날짜), session.staffId);
       return NextResponse.json({ ok: true, count: n });
     }
 

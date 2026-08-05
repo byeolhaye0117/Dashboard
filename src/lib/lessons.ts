@@ -505,6 +505,38 @@ export async function reportGroup(input: {
 }
 
 /**
+ * 그룹수업 보고를 지운다
+ *
+ * 줄을 실제로 없애지 않고 삭제 표시만 남긴다. 언제 무엇을 보고했다가 지웠는지가
+ * 시트에 남아야, 나중에 "그날 보고가 왜 없냐"를 따질 수 있다.
+ */
+export async function deleteGroupReport(
+  사번: string,
+  날짜: string,
+  byId: string
+): Promise<number> {
+  const l = await readSheet(SHEET_L);
+  const lc = resolve(SHEET_L, l.headers, L_COLS);
+  const stamp = now();
+
+  const gone: { rowNumber: number; row: Row }[] = [];
+  l.rows.forEach((r, i) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    if (get(r, lc, "수업구분") !== KIND_GROUP) return;
+    if (get(r, lc, "트레이너사번") !== 사번) return;
+    if (get(r, lc, "날짜").slice(0, 10) !== 날짜) return;
+    gone.push({
+      rowNumber: l.rowNumbers[i],
+      row: { ...r, ...toSheetRow({ 삭제여부: "Y", 수정일시: stamp, 수정자: byId }, lc) },
+    });
+  });
+
+  if (gone.length === 0) throw new Error("지울 보고가 없습니다.");
+  await updateRows(SHEET_L, l.headers, gone);
+  return gone.length;
+}
+
+/**
  * 수업 한 타임을 통째로 완료 처리한다
  *
  * 그룹수업은 참석자가 여럿이라 한 명씩 찍으면 손이 너무 많이 간다.
