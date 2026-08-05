@@ -3,7 +3,7 @@ import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import {
   createNotice, patchNotice, softDeleteNotice, markRead,
-  createTask, patchTask, softDeleteTask, setTaskDone,
+  createTask, patchTask, softDeleteTask, setTaskDone, clearReads,
 } from "@/lib/notices";
 
 export const dynamic = "force-dynamic";
@@ -71,8 +71,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "공지를 고칠 권한이 없습니다." }, { status: 403 });
       }
       if (!body.공지번호) return NextResponse.json({ error: "공지번호가 필요합니다." }, { status: 400 });
-      if (action === "notice-del") await softDeleteNotice(String(body.공지번호), session.staffId);
-      else await patchNotice(String(body.공지번호), body.changes ?? {}, session.staffId);
+      if (action === "notice-del") {
+        await softDeleteNotice(String(body.공지번호), session.staffId);
+        return NextResponse.json({ ok: true });
+      }
+      await patchNotice(String(body.공지번호), body.changes ?? {}, session.staffId);
+      // 크게 고쳤을 때만 다시 읽게 한다. 오타 하나에 전원을 다시 읽게 할 수는 없다
+      if (body.다시읽기) await clearReads(String(body.공지번호));
       return NextResponse.json({ ok: true });
     }
 
