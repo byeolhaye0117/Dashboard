@@ -42,6 +42,8 @@ type Props = {
   tickets: Ticket[];
   products: Product[];
   can: { create: boolean; update: boolean; remove: boolean };
+  /** 지금 보는 사람이 수업을 하는 사람인가 — 아니면 보고할 것이 없다 */
+  iAmTrainer: boolean;
   /** 사번 → 맡은 그룹수업 시간대 */
   groupSlots: Record<string, string[]>;
   /** 사진 폴더가 준비 안 됐으면 그 이유 */
@@ -84,6 +86,17 @@ export default function Client(p: Props) {
   const [showLate, setShowLate] = useState(false);
   const [tab, setTab] = useState<"sched" | "pt" | "group">("sched");
   const [sub, setSub] = useState<"do" | "check">("do");
+
+  /*
+    보고하기는 수업하는 사람 몫이고, 보고 확인은 남의 것까지 보는 사람 몫이다.
+    둘 다 되는 사람(수업하는 점장)만 탭을 고르고, 나머지는 볼 수 있는 쪽으로 고정한다.
+    고를 것이 하나뿐인데 탭을 보여주면 누를 이유가 없는 단추가 생긴다.
+  */
+  const canDo = p.iAmTrainer;
+  const canCheck = p.can.update;
+  const view: "do" | "check" = !canDo ? "check" : !canCheck ? "do" : sub;
+  // 보고할 것도 없고 남의 것을 볼 권한도 없으면 시간표만 본다
+  const shown = canDo || canCheck ? tab : "sched";
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -135,7 +148,7 @@ export default function Client(p: Props) {
   const columns = useMemo(() => {
     const has = new Set(dayList.map((l) => l.트레이너사번));
     const list = p.trainers.filter((t) => has.has(t.id));
-    if (list.length === 0) {
+    if (list.length === 0 && p.iAmTrainer) {
       const meRow = p.trainers.find((t) => t.id === p.me);
       return meRow ? [meRow] : [];
     }
@@ -270,29 +283,33 @@ export default function Client(p: Props) {
         <button className={`mini-tab${tab === "sched" ? " on" : ""}`} onClick={() => setTab("sched")}>
           시간표
         </button>
-        <button className={`mini-tab${tab === "pt" ? " on" : ""}`} onClick={() => setTab("pt")}>
-          1:1 PT 보고
-        </button>
-        <button className={`mini-tab${tab === "group" ? " on" : ""}`} onClick={() => setTab("group")}>
-          그룹수업 보고
-        </button>
+        {(canDo || canCheck) && (
+          <>
+            <button className={`mini-tab${tab === "pt" ? " on" : ""}`} onClick={() => setTab("pt")}>
+              1:1 PT {canDo ? "보고" : "확인"}
+            </button>
+            <button className={`mini-tab${tab === "group" ? " on" : ""}`} onClick={() => setTab("group")}>
+              그룹수업 {canDo ? "보고" : "확인"}
+            </button>
+          </>
+        )}
       </div>
 
       {/* 보고 안에서 「보고하기」와 「보고 확인」을 오간다.
           확인은 남의 보고까지 볼 수 있는 사람 — 점장 · 대표에게만 보인다 */}
-      {tab !== "sched" && p.can.update && (
+      {shown !== "sched" && canDo && canCheck && (
         <div className="pick-row" style={{ marginBottom: 14 }}>
-          <button className={`mini-tab${sub === "do" ? " on" : ""}`} onClick={() => setSub("do")}>
+          <button className={`mini-tab${view === "do" ? " on" : ""}`} onClick={() => setSub("do")}>
             보고하기
           </button>
-          <button className={`mini-tab${sub === "check" ? " on" : ""}`} onClick={() => setSub("check")}>
+          <button className={`mini-tab${view === "check" ? " on" : ""}`} onClick={() => setSub("check")}>
             보고 확인
           </button>
         </div>
       )}
 
-      {tab === "group" ? (
-        sub === "check" && p.can.update ? (
+      {shown === "group" ? (
+        view === "check" ? (
           <GroupBoard trainers={p.trainers} slotsOf={slotsOf} reported={reported} />
         ) : (
           <GroupReport
@@ -306,13 +323,17 @@ export default function Client(p: Props) {
             onDone={() => location.reload()}
           />
         )
-      ) : tab === "pt" && sub === "check" && p.can.update ? (
+      ) : shown === "pt" && view === "check" ? (
         <PtBoard day={day} trainers={p.trainers} lessons={p.lessons} joinsOf={joinsOf} />
       ) : (
       <>
       <div className="pick-row">
-        <button className={`mini-tab${onlyMine ? "" : " on"}`} onClick={() => setOnlyMine(false)}>전체</button>
-        <button className={`mini-tab${onlyMine ? " on" : ""}`} onClick={() => setOnlyMine(true)}>내 수업</button>
+        {canDo && (
+          <>
+            <button className={`mini-tab${onlyMine ? "" : " on"}`} onClick={() => setOnlyMine(false)}>전체</button>
+            <button className={`mini-tab${onlyMine ? " on" : ""}`} onClick={() => setOnlyMine(true)}>내 수업</button>
+          </>
+        )}
         <span className="spacer" />
         {p.can.create && (
           <button className="btn-dark" onClick={() => setAdding(true)}>
@@ -374,7 +395,7 @@ export default function Client(p: Props) {
 
       <p className="page-sub" style={{ margin: "2px 0 12px" }}>{korDate(day)}</p>
 
-      {tab === "sched" ? (
+      {shown === "sched" ? (
         <>
       {columns.length === 0 ? (
         <div className="norow">이 날에 잡힌 수업이 없습니다</div>
@@ -876,7 +897,9 @@ function GroupReport(props: {
   onDone: () => void;
 }) {
   const nowDay = today();
-  const [who, setWho] = useState(props.me);
+  const [who, setWho] = useState(
+    props.trainers.some((t) => t.id === props.me) ? props.me : (props.trainers[0]?.id ?? "")
+  );
   const [day, setDay] = useState(nowDay);
   const [picked, setPicked] = useState<string[]>([]);
   const [photo, setPhoto] = useState("");
@@ -1060,7 +1083,9 @@ function AddBox(props: {
   onClose: () => void;
 }) {
   const kind = KIND_PT;
-  const [trainer, setTrainer] = useState(props.me);
+  const [trainer, setTrainer] = useState(
+    props.trainers.some((t) => t.id === props.me) ? props.me : (props.trainers[0]?.id ?? "")
+  );
   const [date, setDate] = useState(props.day);
   const [start, setStart] = useState("");
   /*

@@ -65,8 +65,16 @@ async function body() {
     groupSlots[s.id] = parseSlots(s.groupSlots);
   });
 
-  // 사진 폴더가 준비 안 됐으면 무엇을 해야 하는지 화면에서 알려준다
-  const photoProblem = await photoFolderReady();
+  /**
+   * 지금 보는 사람이 수업을 하는 사람인가
+   *
+   * 대표님처럼 수업을 안 하는 분에게 「보고하기」를 보여주면, 평생 안 쓸 화면이
+   * 자리만 차지한다. 보고는 수업한 사람이 하는 것이고, 대표님은 확인만 하신다.
+   */
+  const iAmTrainer = staff.some((s) => s.id === session.staffId && s.trainer);
+
+  // 사진 폴더가 준비 안 됐으면 무엇을 해야 하는지 화면에서 알려준다 (보고하는 사람에게만 쓸모 있다)
+  const photoProblem = iAmTrainer ? await photoFolderReady() : "";
 
   /** 수업으로 팔 수 있는 상품만 — 회원권·락커는 여기 안 온다 */
   const lessonProducts = products
@@ -126,6 +134,7 @@ async function body() {
         tickets={tickets}
         products={lessonProducts}
         can={{ create: Boolean(mine.create), update: Boolean(mine.update), remove: Boolean(mine.remove) }}
+        iAmTrainer={iAmTrainer}
         groupSlots={groupSlots}
         photoProblem={photoProblem}
         canSetup={Boolean(ab.get("직원관리")?.update)}
