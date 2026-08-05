@@ -11,7 +11,7 @@
  * 사진 주소는 시트에 적히지만 화면으로는 절대 내보내지 않는다.
  * 대시보드가 대신 받아서 보여준다 — 주소만 알면 누구나 보이는 상태로 두지 않는다.
  */
-import { put } from "@vercel/blob";
+import { put, get } from "@vercel/blob";
 
 const TOKEN = "BLOB_READ_WRITE_TOKEN";
 
@@ -34,8 +34,12 @@ export async function uploadPhoto(
   const why = photoStoreReady();
   if (why) throw new Error(why);
 
+  /*
+    비공개로 올린다. 회원이 찍힌 사진이라 주소를 알아낸다고 열리면 안 된다.
+    보여줄 때는 대시보드가 로그인을 확인하고 대신 받아온다.
+  */
   const { url } = await put(`lesson/${name}`, bytes, {
-    access: "public",
+    access: "private",
     contentType: mime,
     // 같은 날 다시 보고해도 앞의 사진을 덮지 않도록 이름 뒤에 임의의 글자를 붙인다
     addRandomSuffix: true,
@@ -56,14 +60,15 @@ export async function readPhoto(url: string): Promise<{ body: ArrayBuffer; mime:
   } catch {
     throw new Error("사진 주소가 올바르지 않습니다.");
   }
-  if (!/\.public\.blob\.vercel-storage\.com$/.test(host)) {
+  // 비공개·공개 저장소가 서로 다른 주소를 쓰므로 둘 다 받는다
+  if (!/\.blob\.vercel-storage\.com$/.test(host)) {
     throw new Error("우리 저장소의 사진이 아닙니다.");
   }
 
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error("사진을 읽지 못했습니다.");
+  const got = await get(url, { access: "private" });
+  if (!got) throw new Error("사진을 찾지 못했습니다.");
   return {
-    body: await res.arrayBuffer(),
-    mime: res.headers.get("content-type") ?? "image/jpeg",
+    body: await new Response(got.stream).arrayBuffer(),
+    mime: got.headers.get("content-type") ?? got.blob?.contentType ?? "image/jpeg",
   };
 }
