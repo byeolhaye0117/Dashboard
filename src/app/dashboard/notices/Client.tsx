@@ -6,7 +6,7 @@
  * 「오늘 할 일」이 기본이다. 출근해서 여는 화면이므로, 오늘 손이 가야 하는 것이
  * 먼저 나와야 한다. 공지는 안 읽은 것이 있을 때만 눈에 띈다.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today } from "@/lib/time";
 
@@ -343,6 +343,30 @@ function NoticeBox(props: {
 }) {
   const [killing, setKilling] = useState(false);
   const n = props.notice;
+
+  /*
+    끝까지 내려온 사람만 읽음을 누를 수 있게 한다.
+    본문이 짧아 내릴 것이 없으면 바로 켠다 — 내릴 수도 없는데 막으면
+    영영 못 누른다.
+  */
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [atEnd, setAtEnd] = useState(false);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const check = () => {
+      // 1px 은 기기마다 소수점이 어긋나는 것을 봐주는 값이다
+      setAtEnd(el.scrollHeight - el.scrollTop - el.clientHeight <= 2);
+    };
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    return () => {
+      el.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+    };
+  }, [n.id]);
   const nameOf = new Map(props.people.map((x) => [x.id, x.name]));
   const readIds = new Set(props.readers.map((r) => r.사번));
   const notYet = props.people.filter((x) => !readIds.has(x.id));
@@ -356,7 +380,7 @@ function NoticeBox(props: {
           {n.마감일 && ` · ${n.마감일}까지`}
         </p>
 
-        <div className="ntext">{n.내용 || "(내용 없음)"}</div>
+        <div className="ntext" ref={bodyRef}>{n.내용 || "(내용 없음)"}</div>
 
         {/*
           읽음은 눌러야 남는다. 열자마자 읽은 것으로 치면 "열어봤다"와
@@ -369,10 +393,17 @@ function NoticeBox(props: {
             <span>{props.readAt.slice(5, 16)} 에 읽음을 눌렀습니다</span>
           </div>
         ) : (
-          <button className="btn-primary" style={{ marginTop: 14 }}
-                  disabled={props.busy} onClick={props.onRead}>
-            {props.busy ? "남기는 중…" : "다 읽었습니다"}
-          </button>
+          <>
+            <button className="btn-primary" style={{ marginTop: 14 }}
+                    disabled={props.busy || !atEnd} onClick={props.onRead}>
+              {props.busy ? "남기는 중…" : atEnd ? "다 읽었습니다" : "끝까지 내려주세요"}
+            </button>
+            {!atEnd && (
+              <p className="stat-note" style={{ marginTop: 8 }}>
+                내용을 끝까지 내리면 단추가 켜집니다.
+              </p>
+            )}
+          </>
         )}
 
         {props.canManage && (
