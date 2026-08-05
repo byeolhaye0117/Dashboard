@@ -327,20 +327,20 @@ export default function Client(p: Props) {
         <PtBoard day={day} trainers={p.trainers} lessons={p.lessons} joinsOf={joinsOf} />
       ) : (
       <>
-      <div className="pick-row">
-        {canDo && (
-          <>
-            <button className={`mini-tab${onlyMine ? "" : " on"}`} onClick={() => setOnlyMine(false)}>전체</button>
-            <button className={`mini-tab${onlyMine ? " on" : ""}`} onClick={() => setOnlyMine(true)}>내 수업</button>
-          </>
-        )}
-        <span className="spacer" />
-        {p.can.create && (
-          <button className="btn-dark" onClick={() => setAdding(true)}>
-            <Icon name="plus" size={14} /> 1:1 PT 잡기
-          </button>
-        )}
-      </div>
+      {/* 수업을 잡고 거르는 일은 수업하는 사람 몫이다.
+          안 하는 사람에게는 이 줄이 통째로 필요 없다 */}
+      {canDo && (
+        <div className="pick-row">
+          <button className={`mini-tab${onlyMine ? "" : " on"}`} onClick={() => setOnlyMine(false)}>전체</button>
+          <button className={`mini-tab${onlyMine ? " on" : ""}`} onClick={() => setOnlyMine(true)}>내 수업</button>
+          <span className="spacer" />
+          {p.can.create && (
+            <button className="btn-dark" onClick={() => setAdding(true)}>
+              <Icon name="plus" size={14} /> 1:1 PT 잡기
+            </button>
+          )}
+        </div>
+      )}
 
       {msg && <div className="alert-bad" style={{ marginBottom: 14 }}>{msg}</div>}
 
