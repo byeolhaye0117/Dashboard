@@ -263,6 +263,25 @@ export async function markRead(공지번호: string, 사번: string): Promise<vo
   }, rc));
 }
 
+/**
+ * 이 공지의 읽음 기록을 모두 지운다
+ *
+ * 내용을 크게 고쳤으면 앞서 읽은 것은 다른 글을 읽은 것이다.
+ * 그대로 두면 "다 읽었다"고 나오는데 정작 바뀐 내용은 아무도 못 본 상태가 된다.
+ * 다만 늘 지우지는 않는다 — 오타 하나 고쳤다고 전원에게 다시 읽으라고 할 수는 없다.
+ */
+export async function clearReads(공지번호: string): Promise<void> {
+  const r = await readSheet(SHEET_NR);
+  const rc = resolve(SHEET_NR, r.headers, NR_COLS);
+
+  const gone: { rowNumber: number; row: Row }[] = [];
+  r.rows.forEach((row, i) => {
+    if (get(row, rc, "공지번호") !== 공지번호) return;
+    gone.push({ rowNumber: r.rowNumbers[i], row: { ...row, 공지번호: "", 사번: "" } });
+  });
+  await updateRows(SHEET_NR, r.headers, gone);
+}
+
 /* ── 업무 ─────────────────────────────────── */
 
 export async function createTask(

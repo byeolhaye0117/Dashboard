@@ -43,10 +43,10 @@ function shiftDay(d: string, n: number): string {
 
 export default function Client(p: Props) {
   const now = today();
-  const [tab, setTab] = useState<"today" | "notice" | "task">("today");
+  const [tab, setTab] = useState<"today" | "notice" | "check" | "task">("today");
   const [day, setDay] = useState(now);
   const [open, setOpen] = useState<string | null>(null);
-  const [writing, setWriting] = useState(false);
+  const [writing, setWriting] = useState<Notice | "new" | null>(null);
   const [taskBox, setTaskBox] = useState<Task | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -136,9 +136,14 @@ export default function Client(p: Props) {
           공지{unread.length > 0 && <span className="dot">{unread.length}</span>}
         </button>
         {p.can.update && (
-          <button className={`mini-tab${tab === "task" ? " on" : ""}`} onClick={() => setTab("task")}>
-            업무 정하기
-          </button>
+          <>
+            <button className={`mini-tab${tab === "check" ? " on" : ""}`} onClick={() => setTab("check")}>
+              업무 확인
+            </button>
+            <button className={`mini-tab${tab === "task" ? " on" : ""}`} onClick={() => setTab("task")}>
+              업무 정하기
+            </button>
+          </>
         )}
       </div>
 
@@ -209,7 +214,7 @@ export default function Client(p: Props) {
           {p.can.create && (
             <div className="pick-row" style={{ marginBottom: 12 }}>
               <span className="spacer" />
-              <button className="btn-dark" onClick={() => setWriting(true)}>
+              <button className="btn-dark" onClick={() => setWriting("new")}>
                 <Icon name="plus" size={14} /> 공지 올리기
               </button>
             </div>
@@ -244,6 +249,16 @@ export default function Client(p: Props) {
             </div>
           )}
         </>
+      )}
+
+      {/* ── 업무 확인 (점장 · 대표) ──────────── */}
+      {tab === "check" && p.can.update && (
+        <TaskBoard
+          branches={p.branches}
+          people={p.people}
+          tasks={p.tasks}
+          logs={p.logs}
+        />
       )}
 
       {/* ── 업무 정하기 ─────────────────────── */}
@@ -291,6 +306,7 @@ export default function Client(p: Props) {
           readAt={p.reads.find((r) => r.공지번호 === openOne.id && r.사번 === p.me)?.읽은일시 ?? ""}
           busy={busy}
           onRead={() => send({ action: "read", 공지번호: openOne.id })}
+          onEdit={() => { setWriting(openOne); setOpen(null); }}
           onDelete={() => send({ action: "notice-del", 공지번호: openOne.id })}
           onClose={() => setOpen(null)}
         />
@@ -298,10 +314,17 @@ export default function Client(p: Props) {
 
       {writing && (
         <NoticeForm
+          notice={writing === "new" ? null : writing}
           branches={p.branches}
           busy={busy}
-          onSave={(v) => send({ action: "notice-add", ...v })}
-          onClose={() => setWriting(false)}
+          onSave={(v, again) =>
+            writing === "new"
+              ? send({ action: "notice-add", ...v })
+              : send({ action: "notice-edit", 공지번호: writing.id, changes: {
+                  ...v, 중요: v.중요 ? "Y" : "",
+                }, 다시읽기: again })
+          }
+          onClose={() => setWriting(null)}
         />
       )}
 
@@ -326,6 +349,124 @@ export default function Client(p: Props) {
   );
 }
 
+/* ── 업무 확인 ─────────────────────────────── */
+
+/**
+ * 지점별로 오늘 무엇이 남았나
+ *
+ * 「오늘 할 일」은 내가 있는 지점만 본다. 대표님은 네 지점을 한 화면에서
+ * 봐야 하고, 무엇보다 "안 끝난 것"이 먼저 보여야 한다.
+ *
+ * 이 달 몇 번 빠뜨렸는지도 같이 센다. 하루치만 보면 어제 빠뜨린 것은 영영 모른다.
+ */
+function TaskBoard(props: {
+  branches: Named[];
+  people: Person[];
+  tasks: Task[];
+  logs: Log[];
+}) {
+  const nowDay = today();
+  const [day, setDay] = useState(nowDay);
+  const nameOf = new Map(props.people.map((x) => [x.id, x.name]));
+
+  const doneOn = useMemo(() => {
+    const m = new Map<string, Log>();
+    props.logs.filter((l) => l.날짜 === day).forEach((l) => m.set(l.업무번호, l));
+    return m;
+  }, [props.logs, day]);
+
+  /** 이 달에 며칠이나 했나 — 오늘까지만 센다. 아직 안 온 날은 빠뜨린 게 아니다 */
+  const monthDone = useMemo(() => {
+    const m = day.slice(0, 7);
+    const cnt = new Map<string, number>();
+    props.logs
+      .filter((l) => l.날짜.startsWith(m) && l.날짜 <= nowDay)
+      .forEach((l) => cnt.set(l.업무번호, (cnt.get(l.업무번호) ?? 0) + 1));
+    return cnt;
+  }, [props.logs, day, nowDay]);
+
+  /** 이 달에 지나간 날 수 */
+  const passed = useMemo(() => {
+    const m = day.slice(0, 7);
+    const last = nowDay.startsWith(m) ? Number(nowDay.slice(8, 10)) : new Date(
+      Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0
+    ).getDate();
+    return nowDay.slice(0, 7) < m ? 0 : last;
+  }, [day, nowDay]);
+
+  const groups = props.branches
+    .map((b) => ({ b, list: props.tasks.filter((t) => t.지점코드 === b.code) }))
+    .filter((g) => g.list.length > 0);
+
+  const leftAll = groups.reduce(
+    (n, g) => n + g.list.filter((t) => !doneOn.has(t.id)).length,
+    0
+  );
+
+  return (
+    <>
+      <div className="pick-row" style={{ marginBottom: 12 }}>
+        <button className="icon-btn" onClick={() => setDay(shiftDay(day, -1))} aria-label="어제">‹</button>
+        <input className="input" type="date" value={day} style={{ width: 148 }}
+               onChange={(e) => setDay(e.target.value || nowDay)} />
+        <button className="icon-btn" onClick={() => setDay(shiftDay(day, 1))} aria-label="내일">›</button>
+        {day !== nowDay && (
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setDay(nowDay)}>오늘</button>
+        )}
+      </div>
+
+      <p className="page-sub" style={{ margin: "0 0 12px" }}>
+        {korDate(day)} · 지점 {groups.length}곳
+        {" · "}
+        {leftAll > 0 ? <b className="warn-text">안 끝난 일 {leftAll}개</b> : <b>모두 끝남</b>}
+      </p>
+
+      {groups.length === 0 ? (
+        <div className="norow">정해진 업무가 없습니다</div>
+      ) : (
+        groups.map(({ b, list }) => {
+          const left = list.filter((t) => !doneOn.has(t.id));
+          return (
+            <div key={b.code} style={{ marginBottom: 18 }}>
+              <h4 className="mini-title">
+                {b.name} — {list.length - left.length} / {list.length} 끝남
+              </h4>
+              <div className="lwrap">
+                {list.map((t) => {
+                  const log = doneOn.get(t.id);
+                  const did = monthDone.get(t.id) ?? 0;
+                  const miss = Math.max(0, passed - did);
+                  return (
+                    <div className={`jrow${log ? " is-done" : ""}`} key={t.id}>
+                      <div className="jtop">
+                        <b>{t.업무명}</b>
+                        <span>
+                          {nameOf.get(t.담당사번) ? `담당 ${nameOf.get(t.담당사번)}` : "담당 없음"}
+                          {log
+                            ? ` · ${nameOf.get(log.처리자) ?? log.처리자}님이 ${log.처리일시.slice(11)} 완료`
+                            : ""}
+                        </span>
+                      </div>
+                      <div className="pick-row">
+                        {log ? (
+                          <span className="pill good">완료</span>
+                        ) : (
+                          <span className="pill bad">안 함</span>
+                        )}
+                        {miss > 0 && <span className="pill">이 달 {miss}일 빠짐</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </>
+  );
+}
+
 /* ── 공지 읽기 ─────────────────────────────── */
 
 function NoticeBox(props: {
@@ -338,6 +479,7 @@ function NoticeBox(props: {
   readAt: string;
   busy: boolean;
   onRead: () => void;
+  onEdit: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -430,8 +572,11 @@ function NoticeBox(props: {
               <button className="btn-danger" style={{ marginTop: 0, marginRight: "auto" }}
                       disabled={props.busy} onClick={props.onDelete}>정말 지웁니다</button>
             ) : (
-              <button className="btn-ghost" style={{ marginTop: 0, marginRight: "auto" }}
-                      onClick={() => setKilling(true)}>공지 지우기</button>
+              <>
+                <button className="btn-ghost" style={{ marginTop: 0, marginRight: "auto" }}
+                        onClick={() => setKilling(true)}>지우기</button>
+                <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onEdit}>고치기</button>
+              </>
             )
           )}
           <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onClose}>닫기</button>
@@ -444,23 +589,32 @@ function NoticeBox(props: {
 /* ── 공지 올리기 ───────────────────────────── */
 
 function NoticeForm(props: {
+  notice: Notice | null;
   branches: Named[];
   busy: boolean;
-  onSave: (v: any) => void;
+  onSave: (v: any, again: boolean) => void;
   onClose: () => void;
 }) {
-  const [f, setF] = useState({ 지점코드: "", 제목: "", 내용: "", 중요: false, 마감일: "" });
+  const n = props.notice;
+  const [f, setF] = useState({
+    지점코드: n?.지점코드 ?? "",
+    제목: n?.제목 ?? "",
+    내용: n?.내용 ?? "",
+    중요: n?.중요 ?? false,
+    마감일: n?.마감일 ?? "",
+  });
+  const [again, setAgain] = useState(false);
   const [err, setErr] = useState("");
 
   function save() {
     if (!f.제목.trim()) return setErr("제목을 적어주세요.");
-    props.onSave(f);
+    props.onSave(f, again);
   }
 
   return (
     <div className="modal-back" onClick={props.onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>공지 올리기</h3>
+        <h3>{n ? "공지 고치기" : "공지 올리기"}</h3>
 
         <div className="field">
           <label htmlFor="nt">제목</label>
@@ -499,12 +653,26 @@ function NoticeForm(props: {
           </span>
         </label>
 
+        {n && (
+          <label className="chk" style={{ marginTop: 12 }}>
+            <input type="checkbox" checked={again}
+                   onChange={(e) => setAgain(e.target.checked)} />
+            <span>
+              <b>읽음을 지우고 다시 읽게 하기</b>
+              <em>
+                내용을 크게 고쳤을 때만 켜세요. 앞서 읽은 사람도 다시 「안 읽음」이 됩니다.
+                오타 하나 고친 것이라면 끄고 저장하시면 됩니다.
+              </em>
+            </span>
+          </label>
+        )}
+
         {err && <div className="alert-bad" style={{ marginTop: 12 }}>{err}</div>}
 
         <div className="modal-actions">
           <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onClose}>취소</button>
           <button className="btn-primary" style={{ marginTop: 0 }} disabled={props.busy} onClick={save}>
-            {props.busy ? "올리는 중…" : "올리기"}
+            {props.busy ? "저장 중…" : n ? "저장" : "올리기"}
           </button>
         </div>
       </div>
