@@ -13,15 +13,32 @@
  */
 import { put, get } from "@vercel/blob";
 
-const TOKEN = "BLOB_READ_WRITE_TOKEN";
+/**
+ * 저장소 열쇠를 찾는다
+ *
+ * 이름을 BLOB_READ_WRITE_TOKEN 하나로 찍어두면 안 된다.
+ * 저장소 이름이 기본값이 아니면 dashboard_blob_READ_WRITE_TOKEN 처럼
+ * 이름 앞에 저장소 이름이 붙는다. 그러면 분명히 연결해뒀는데도
+ * "연결되지 않았습니다"가 떠서, 쓰는 분은 될 때까지 같은 일을 반복하게 된다.
+ *
+ * 그래서 이름으로 찾지 않고 값으로 찾는다. 이 열쇠는 vercel_blob_rw_ 로 시작한다.
+ */
+function blobToken(): string {
+  const direct = process.env.BLOB_READ_WRITE_TOKEN;
+  if (direct) return direct;
+  for (const [k, v] of Object.entries(process.env)) {
+    if (k.endsWith("READ_WRITE_TOKEN") && (v ?? "").startsWith("vercel_blob_")) return v as string;
+  }
+  return "";
+}
 
 /** 저장소가 준비됐는지 — 화면에서 안내를 띄울지 정할 때 쓴다 */
 export function photoStoreReady(): string {
-  if (process.env[TOKEN]) return "";
+  if (blobToken()) return "";
   return (
     "사진을 보관할 곳이 아직 연결되지 않았습니다. " +
     "vercel.com 에서 이 프로젝트를 열고 Storage 탭 → Create → Blob 을 만들어주세요. " +
-    "만들면 자동으로 연결되고, 따로 옮겨 적을 것은 없습니다."
+    "이미 만드셨다면 새로 배포되어야 연결됩니다."
   );
 }
 
@@ -40,6 +57,7 @@ export async function uploadPhoto(
   */
   const { url } = await put(`lesson/${name}`, bytes, {
     access: "private",
+    token: blobToken(),
     contentType: mime,
     // 같은 날 다시 보고해도 앞의 사진을 덮지 않도록 이름 뒤에 임의의 글자를 붙인다
     addRandomSuffix: true,
@@ -65,7 +83,7 @@ export async function readPhoto(url: string): Promise<{ body: ArrayBuffer; mime:
     throw new Error("우리 저장소의 사진이 아닙니다.");
   }
 
-  const got = await get(url, { access: "private" });
+  const got = await get(url, { access: "private", token: blobToken() });
   if (!got) throw new Error("사진을 찾지 못했습니다.");
   return {
     body: await new Response(got.stream).arrayBuffer(),
