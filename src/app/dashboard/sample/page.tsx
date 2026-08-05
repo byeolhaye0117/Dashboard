@@ -10,10 +10,15 @@ import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches } from "@/lib/data";
 import Shell from "../Shell";
 import Client from "./Client";
+import { guard } from "../guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function SamplePage() {
+  return guard("샘플 자료", body);
+}
+
+async function body() {
   const session = await readSession();
   if (!session) redirect("/");
 
