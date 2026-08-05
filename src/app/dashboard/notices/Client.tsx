@@ -93,18 +93,6 @@ export default function Client(p: Props) {
     }
   }
 
-  function openNotice(n: Notice) {
-    setOpen(n.id);
-    // 열었으면 읽은 것이다. 따로 「읽음」을 누르게 하면 아무도 안 누른다
-    if (!readByMe.has(n.id)) {
-      fetch("/api/notices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "read", 공지번호: n.id }),
-      }).catch(() => {});
-    }
-  }
-
   if (p.problem) {
     return (
       <>
@@ -238,7 +226,7 @@ export default function Client(p: Props) {
                   const cnt = p.reads.filter((r) => r.공지번호 === n.id).length;
                   return (
                     <button className={`jrow nrow${mine ? "" : " unread"}`} key={n.id}
-                            onClick={() => openNotice(n)}>
+                            onClick={() => setOpen(n.id)}>
                       <div className="jtop">
                         <b>
                           {n.중요 && <span className="pill bad" style={{ marginRight: 6 }}>중요</span>}
@@ -300,7 +288,9 @@ export default function Client(p: Props) {
           readers={p.reads.filter((r) => r.공지번호 === openOne.id)}
           people={p.people}
           canManage={p.can.update}
+          readAt={p.reads.find((r) => r.공지번호 === openOne.id && r.사번 === p.me)?.읽은일시 ?? ""}
           busy={busy}
+          onRead={() => send({ action: "read", 공지번호: openOne.id })}
           onDelete={() => send({ action: "notice-del", 공지번호: openOne.id })}
           onClose={() => setOpen(null)}
         />
@@ -344,7 +334,10 @@ function NoticeBox(props: {
   readers: Read[];
   people: Person[];
   canManage: boolean;
+  /** 내가 읽음을 누른 시각. 비어 있으면 아직 안 누른 것 */
+  readAt: string;
   busy: boolean;
+  onRead: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -364,6 +357,23 @@ function NoticeBox(props: {
         </p>
 
         <div className="ntext">{n.내용 || "(내용 없음)"}</div>
+
+        {/*
+          읽음은 눌러야 남는다. 열자마자 읽은 것으로 치면 "열어봤다"와
+          "읽었다"가 구별되지 않는다. 단추를 내용 아래에 두어, 끝까지 내려온
+          사람만 누르게 한다.
+        */}
+        {props.readAt ? (
+          <div className="readmark">
+            <Icon name="check" size={15} />
+            <span>{props.readAt.slice(5, 16)} 에 읽음을 눌렀습니다</span>
+          </div>
+        ) : (
+          <button className="btn-primary" style={{ marginTop: 14 }}
+                  disabled={props.busy} onClick={props.onRead}>
+            {props.busy ? "남기는 중…" : "다 읽었습니다"}
+          </button>
+        )}
 
         {props.canManage && (
           <>
