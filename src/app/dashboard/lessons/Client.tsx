@@ -71,6 +71,39 @@ function dayRange(list: Lesson[]): [number, number] {
   return [Math.max(0, lo), Math.min(24, Math.max(hi, lo + 4))];
 }
 
+/**
+ * 올리기 전에 사진을 줄인다
+ *
+ * 요즘 휴대폰 사진은 한 장에 3~5MB다. 그대로 올리면 밖에서 느린 통신으로
+ * 보고할 때 한참 걸리고, 보관 용량도 금방 찬다.
+ * 수업 후 확인용이라 긴 변 1600px 이면 충분하다.
+ *
+ * 못 줄이겠으면 원본을 그대로 쓴다. 줄이기에 실패했다고 보고를 막을 이유는 없다.
+ */
+async function shrink(file: File): Promise<Blob> {
+  try {
+    const bmp = await createImageBitmap(file);
+    const long = Math.max(bmp.width, bmp.height);
+    const scale = long > 1600 ? 1600 / long : 1;
+    const w = Math.round(bmp.width * scale);
+    const h = Math.round(bmp.height * scale);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bmp, 0, 0, w, h);
+
+    const out = await new Promise<Blob | null>((ok) =>
+      canvas.toBlob((b) => ok(b), "image/jpeg", 0.8)
+    );
+    return out && out.size < file.size ? out : file;
+  } catch {
+    return file;
+  }
+}
+
 function shiftDay(d: string, n: number): string {
   const x = new Date(`${d}T00:00:00+09:00`);
   x.setDate(x.getDate() + n);
@@ -816,11 +849,11 @@ function GroupBoard(props: {
       {props.photoProblem && (
         <div className="setup" style={{ marginBottom: 14 }}>
           <div>
-            <b>사진을 올릴 폴더가 아직 없습니다</b>
+            <b>사진을 보관할 곳이 아직 없습니다</b>
             <p style={{ whiteSpace: "pre-line", wordBreak: "break-all" }}>{props.photoProblem}</p>
           </div>
-          <a className="btn-dark" href="https://drive.google.com" target="_blank" rel="noreferrer">
-            드라이브 열기
+          <a className="btn-dark" href="https://vercel.com" target="_blank" rel="noreferrer">
+            Vercel 열기
           </a>
         </div>
       )}
@@ -867,7 +900,7 @@ function GroupBoard(props: {
                 {got ? (
                   got.photo ? (
                     <button className="thumb" onClick={() => setZoom(got.photo)}>
-                      <img src={`/api/lesson-photo?id=${got.photo}`} alt={`${t.name} 수업 후 사진`} />
+                      <img src={`/api/lesson-photo?id=${encodeURIComponent(got.photo)}`} alt={`${t.name} 수업 후 사진`} />
                       <span>눌러서 크게 보기</span>
                     </button>
                   ) : (
@@ -884,7 +917,7 @@ function GroupBoard(props: {
 
       {zoom && (
         <div className="modal-back" onClick={() => setZoom("")}>
-          <img className="zoom" src={`/api/lesson-photo?id=${zoom}`} alt="수업 후 사진"
+          <img className="zoom" src={`/api/lesson-photo?id=${encodeURIComponent(zoom)}`} alt="수업 후 사진"
                onClick={(e) => e.stopPropagation()} />
         </div>
       )}
@@ -930,8 +963,9 @@ function GroupReport(props: {
     setBusy(true);
     setMsg("");
     try {
+      const small = await shrink(file);
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", small, file.name);
       fd.append("날짜", day);
       const res = await fetch("/api/lesson-photo", { method: "POST", body: fd });
       const data = await res.json();
@@ -1036,7 +1070,7 @@ function GroupReport(props: {
             {props.photoProblem ? (
               <div className="setup" style={{ marginBottom: 0 }}>
                 <div>
-                  <b>사진을 올릴 폴더가 아직 없습니다</b>
+                  <b>사진을 보관할 곳이 아직 없습니다</b>
                   {/* 줄바꿈이 그대로 보여야 계정 주소가 한 줄로 떨어진다 */}
                   <p style={{ whiteSpace: "pre-line", wordBreak: "break-all" }}>
                     {props.photoProblem}
@@ -1045,7 +1079,7 @@ function GroupReport(props: {
               </div>
             ) : photo ? (
               <div className="shot">
-                <img src={`/api/lesson-photo?id=${photo}`} alt="수업 후 사진" />
+                <img src={`/api/lesson-photo?id=${encodeURIComponent(photo)}`} alt="수업 후 사진" />
                 <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setPhoto("")}>
                   다시 올리기
                 </button>

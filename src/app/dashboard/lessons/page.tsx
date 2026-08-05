@@ -13,7 +13,7 @@ import { readProduct } from "@/lib/productMeta";
 import { listLessons, SHEET_L } from "@/lib/lessons";
 import { listSheetNames } from "@/lib/sheets";
 import { KIND_PT, KIND_GROUP, parseSlots } from "@/lib/lessonMeta";
-import { photoFolderReady } from "@/lib/drive";
+import { photoStoreReady } from "@/lib/photos";
 import Shell from "../Shell";
 import Client from "./Client";
 import { guard } from "../guard";
@@ -81,7 +81,7 @@ async function body() {
    * 무엇을 어디에 만들어야 하는지 알 길이 없다.
    */
   const canSetup = Boolean(ab.get("직원관리")?.update);
-  const photoProblem = iAmTrainer || canSetup ? await photoFolderReady() : "";
+  const photoProblem = iAmTrainer || canSetup ? photoStoreReady() : "";
 
   /** 수업으로 팔 수 있는 상품만 — 회원권·락커는 여기 안 온다 */
   const lessonProducts = products

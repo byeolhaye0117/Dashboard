@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesForStaff } from "@/lib/menu";
-import { uploadPhoto, readPhoto } from "@/lib/drive";
+import { uploadPhoto, readPhoto } from "@/lib/photos";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +62,7 @@ export async function GET(req: Request) {
   if (!ab.get("PT·수업")?.view) return new NextResponse("권한이 없습니다.", { status: 403 });
 
   const id = new URL(req.url).searchParams.get("id") ?? "";
-  if (!id) return new NextResponse("사진 번호가 없습니다.", { status: 400 });
+  if (!id) return new NextResponse("사진 주소가 없습니다.", { status: 400 });
 
   try {
     const { body, mime } = await readPhoto(id);
