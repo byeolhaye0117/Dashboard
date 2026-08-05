@@ -127,6 +127,12 @@ export default function Client(p: Props) {
   */
   const canDo = p.iAmTrainer;
   const canCheck = p.can.update;
+  /*
+    남의 보고까지 보는 사람은 "수업을 안 하는 사람"이다.
+    직급으로 가르지 않는다 — 매니저도 수업을 하면 본인 몫만 보면 된다.
+    수업을 하는 사람에게 이 화면은 "내가 뭘 올렸나"를 보는 자리지
+    남을 살피는 자리가 아니다.
+  */
   const view: "do" | "check" = !canDo ? "check" : !canCheck ? "do" : sub;
   // 보고할 것도 없고 남의 것을 볼 권한도 없으면 시간표만 본다
   const shown = canDo || canCheck ? tab : "sched";
@@ -344,7 +350,7 @@ export default function Client(p: Props) {
       {shown === "group" ? (
         view === "check" ? (
           <GroupBoard trainers={p.trainers} slotsOf={slotsOf} reported={reported}
-                    photoProblem={p.photoProblem} me={p.me} seeAll={p.canSetup} />
+                    photoProblem={p.photoProblem} me={p.me} seeAll={!canDo} />
         ) : (
           <GroupReport
             me={p.me}
@@ -359,7 +365,7 @@ export default function Client(p: Props) {
         )
       ) : shown === "pt" && view === "check" ? (
         <PtBoard day={day} trainers={p.trainers} lessons={p.lessons} joinsOf={joinsOf}
-                 me={p.me} seeAll={p.canSetup} />
+                 me={p.me} seeAll={!canDo} />
       ) : (
       <>
       {/* 수업을 잡고 거르는 일은 수업하는 사람 몫이다.
