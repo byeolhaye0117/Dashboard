@@ -5,6 +5,10 @@ import { addColumns, createSheet } from "@/lib/sheets";
 import { REFUND_COLUMNS } from "@/lib/refund";
 import { SHEET_T, T_HEADERS } from "@/lib/attendanceMeta";
 import { SHEET_L, SHEET_LA, L_HEADERS, LA_HEADERS } from "@/lib/lessonMeta";
+import {
+  SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG,
+  N_HEADERS, NR_HEADERS, TASK_HEADERS, TASKLOG_HEADERS,
+} from "@/lib/noticeMeta";
 import { SHEET } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +46,16 @@ const SETS: Record<string, Job> = {
     ],
     // 누가 수업을 맡는지는 직급이 아니라 사람마다 정한다
     extra: { tab: SHEET.직원, names: ["트레이너", "그룹수업시간"] },
+  },
+  // 공지와 읽음, 업무 정의와 기록 — 넷이 짝이라 같이 만든다
+  공지: {
+    kind: "tabs",
+    tabs: [
+      { tab: SHEET_N, headers: N_HEADERS },
+      { tab: SHEET_NR, headers: NR_HEADERS },
+      { tab: SHEET_TASK, headers: TASK_HEADERS },
+      { tab: SHEET_TASKLOG, headers: TASKLOG_HEADERS },
+    ],
   },
 };
 

@@ -1584,3 +1584,37 @@ table.cal .sticky .wd {
 .daypick { display: inline-flex; align-items: center; gap: 8px; }
 .daypick span { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .daypick .input { width: 150px; }
+
+/* ── 공지 · 업무 ──────────────────────────── */
+/* 탭 옆 숫자 — 손이 가야 하는 개수 */
+.mini-tab .dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px; margin-left: 6px; padding: 0 5px;
+  border-radius: 999px; background: var(--bad); color: #fff;
+  font-size: 10.5px; font-weight: 800; line-height: 1;
+}
+.mini-tab.on .dot { background: var(--surface); color: var(--ink); }
+
+/* 공지 한 줄 — 통째로 누르는 자리 */
+button.nrow {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  text-align: left; background: none; border: 0; font: inherit; cursor: pointer;
+  border-bottom: 1px solid var(--line-soft);
+}
+button.nrow:last-child { border-bottom: 0; }
+button.nrow:hover .jtop b { text-decoration: underline; }
+button.nrow.unread .jtop b { font-weight: 900; }
+button.nrow .jtop { flex: 1; min-width: 0; margin-bottom: 0; }
+
+/* 끝난 업무는 물러나 보이게 */
+.jrow.is-done .jtop b { color: var(--muted); text-decoration: line-through; }
+
+/* 공지 본문 — 줄바꿈을 적은 대로 */
+.ntext {
+  white-space: pre-wrap; word-break: break-word;
+  padding: 14px; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--bg); color: var(--ink-2); font-size: 13.5px; line-height: 1.8;
+}
+textarea.input { resize: vertical; min-height: 96px; line-height: 1.7; padding: 10px 12px; }
+/* 줄 하나에 단추 하나면 손가락이 닿을 만큼은 돼야 한다 */
+.jrow > .mk-btn { min-width: 136px; padding: 9px 16px; }

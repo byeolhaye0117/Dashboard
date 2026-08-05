@@ -9,6 +9,7 @@ import { readSession } from "@/lib/session";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffAll, getProducts, getRoles } from "@/lib/data";
 import { listLessons } from "@/lib/lessons";
+import { loadAll as loadNotices } from "@/lib/notices";
 import { today } from "@/lib/time";
 import Icon from "@/components/Icon";
 import Shell from "./Shell";
@@ -61,6 +62,34 @@ async function body() {
     }
   }
 
+  /*
+   * 안 읽은 공지와 오늘 안 끝난 일도 홈에서 알린다
+   *
+   * 공지는 읽으라고 올리는 것이고, 체크리스트는 오늘 안에 끝나야 하는 것이다.
+   * 해당 화면에 들어가야만 보이면 둘 다 그냥 지나간다.
+   */
+  let unread = 0;
+  let todo = 0;
+  if (ab.get("공지")?.view) {
+    try {
+      const { notices, reads, tasks, logs } = await loadNotices();
+      const mineBranch = new Set(myBranches.map((b) => b.code));
+      const seen = new Set(
+        reads.filter((r) => r.사번 === session.staffId).map((r) => r.공지번호)
+      );
+      unread = notices
+        .filter((n) => !n.지점코드 || mineBranch.has(n.지점코드))
+        .filter((n) => !seen.has(n.id)).length;
+
+      const day = today();
+      const done = new Set(logs.filter((l) => l.날짜 === day).map((l) => l.업무번호));
+      todo = tasks.filter((t) => t.지점코드 === session.currentBranch && !done.has(t.id)).length;
+    } catch {
+      unread = 0;
+      todo = 0;
+    }
+  }
+
   const hour = new Date().getHours();
   const greet = hour < 11 ? "좋은 아침입니다" : hour < 18 ? "안녕하세요" : "수고 많으셨습니다";
 
@@ -88,6 +117,23 @@ async function body() {
           </div>
           <a className="btn-dark" href="/dashboard/lessons" style={{ whiteSpace: "nowrap" }}>
             처리하러 가기
+          </a>
+        </div>
+      )}
+
+      {(unread > 0 || todo > 0) && (
+        <div className="banner">
+          <span className="lead"><Icon name="clipboard" size={18} /></span>
+          <div>
+            <b>
+              {[unread > 0 && `안 읽은 공지 ${unread}건`, todo > 0 && `오늘 안 끝난 일 ${todo}개`]
+                .filter(Boolean)
+                .join(" · ")}
+            </b>
+            <p>공지·업무 화면에서 확인하실 수 있습니다.</p>
+          </div>
+          <a className="btn-dark" href="/dashboard/notices" style={{ whiteSpace: "nowrap" }}>
+            보러 가기
           </a>
         </div>
       )}
@@ -169,7 +215,7 @@ async function body() {
 }
 
 /** 지금 실제로 쓸 수 있는 메뉴 */
-const READY = new Set(["상담", "직원관리", "회원", "매출", "근태", "권한설정", "PT·수업"]);
+const READY = new Set(["상담", "직원관리", "회원", "매출", "근태", "권한설정", "PT·수업", "공지"]);
 
 /** 카드에 붙는 한 줄 설명 */
 const MENU_NOTE: Record<string, string> = {

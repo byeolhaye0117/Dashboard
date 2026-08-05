@@ -1,17 +1,96 @@
-import Coming from "../Coming";
+/**
+ * 공지 · 업무
+ *
+ * 공지는 카톡방을 대신한다. 카톡은 스크롤에 묻히고 누가 읽었는지 알 수 없다.
+ * 업무는 매일 반복되는 일이다 — 지점마다 목록이 다르고 담당자가 정해져 있다.
+ */
+import { redirect } from "next/navigation";
+import { readSession } from "@/lib/session";
+import { visibleMenus, abilitiesFor } from "@/lib/menu";
+import { getBranches, getStaffAll, getStaffBranches } from "@/lib/data";
+import { loadAll, SHEET_N } from "@/lib/notices";
+import { listSheetNames } from "@/lib/sheets";
+import Shell from "../Shell";
+import Client from "./Client";
+import { guard } from "../guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function NoticesPage() {
-  return Coming({
-    menu: "공지",
-    crumb: "공지 · 업무",
-    plan: [
-      "대표·점장이 올리는 공지 — 지점별 또는 전체",
-      "누가 읽었는지 확인",
-      "매일 반복되는 업무 체크리스트 (청소, 마감 점검 등)",
-      "오늘 안 끝난 일 모아보기",
-      "지점 간 인수인계 메모",
-    ],
-  });
+  return guard("공지 · 업무", body);
+}
+
+async function body() {
+  const session = await readSession();
+  if (!session) redirect("/");
+
+  const ab = await abilitiesFor(session.roleCode);
+  const mine = ab.get("공지");
+  if (!mine?.view) redirect("/dashboard");
+
+  const [menus, branches, staff, branchMap] = await Promise.all([
+    visibleMenus(session),
+    getBranches(),
+    getStaffAll(),
+    getStaffBranches(),
+  ]);
+
+  const myBranches =
+    session.scope === "전체" ? branches : branches.filter((b) => session.branches.includes(b.code));
+  const allowed = new Set(myBranches.map((b) => b.code));
+
+  /** 업무를 맡길 수 있는 사람 — 담당 지점 재직자 */
+  const people = staff
+    .filter((s) => s.active)
+    .filter((s) => {
+      if (s.id === session.staffId) return true;
+      const where = [...(branchMap.get(s.id) ?? []), s.mainBranch].filter(Boolean);
+      return where.some((b) => allowed.has(b));
+    })
+    .map((s) => ({ id: s.id, name: s.name }));
+
+  // 탭이 아직 없을 수 있다. 없으면 화면에서 만들 수 있게 알려준다
+  let notices: any[] = [];
+  let reads: any[] = [];
+  let tasks: any[] = [];
+  let logs: any[] = [];
+  let ready = true;
+  let problem = "";
+  try {
+    const names = await listSheetNames();
+    ready = names.includes(SHEET_N);
+    if (ready) {
+      const got = await loadAll();
+      // 전체 공지(지점 비어 있음)와 내 지점 것만
+      notices = got.notices.filter((n) => !n.지점코드 || allowed.has(n.지점코드));
+      const seen = new Set(notices.map((n) => n.id));
+      reads = got.reads.filter((r) => seen.has(r.공지번호));
+
+      tasks = got.tasks.filter((t) => allowed.has(t.지점코드));
+      const tids = new Set(tasks.map((t) => t.id));
+      logs = got.logs.filter((l) => tids.has(l.업무번호));
+    }
+  } catch (e: any) {
+    problem = String(e?.message ?? e);
+  }
+
+  return (
+    <Shell session={session} menus={menus} branches={myBranches} active="공지" crumb="공지 · 업무"
+           canChangePassword={Boolean(ab.get("직원관리")?.update)}>
+      <Client
+        me={session.staffId}
+        myBranch={session.currentBranch}
+        branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
+        people={people}
+        notices={notices}
+        reads={reads}
+        tasks={tasks}
+        logs={logs}
+        can={{ create: Boolean(mine.create), update: Boolean(mine.update), remove: Boolean(mine.remove) }}
+        canSetup={Boolean(ab.get("직원관리")?.update)}
+        ready={ready}
+        problem={problem}
+      />
+    </Shell>
+  );
 }
