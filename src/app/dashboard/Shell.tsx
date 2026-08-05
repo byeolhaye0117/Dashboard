@@ -229,7 +229,7 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
 
   async function save() {
-    if (pw.length < 4) return setMsg("비밀번호는 4자 이상으로 정해주세요.");
+    if (pw.length < 8) return setMsg("비밀번호는 8자 이상으로 정해주세요.");
     if (pw !== pw2) return setMsg("두 번 입력한 비밀번호가 서로 다릅니다.");
     setBusy(true);
     const res = await fetch("/api/change-password", {

@@ -52,6 +52,10 @@ export type Staff = {
   trainer: boolean;
   /** 맡은 그룹수업 시간대 "06:00,10:00,19:00" */
   groupSlots: string;
+  /** 연달아 비밀번호를 틀린 횟수 */
+  loginFail: number;
+  /** 이 시각까지 로그인이 잠겨 있다 "2026-08-05 14:30" */
+  lockUntil: string;
   /** 시트에서 이 직원이 몇 번째 줄인지 (비밀번호를 고칠 때 쓴다) */
   rowNumber: number;
 };
@@ -137,6 +141,8 @@ async function _getStaffAll(): Promise<Staff[]> {
       workDays: (r["근무요일"] ?? "").replace(/[^월화수목금토일]/g, ""),
       trainer: yes(r["트레이너"] ?? ""),
       groupSlots: (r["그룹수업시간"] ?? "").trim(),
+      loginFail: num(r["로그인실패"]),
+      lockUntil: (r["잠금해제시각"] ?? "").trim(),
       rowNumber: rowNumbers[i],
     });
   });
