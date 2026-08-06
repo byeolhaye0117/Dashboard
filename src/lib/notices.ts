@@ -314,6 +314,54 @@ export async function createTask(
   return id;
 }
 
+/**
+ * 여러 업무를 한 번에 배정한다
+ *
+ * 지점마다 열 개 남짓을 한 줄씩 넣게 하면 마흔 번을 누르게 된다.
+ * 목록을 붙여넣고 한 번에 만든다. 줄 순서가 그대로 화면 순서가 된다.
+ *
+ * 여러 지점에 같은 목록을 넣는 일이 흔하므로 지점을 여럿 받는다.
+ */
+export async function createTasks(
+  지점들: string[],
+  items: { 업무명: string; 담당사번: string; 메모: string }[],
+  byId: string
+): Promise<number> {
+  const clean = items.filter((x) => x.업무명.trim());
+  if (clean.length === 0) throw new Error("만들 업무가 없습니다.");
+  if (지점들.length === 0) throw new Error("어느 지점에 넣을지 골라주세요.");
+
+  const t = await readSheet(SHEET_TASK);
+  const tc = resolve(SHEET_TASK, t.headers, TASK_COLS);
+  const seed = nextId("TK", 5, t.rows.map((r) => get(r, tc, "업무번호")));
+  let n = Number(seed.slice(2));
+  const stamp = now();
+
+  const rows: Row[] = [];
+  지점들.forEach((지점코드) => {
+    clean.forEach((x, i) => {
+      rows.push(toSheetRow({
+        업무번호: "TK" + String(n++).padStart(5, "0"),
+        지점코드,
+        업무명: x.업무명.trim(),
+        담당사번: x.담당사번 ?? "",
+        // 붙여넣은 차례가 곧 화면에 나오는 차례다
+        순서: String((i + 1) * 10),
+        메모: x.메모 ?? "",
+        사용여부: "Y",
+        등록일시: stamp,
+        등록자: byId,
+        수정일시: stamp,
+        수정자: byId,
+        삭제여부: "",
+      }, tc));
+    });
+  });
+
+  await appendRows(SHEET_TASK, t.headers, rows);
+  return rows.length;
+}
+
 export async function patchTask(
   id: string,
   changes: Record<string, string>,
