@@ -3,7 +3,7 @@ import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import {
   createNotice, patchNotice, softDeleteNotice, markRead,
-  createTask, patchTask, softDeleteTask, setTaskDone, clearReads,
+  createTask, createTasks, patchTask, softDeleteTask, setTaskDone, clearReads,
 } from "@/lib/notices";
 
 export const dynamic = "force-dynamic";
@@ -99,6 +99,23 @@ export async function POST(req: Request) {
         session.staffId
       );
       return NextResponse.json({ ok: true, id });
+    }
+
+    if (action === "task-bulk") {
+      if (!mine.create) {
+        return NextResponse.json({ error: "업무를 배정할 권한이 없습니다." }, { status: 403 });
+      }
+      const 지점들: string[] = Array.isArray(body.지점들) ? body.지점들.map(String) : [];
+      const bad = 지점들.find((b) => !inScope(b));
+      if (bad) {
+        return NextResponse.json({ error: "담당 지점에만 배정할 수 있습니다." }, { status: 403 });
+      }
+      const n = await createTasks(
+        지점들,
+        Array.isArray(body.items) ? body.items : [],
+        session.staffId
+      );
+      return NextResponse.json({ ok: true, count: n });
     }
 
     if (action === "task-edit" || action === "task-del") {

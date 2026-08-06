@@ -50,6 +50,7 @@ export default function Client(p: Props) {
   const [open, setOpen] = useState<string | null>(null);
   const [writing, setWriting] = useState<Notice | "new" | null>(null);
   const [taskBox, setTaskBox] = useState<Task | "new" | null>(null);
+  const [pasting, setPasting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -261,6 +262,7 @@ export default function Client(p: Props) {
           logs={p.logs}
           canAdd={p.can.create}
           onAdd={() => setTaskBox("new")}
+          onPaste={() => setPasting(true)}
           onEdit={(t) => setTaskBox(t)}
         />
       )}
@@ -314,6 +316,17 @@ export default function Client(p: Props) {
           onClose={() => setTaskBox(null)}
         />
       )}
+
+      {pasting && (
+        <TaskPaste
+          branches={p.branches}
+          people={p.people}
+          myBranch={p.myBranch}
+          busy={busy}
+          onSave={(지점들, items) => send({ action: "task-bulk", 지점들, items })}
+          onClose={() => setPasting(false)}
+        />
+      )}
     </>
   );
 }
@@ -335,6 +348,7 @@ function TaskBoard(props: {
   logs: Log[];
   canAdd: boolean;
   onAdd: () => void;
+  onPaste: () => void;
   onEdit: (t: Task) => void;
 }) {
   const nowDay = today();
@@ -387,9 +401,14 @@ function TaskBoard(props: {
         )}
         <span className="spacer" />
         {props.canAdd && (
-          <button className="btn-dark" onClick={props.onAdd}>
-            <Icon name="plus" size={14} /> 업무 배정
-          </button>
+          <>
+            <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onPaste}>
+              목록 붙여넣기
+            </button>
+            <button className="btn-dark" onClick={props.onAdd}>
+              <Icon name="plus" size={14} /> 업무 배정
+            </button>
+          </>
         )}
       </div>
 
@@ -408,7 +427,14 @@ function TaskBoard(props: {
               <b> 업무 완료</b>에 체크리스트로 나옵니다. 지점마다 따로 넣습니다.
             </p>
           </div>
-          {props.canAdd && <button className="btn-dark" onClick={props.onAdd}>업무 배정</button>}
+          {props.canAdd && (
+            <div className="pick-row">
+              <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onPaste}>
+                목록 붙여넣기
+              </button>
+              <button className="btn-dark" onClick={props.onAdd}>업무 배정</button>
+            </div>
+          )}
         </div>
       ) : (
         groups.map(({ b, list }) => {
@@ -758,6 +784,160 @@ function TaskForm(props: {
           <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onClose}>취소</button>
           <button className="btn-primary" style={{ marginTop: 0 }} disabled={props.busy} onClick={save}>
             {props.busy ? "저장 중…" : "저장"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── 목록 붙여넣기 ─────────────────────────── */
+
+type Parsed = {
+  업무명: string;
+  담당사번: string;
+  담당표기: string;
+  메모: string;
+  /** 이름을 적었는데 못 찾았거나 같은 이름이 둘일 때 */
+  경고: string;
+};
+
+/**
+ * 붙여넣은 글을 업무 목록으로 읽는다
+ *
+ * 한 줄에 하나. 앞에 붙은 번호(1. 2) -)는 떼어 낸다 — 어디서 복사해 오든
+ * 그 정도는 붙어 온다. 슬래시로 담당자와 메모를 덧붙일 수 있게 했다.
+ *   오픈 청소
+ *   수건 정리 / 김코치
+ *   기구 점검 / 김코치 / 오픈 30분 전
+ */
+function parseTasks(text: string, people: Person[]): Parsed[] {
+  return text
+    .split("\n")
+    .map((raw) => raw.replace(/^\s*(?:\d+\s*[.)\]]|[-–—•*])\s*/, "").trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split("/").map((s) => s.trim());
+      const 업무명 = parts[0] ?? "";
+      const who = parts[1] ?? "";
+      const 메모 = parts.slice(2).join(" / ").trim();
+
+      let 담당사번 = "";
+      let 담당표기 = "";
+      let 경고 = "";
+      if (who) {
+        const hit = people.filter((x) => x.name === who);
+        if (hit.length === 1) {
+          담당사번 = hit[0].id;
+          담당표기 = hit[0].name;
+        } else if (hit.length === 0) {
+          경고 = `${who} — 그런 이름이 없어 담당을 비웁니다`;
+        } else {
+          경고 = `${who} — 같은 이름이 ${hit.length}명이라 담당을 비웁니다`;
+        }
+      }
+      return { 업무명, 담당사번, 담당표기, 메모, 경고 };
+    })
+    .filter((x) => x.업무명);
+}
+
+function TaskPaste(props: {
+  branches: Named[];
+  people: Person[];
+  myBranch: string;
+  busy: boolean;
+  onSave: (지점들: string[], items: { 업무명: string; 담당사번: string; 메모: string }[]) => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [picked, setPicked] = useState<string[]>(
+    props.branches.some((b) => b.code === props.myBranch) ? [props.myBranch] : []
+  );
+  const [err, setErr] = useState("");
+
+  const rows = useMemo(() => parseTasks(text, props.people), [text, props.people]);
+  const warns = rows.filter((r) => r.경고);
+
+  const toggle = (code: string) =>
+    setPicked((cur) => (cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]));
+
+  function save() {
+    if (rows.length === 0) return setErr("업무를 한 줄에 하나씩 적어주세요.");
+    if (picked.length === 0) return setErr("어느 지점에 넣을지 골라주세요.");
+    props.onSave(
+      picked,
+      rows.map((r) => ({ 업무명: r.업무명, 담당사번: r.담당사번, 메모: r.메모 }))
+    );
+  }
+
+  return (
+    <div className="modal-back" onClick={props.onClose}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <h3>목록 붙여넣기</h3>
+        <p className="stat-note" style={{ marginTop: 0 }}>
+          한 줄에 업무 하나씩 적습니다. 적은 순서가 그대로 화면 순서가 됩니다.
+          담당자를 정하려면 <b>업무 이름 / 담당자 이름</b>, 메모까지 붙이려면
+          <b> 업무 이름 / 담당자 이름 / 메모</b> 로 적습니다. 앞에 붙은 번호는 알아서 뗍니다.
+        </p>
+
+        <div className="field" style={{ marginTop: 16 }}>
+          <label>어느 지점에 넣을까요</label>
+          <div className="pickbox">
+            {props.branches.map((b) => (
+              <button key={b.code} type="button"
+                      className={`pickone${picked.includes(b.code) ? " on" : ""}`}
+                      onClick={() => toggle(b.code)}>
+                <span className="nm">{b.name}</span>
+              </button>
+            ))}
+          </div>
+          <p className="stat-note">
+            여러 지점을 고르면 같은 목록이 지점마다 따로 만들어집니다.
+          </p>
+        </div>
+
+        <div className="field">
+          <label htmlFor="pastebox">업무 목록</label>
+          <textarea id="pastebox" className="input" style={{ height: 190 }} value={text} autoFocus
+                    placeholder={"오픈 청소\n수건 정리 / 김코치\n기구 점검 / 김코치 / 오픈 30분 전까지"}
+                    onChange={(e) => { setText(e.target.value); setErr(""); }} />
+        </div>
+
+        {rows.length > 0 && (
+          <>
+            <h4 className="mini-title">
+              이렇게 만들어집니다 — {rows.length}개
+              {picked.length > 1 && ` × 지점 ${picked.length}곳 = ${rows.length * picked.length}개`}
+            </h4>
+            <div className="lwrap">
+              {rows.map((r, i) => (
+                <div className="jrow" key={i}>
+                  <div className="jtop">
+                    <b>{i + 1}. {r.업무명}</b>
+                    <span>
+                      {r.담당표기 ? `담당 ${r.담당표기}` : "담당 없음"}
+                      {r.메모 ? ` · ${r.메모}` : ""}
+                    </span>
+                  </div>
+                  {r.경고 && <span className="pill bad">{r.경고}</span>}
+                </div>
+              ))}
+            </div>
+            {warns.length > 0 && (
+              <p className="stat-note">
+                이름을 못 찾은 줄은 <b>담당 없음</b>으로 만들어집니다. 나중에 한 줄씩 고칠 수 있으니
+                그대로 넣어도 됩니다.
+              </p>
+            )}
+          </>
+        )}
+
+        {err && <div className="alert-bad" style={{ marginTop: 12 }}>{err}</div>}
+
+        <div className="modal-actions">
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onClose}>취소</button>
+          <button className="btn-primary" style={{ marginTop: 0 }} disabled={props.busy} onClick={save}>
+            {props.busy ? "만드는 중…" : `${rows.length * Math.max(1, picked.length)}개 만들기`}
           </button>
         </div>
       </div>
