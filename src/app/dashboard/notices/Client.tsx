@@ -9,13 +9,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today } from "@/lib/time";
+import { PRIORITIES, NO_PRIORITY, priorityName, priorityTone } from "@/lib/noticeMeta";
 
 type Notice = {
   id: string; 지점코드: string; 제목: string; 내용: string;
   중요: boolean; 게시일: string; 마감일: string; 등록자: string;
 };
 type Read = { 공지번호: string; 사번: string; 읽은일시: string };
-type Task = { id: string; 지점코드: string; 업무명: string; 담당사번: string; 순서: number; 메모: string };
+type Task = {
+  id: string; 지점코드: string; 업무명: string; 담당사번: string;
+  우선순위: number; 순서: number; 메모: string;
+};
 type Log = { id: string; 업무번호: string; 날짜: string; 처리자: string; 처리일시: string };
 type Named = { code: string; name: string };
 type Person = { id: string; name: string };
@@ -36,6 +40,24 @@ type Props = {
   ready: boolean;
   problem: string;
 };
+
+/**
+ * 순위별로 묶는다
+ *
+ * 한 지점에 예순 개가 넘게 걸린다. 한 덩어리로 뿌리면 스크롤만 하다 끝난다.
+ * 1순위가 먼저 눈에 들어오고, 그 안에서 몇 개 남았는지가 보여야 한다.
+ */
+function byPriority(list: Task[]): { v: number; name: string; tone: string; list: Task[] }[] {
+  const order = [...PRIORITIES.map((x) => x.v), NO_PRIORITY];
+  return order
+    .map((v) => ({
+      v,
+      name: priorityName(v),
+      tone: priorityTone(v),
+      list: list.filter((t) => t.우선순위 === v),
+    }))
+    .filter((g) => g.list.length > 0);
+}
 
 function shiftDay(d: string, n: number): string {
   const x = new Date(`${d}T00:00:00+09:00`);
@@ -184,28 +206,39 @@ export default function Client(p: Props) {
               )}
             </div>
           ) : (
-            <div className="lwrap">
-              {todayTasks.map((t) => {
-                const log = doneOn.get(t.id);
-                const who = nameOf.get(t.담당사번);
-                return (
-                  <div className={`jrow${log ? " is-done" : ""}`} key={t.id}>
-                    <div className="jtop">
-                      <b>{t.업무명}</b>
-                      <span>
-                        {who ? `담당 ${who}` : "담당 없음"}
-                        {log && ` · ${nameOf.get(log.처리자) ?? log.처리자}님이 ${log.처리일시.slice(11)} 완료`}
-                        {t.메모 && ` · ${t.메모}`}
-                      </span>
-                    </div>
-                    <button className={`mk-btn ${log ? "done on" : "go"}`} disabled={busy}
-                            onClick={() => send({ action: "check", 업무번호: t.id, 날짜: day, done: !log })}>
-                      {log ? "완료 — 되돌리기" : "완료"}
-                    </button>
+            byPriority(todayTasks).map((g) => {
+              const gLeft = g.list.filter((t) => !doneOn.has(t.id)).length;
+              return (
+                <div key={g.v}>
+                  <h4 className="mini-title">
+                    <span className={`pill ${g.tone}`}>{g.name}</span>
+                    {" "}{g.list.length - gLeft} / {g.list.length} 끝남
+                  </h4>
+                  <div className="lwrap">
+                    {g.list.map((t) => {
+                      const log = doneOn.get(t.id);
+                      const who = nameOf.get(t.담당사번);
+                      return (
+                        <div className={`jrow${log ? " is-done" : ""}`} key={t.id}>
+                          <div className="jtop">
+                            <b>{t.업무명}</b>
+                            <span>
+                              {who ? `담당 ${who}` : "담당 없음"}
+                              {log && ` · ${nameOf.get(log.처리자) ?? log.처리자}님이 ${log.처리일시.slice(11)} 완료`}
+                              {t.메모 && ` · ${t.메모}`}
+                            </span>
+                          </div>
+                          <button className={`mk-btn ${log ? "done on" : "go"}`} disabled={busy}
+                                  onClick={() => send({ action: "check", 업무번호: t.id, 날짜: day, done: !log })}>
+                            {log ? "완료 — 되돌리기" : "완료"}
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })
           )}
         </>
       )}
@@ -444,36 +477,47 @@ function TaskBoard(props: {
               <h4 className="mini-title">
                 {b.name} — {list.length - left.length} / {list.length} 끝남
               </h4>
-              <div className="lwrap">
-                {list.map((t) => {
-                  const log = doneOn.get(t.id);
-                  const did = monthDone.get(t.id) ?? 0;
-                  const miss = Math.max(0, passed - did);
-                  return (
-                    <div className={`jrow${log ? " is-done" : ""}`} key={t.id}>
-                      <div className="jtop">
-                        <b>{t.업무명}</b>
-                        <span>
-                          {nameOf.get(t.담당사번) ? `담당 ${nameOf.get(t.담당사번)}` : "담당 없음"}
-                          {log
-                            ? ` · ${nameOf.get(log.처리자) ?? log.처리자}님이 ${log.처리일시.slice(11)} 완료`
-                            : ""}
-                        </span>
-                      </div>
-                      <div className="pick-row">
-                        {log ? (
-                          <span className="pill good">완료</span>
-                        ) : (
-                          <span className="pill bad">안 함</span>
-                        )}
-                        {miss > 0 && <span className="pill">이 달 {miss}일 빠짐</span>}
-                        <span className="spacer" />
-                        <button className="mk-btn" onClick={() => props.onEdit(t)}>고치기</button>
-                      </div>
+              {byPriority(list).map((g) => {
+                const gLeft = g.list.filter((t) => !doneOn.has(t.id)).length;
+                return (
+                  <div key={g.v} style={{ marginBottom: 10 }}>
+                    <p className="stat-note" style={{ margin: "0 0 6px" }}>
+                      <span className={`pill ${g.tone}`}>{g.name}</span>
+                      {" "}{g.list.length - gLeft} / {g.list.length} 끝남
+                    </p>
+                    <div className="lwrap">
+                      {g.list.map((t) => {
+                        const log = doneOn.get(t.id);
+                        const did = monthDone.get(t.id) ?? 0;
+                        const miss = Math.max(0, passed - did);
+                        return (
+                          <div className={`jrow${log ? " is-done" : ""}`} key={t.id}>
+                            <div className="jtop">
+                              <b>{t.업무명}</b>
+                              <span>
+                                {nameOf.get(t.담당사번) ? `담당 ${nameOf.get(t.담당사번)}` : "담당 없음"}
+                                {log
+                                  ? ` · ${nameOf.get(log.처리자) ?? log.처리자}님이 ${log.처리일시.slice(11)} 완료`
+                                  : ""}
+                              </span>
+                            </div>
+                            <div className="pick-row">
+                              {log ? (
+                                <span className="pill good">완료</span>
+                              ) : (
+                                <span className="pill bad">안 함</span>
+                              )}
+                              {miss > 0 && <span className="pill">이 달 {miss}일 빠짐</span>}
+                              <span className="spacer" />
+                              <button className="mk-btn" onClick={() => props.onEdit(t)}>고치기</button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
             </div>
           );
         })
@@ -713,6 +757,7 @@ function TaskForm(props: {
     지점코드: t?.지점코드 ?? props.myBranch,
     업무명: t?.업무명 ?? "",
     담당사번: t?.담당사번 ?? "",
+    우선순위: String(t?.우선순위 && t.우선순위 < NO_PRIORITY ? t.우선순위 : ""),
     순서: String(t?.순서 ?? 10),
     메모: t?.메모 ?? "",
   });
@@ -722,7 +767,7 @@ function TaskForm(props: {
   function save() {
     if (!f.업무명.trim()) return setErr("업무 이름을 적어주세요.");
     if (!f.지점코드) return setErr("어느 지점 업무인지 정해주세요.");
-    props.onSave({ ...f, 순서: Number(f.순서) || 99 });
+    props.onSave({ ...f, 우선순위: Number(f.우선순위) || 0, 순서: Number(f.순서) || 99 });
   }
 
   return (
@@ -753,6 +798,14 @@ function TaskForm(props: {
             </select>
           </div>
           <div className="field">
+            <label htmlFor="tr">우선순위</label>
+            <select id="tr" className="select" value={f.우선순위}
+                    onChange={(e) => setF({ ...f, 우선순위: e.target.value })}>
+              {PRIORITIES.map((x) => <option key={x.v} value={String(x.v)}>{x.name}</option>)}
+              <option value="">정하지 않음</option>
+            </select>
+          </div>
+          <div className="field">
             <label htmlFor="to">순서</label>
             <input id="to" className="input" inputMode="numeric" value={f.순서}
                    onChange={(e) => setF({ ...f, 순서: e.target.value.replace(/[^0-9]/g, "") })} />
@@ -766,7 +819,7 @@ function TaskForm(props: {
 
         <p className="stat-note">
           매일 반복되는 일만 넣습니다. 한 번만 하는 일은 <b>공지</b>로 알리는 편이 낫습니다.
-          순서가 작을수록 위에 나옵니다.
+          <b>우선순위</b>가 먼저고, 같은 순위 안에서는 순서가 작을수록 위에 나옵니다.
         </p>
 
         {err && <div className="alert-bad" style={{ marginTop: 12 }}>{err}</div>}
@@ -797,48 +850,67 @@ type Parsed = {
   업무명: string;
   담당사번: string;
   담당표기: string;
+  우선순위: number;
   메모: string;
   /** 이름을 적었는데 못 찾았거나 같은 이름이 둘일 때 */
   경고: string;
 };
+
+/** 「1순위」처럼 그 줄 하나가 머리글인가 — 아래 줄들의 순위를 정한다 */
+function headerPriority(line: string): number {
+  const m = line.replace(/[[\]()【】]/g, "").trim().match(/^([1-3])\s*순위$/);
+  return m ? Number(m[1]) : 0;
+}
 
 /**
  * 붙여넣은 글을 업무 목록으로 읽는다
  *
  * 한 줄에 하나. 앞에 붙은 번호(1. 2) -)는 떼어 낸다 — 어디서 복사해 오든
  * 그 정도는 붙어 온다. 슬래시로 담당자와 메모를 덧붙일 수 있게 했다.
- *   오픈 청소
- *   수건 정리 / 김코치
- *   기구 점검 / 김코치 / 오픈 30분 전
+ *
+ * 「1순위」만 적힌 줄은 업무가 아니라 머리글로 읽고, 그 아래 줄들에 그 순위를
+ * 물려준다. 이렇게 해야 예순 개짜리 목록을 세 덩이로 한 번에 붙여넣을 수 있다.
+ *   1순위
+ *   에어컨 점검 / 정예진 / 온도점검
+ *   2순위
+ *   바닥 청소
  */
 function parseTasks(text: string, people: Person[]): Parsed[] {
-  return text
-    .split("\n")
-    .map((raw) => raw.replace(/^\s*(?:\d+\s*[.)\]]|[-–—•*])\s*/, "").trim())
-    .filter(Boolean)
-    .map((line) => {
-      const parts = line.split("/").map((s) => s.trim());
-      const 업무명 = parts[0] ?? "";
-      const who = parts[1] ?? "";
-      const 메모 = parts.slice(2).join(" / ").trim();
+  const out: Parsed[] = [];
+  let 순위 = 0;
 
-      let 담당사번 = "";
-      let 담당표기 = "";
-      let 경고 = "";
-      if (who) {
-        const hit = people.filter((x) => x.name === who);
-        if (hit.length === 1) {
-          담당사번 = hit[0].id;
-          담당표기 = hit[0].name;
-        } else if (hit.length === 0) {
-          경고 = `${who} — 그런 이름이 없어 담당을 비웁니다`;
-        } else {
-          경고 = `${who} — 같은 이름이 ${hit.length}명이라 담당을 비웁니다`;
-        }
+  text.split("\n").forEach((raw) => {
+    const line = raw.replace(/^\s*(?:\d+\s*[.)\]]|[-–—•*])\s*/, "").trim();
+    if (!line) return;
+
+    // 머리글 줄은 아래 줄들의 순위만 바꾸고 자신은 업무가 되지 않는다
+    const head = headerPriority(raw.trim()) || headerPriority(line);
+    if (head) { 순위 = head; return; }
+
+    const parts = line.split("/").map((s) => s.trim());
+    const 업무명 = parts[0] ?? "";
+    if (!업무명) return;
+    const who = parts[1] ?? "";
+    const 메모 = parts.slice(2).join(" / ").trim();
+
+    let 담당사번 = "";
+    let 담당표기 = "";
+    let 경고 = "";
+    if (who) {
+      const hit = people.filter((x) => x.name === who);
+      if (hit.length === 1) {
+        담당사번 = hit[0].id;
+        담당표기 = hit[0].name;
+      } else if (hit.length === 0) {
+        경고 = `${who} — 그런 이름이 없어 담당을 비웁니다`;
+      } else {
+        경고 = `${who} — 같은 이름이 ${hit.length}명이라 담당을 비웁니다`;
       }
-      return { 업무명, 담당사번, 담당표기, 메모, 경고 };
-    })
-    .filter((x) => x.업무명);
+    }
+    out.push({ 업무명, 담당사번, 담당표기, 우선순위: 순위, 메모, 경고 });
+  });
+
+  return out;
 }
 
 function TaskPaste(props: {
@@ -846,7 +918,10 @@ function TaskPaste(props: {
   people: Person[];
   myBranch: string;
   busy: boolean;
-  onSave: (지점들: string[], items: { 업무명: string; 담당사번: string; 메모: string }[]) => void;
+  onSave: (
+    지점들: string[],
+    items: { 업무명: string; 담당사번: string; 우선순위: number; 메모: string }[]
+  ) => void;
   onClose: () => void;
 }) {
   const [text, setText] = useState("");
@@ -858,6 +933,17 @@ function TaskPaste(props: {
   const rows = useMemo(() => parseTasks(text, props.people), [text, props.people]);
   const warns = rows.filter((r) => r.경고);
 
+  /** 순위별 몇 개인지 — 붙여넣기가 제대로 나뉘었는지 눈으로 확인하는 자리다 */
+  const tally = useMemo(() => {
+    const parts = PRIORITIES
+      .map((x) => ({ x, n: rows.filter((r) => r.우선순위 === x.v).length }))
+      .filter((g) => g.n > 0)
+      .map((g) => `${g.x.name} ${g.n}`);
+    const none = rows.filter((r) => r.우선순위 === 0).length;
+    if (none > 0 && parts.length > 0) parts.push(`순위 없음 ${none}`);
+    return parts.length > 1 ? parts.join(" · ") : "";
+  }, [rows]);
+
   const toggle = (code: string) =>
     setPicked((cur) => (cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]));
 
@@ -866,7 +952,9 @@ function TaskPaste(props: {
     if (picked.length === 0) return setErr("어느 지점에 넣을지 골라주세요.");
     props.onSave(
       picked,
-      rows.map((r) => ({ 업무명: r.업무명, 담당사번: r.담당사번, 메모: r.메모 }))
+      rows.map((r) => ({
+        업무명: r.업무명, 담당사번: r.담당사번, 우선순위: r.우선순위, 메모: r.메모,
+      }))
     );
   }
 
@@ -878,6 +966,9 @@ function TaskPaste(props: {
           한 줄에 업무 하나씩 적습니다. 적은 순서가 그대로 화면 순서가 됩니다.
           담당자를 정하려면 <b>업무 이름 / 담당자 이름</b>, 메모까지 붙이려면
           <b> 업무 이름 / 담당자 이름 / 메모</b> 로 적습니다. 앞에 붙은 번호는 알아서 뗍니다.
+          <br />
+          중간에 <b>1순위</b>·<b>2순위</b>·<b>3순위</b>만 적힌 줄을 넣으면, 그 아래 업무들이
+          그 순위로 묶입니다. 한 번에 다 붙여넣으셔도 됩니다.
         </p>
 
         <div className="field" style={{ marginTop: 16 }}>
@@ -908,12 +999,21 @@ function TaskPaste(props: {
             <h4 className="mini-title">
               이렇게 만들어집니다 — {rows.length}개
               {picked.length > 1 && ` × 지점 ${picked.length}곳 = ${rows.length * picked.length}개`}
+              {tally && ` (${tally})`}
             </h4>
             <div className="lwrap">
               {rows.map((r, i) => (
                 <div className="jrow" key={i}>
                   <div className="jtop">
-                    <b>{i + 1}. {r.업무명}</b>
+                    <b>
+                      {r.우선순위 > 0 && (
+                        <span className={`pill ${priorityTone(r.우선순위)}`}
+                              style={{ marginRight: 6 }}>
+                          {priorityName(r.우선순위)}
+                        </span>
+                      )}
+                      {i + 1}. {r.업무명}
+                    </b>
                     <span>
                       {r.담당표기 ? `담당 ${r.담당표기}` : "담당 없음"}
                       {r.메모 ? ` · ${r.메모}` : ""}

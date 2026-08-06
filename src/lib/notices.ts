@@ -7,10 +7,10 @@
  * 업무는 매일 반복되는 일이다. 지점마다 목록이 다르고 담당자가 정해져 있다.
  * 정의(업무)와 기록(업무기록)을 나눠 둔다.
  */
-import { readSheet, appendRow, appendRows, updateRow, updateRows, type Row } from "./sheets";
+import { readSheet, appendRow, appendRows, updateRow, updateRows, addColumns, type Row } from "./sheets";
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now, today } from "./time";
-import { SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG } from "./noticeMeta";
+import { SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG, NO_PRIORITY } from "./noticeMeta";
 
 export { SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG } from "./noticeMeta";
 
@@ -41,6 +41,7 @@ const TASK_COLS: ColumnSpec = {
   지점코드: { names: ["지점"], required: true },
   업무명: { names: ["업무", "이름"], required: true },
   담당사번: { names: ["담당", "담당자"] },
+  우선순위: { names: ["순위", "우선"] },
   순서: { names: ["정렬순서"] },
   메모: { names: ["비고"] },
   사용여부: { names: ["사용"] },
@@ -81,6 +82,8 @@ export type Task = {
   지점코드: string;
   업무명: string;
   담당사번: string;
+  /** 1 · 2 · 3, 정해두지 않았으면 NO_PRIORITY */
+  우선순위: number;
   순서: number;
   메모: string;
 };
@@ -165,11 +168,16 @@ export async function loadAll(): Promise<{
       지점코드: get(row, tc, "지점코드"),
       업무명: get(row, tc, "업무명"),
       담당사번: get(row, tc, "담당사번"),
+      우선순위: int(get(row, tc, "우선순위"), 0) || NO_PRIORITY,
       순서: int(get(row, tc, "순서"), 99),
       메모: get(row, tc, "메모"),
     });
   });
-  tasks.sort((a, b) => a.순서 - b.순서 || a.업무명.localeCompare(b.업무명, "ko"));
+  // 순위가 먼저다. 순위 없는 것은 맨 뒤로 밀린다
+  tasks.sort(
+    (a, b) =>
+      a.우선순위 - b.우선순위 || a.순서 - b.순서 || a.업무명.localeCompare(b.업무명, "ko")
+  );
 
   const logs: TaskLog[] = [];
   l.rows.forEach((row) => {
@@ -284,14 +292,30 @@ export async function clearReads(공지번호: string): Promise<void> {
 
 /* ── 업무 ─────────────────────────────────── */
 
+/**
+ * 우선순위 칸은 뒤늦게 생겼다
+ *
+ * 이미 업무를 넣어 쓰던 시트에는 그 칸이 없다. 없으면 만들고 다시 읽는다 —
+ * 대표님께 "시트에 칸을 하나 추가해 주세요"라고 부탁할 일이 아니다.
+ */
+async function ensureTaskColumns(headers: string[]): Promise<boolean> {
+  if (headers.includes("우선순위")) return false;
+  await addColumns(SHEET_TASK, ["우선순위"]);
+  return true;
+}
+
 export async function createTask(
-  input: { 지점코드: string; 업무명: string; 담당사번: string; 순서: number; 메모: string },
+  input: {
+    지점코드: string; 업무명: string; 담당사번: string;
+    우선순위: number; 순서: number; 메모: string;
+  },
   byId: string
 ): Promise<string> {
   if (!input.업무명.trim()) throw new Error("업무 이름을 적어주세요.");
   if (!input.지점코드) throw new Error("어느 지점 업무인지 정해주세요.");
 
-  const t = await readSheet(SHEET_TASK);
+  let t = await readSheet(SHEET_TASK);
+  if (await ensureTaskColumns(t.headers)) t = await readSheet(SHEET_TASK);
   const tc = resolve(SHEET_TASK, t.headers, TASK_COLS);
   const id = nextId("TK", 5, t.rows.map((r) => get(r, tc, "업무번호")));
   const stamp = now();
@@ -301,6 +325,7 @@ export async function createTask(
     지점코드: input.지점코드,
     업무명: input.업무명.trim(),
     담당사번: input.담당사번 ?? "",
+    우선순위: input.우선순위 > 0 && input.우선순위 < NO_PRIORITY ? String(input.우선순위) : "",
     순서: String(input.순서 || 99),
     메모: input.메모 ?? "",
     사용여부: "Y",
@@ -324,14 +349,15 @@ export async function createTask(
  */
 export async function createTasks(
   지점들: string[],
-  items: { 업무명: string; 담당사번: string; 메모: string }[],
+  items: { 업무명: string; 담당사번: string; 우선순위: number; 메모: string }[],
   byId: string
 ): Promise<number> {
   const clean = items.filter((x) => x.업무명.trim());
   if (clean.length === 0) throw new Error("만들 업무가 없습니다.");
   if (지점들.length === 0) throw new Error("어느 지점에 넣을지 골라주세요.");
 
-  const t = await readSheet(SHEET_TASK);
+  let t = await readSheet(SHEET_TASK);
+  if (await ensureTaskColumns(t.headers)) t = await readSheet(SHEET_TASK);
   const tc = resolve(SHEET_TASK, t.headers, TASK_COLS);
   const seed = nextId("TK", 5, t.rows.map((r) => get(r, tc, "업무번호")));
   let n = Number(seed.slice(2));
@@ -345,6 +371,7 @@ export async function createTasks(
         지점코드,
         업무명: x.업무명.trim(),
         담당사번: x.담당사번 ?? "",
+        우선순위: x.우선순위 > 0 && x.우선순위 < NO_PRIORITY ? String(x.우선순위) : "",
         // 붙여넣은 차례가 곧 화면에 나오는 차례다
         순서: String((i + 1) * 10),
         메모: x.메모 ?? "",
