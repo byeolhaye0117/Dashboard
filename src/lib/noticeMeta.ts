@@ -24,9 +24,33 @@ export const NR_HEADERS = ["읽음번호", "공지번호", "사번", "읽은일�
  * 기록만 있으면 매일 목록을 새로 적어야 한다.
  */
 export const TASK_HEADERS = [
-  "업무번호", "지점코드", "업무명", "담당사번", "순서", "메모", "사용여부",
+  "업무번호", "지점코드", "업무명", "담당사번", "우선순위", "순서", "메모", "사용여부",
   "등록일시", "등록자", "수정일시", "수정자", "삭제여부",
 ];
+
+/**
+ * 우선순위
+ *
+ * 한 지점에 예순 개가 넘는 업무가 걸린다. 한 줄로 쭉 늘어놓으면
+ * 무엇부터 손대야 하는지 알 수가 없어 목록 자체가 무시된다.
+ * 1·2·3 세 단계면 충분하다 — 그 이상은 매기는 사람이 헷갈린다.
+ */
+export const PRIORITIES = [
+  { v: 1, name: "1순위", tone: "bad" },
+  { v: 2, name: "2순위", tone: "warn" },
+  { v: 3, name: "3순위", tone: "" },
+];
+
+/** 정해두지 않은 것은 맨 뒤로 */
+export const NO_PRIORITY = 9;
+
+export function priorityName(v: number): string {
+  return PRIORITIES.find((p) => p.v === v)?.name ?? "순위 없음";
+}
+
+export function priorityTone(v: number): string {
+  return PRIORITIES.find((p) => p.v === v)?.tone ?? "";
+}
 
 /** 날짜별로 누가 언제 체크했는지 */
 export const TASKLOG_HEADERS = [

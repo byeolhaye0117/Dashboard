@@ -93,6 +93,7 @@ export async function POST(req: Request) {
           지점코드: String(body.지점코드 ?? ""),
           업무명: String(body.업무명 ?? ""),
           담당사번: String(body.담당사번 ?? ""),
+          우선순위: Number(body.우선순위) || 0,
           순서: Number(body.순서) || 99,
           메모: String(body.메모 ?? ""),
         },
@@ -110,9 +111,15 @@ export async function POST(req: Request) {
       if (bad) {
         return NextResponse.json({ error: "담당 지점에만 배정할 수 있습니다." }, { status: 403 });
       }
+      const raw = Array.isArray(body.items) ? body.items : [];
       const n = await createTasks(
         지점들,
-        Array.isArray(body.items) ? body.items : [],
+        raw.map((x: any) => ({
+          업무명: String(x?.업무명 ?? ""),
+          담당사번: String(x?.담당사번 ?? ""),
+          우선순위: Number(x?.우선순위) || 0,
+          메모: String(x?.메모 ?? ""),
+        })),
         session.staffId
       );
       return NextResponse.json({ ok: true, count: n });
