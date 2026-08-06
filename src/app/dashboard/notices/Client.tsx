@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today } from "@/lib/time";
 import { PRIORITIES, NO_PRIORITY, priorityName, priorityTone } from "@/lib/noticeMeta";
+import { PRESETS } from "@/lib/taskPresets";
 
 type Notice = {
   id: string; 지점코드: string; 제목: string; 내용: string;
@@ -987,10 +988,26 @@ function TaskPaste(props: {
           </p>
         </div>
 
-        <div className="field">
+        <div className="field" style={{ marginTop: 16 }}>
           <label htmlFor="pastebox">업무 목록</label>
+          {/*
+            예순 개짜리 목록을 휴대폰에서 복사해 붙여넣게 하는 것은 그 자체가 일이다.
+            자주 쓰는 목록은 여기서 바로 채운다.
+          */}
+          {PRESETS.length > 0 && (
+            <div className="pick-row" style={{ marginBottom: 8 }}>
+              {PRESETS.map((ps) => (
+                <button key={ps.name} type="button" className="btn-ghost"
+                        style={{ marginTop: 0 }}
+                        onClick={() => { setText(ps.text); setErr(""); }}>
+                  {ps.name} 불러오기
+                </button>
+              ))}
+              <span className="dim" style={{ fontSize: 11.5 }}>{PRESETS[0].note}</span>
+            </div>
+          )}
           <textarea id="pastebox" className="input" style={{ height: 190 }} value={text} autoFocus
-                    placeholder={"오픈 청소\n수건 정리 / 김코치\n기구 점검 / 김코치 / 오픈 30분 전까지"}
+                    placeholder={"1순위\n오픈 청소 / 김코치\n2순위\n수건 정리\n기구 점검 / 김코치 / 오픈 30분 전까지"}
                     onChange={(e) => { setText(e.target.value); setErr(""); }} />
         </div>
 
