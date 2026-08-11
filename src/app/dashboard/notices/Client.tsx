@@ -8,7 +8,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
-import { korDate, today } from "@/lib/time";
+import { korDate, today, addDays } from "@/lib/time";
 import { PRIORITIES, NO_PRIORITY, priorityName, priorityTone } from "@/lib/noticeMeta";
 import { PRESETS } from "@/lib/taskPresets";
 
@@ -96,12 +96,6 @@ function PrioChips(props: {
       {groups.map((g) => chip(g.v, g.name, g.list))}
     </div>
   );
-}
-
-function shiftDay(d: string, n: number): string {
-  const x = new Date(`${d}T00:00:00+09:00`);
-  x.setDate(x.getDate() + n);
-  return x.toISOString().slice(0, 10);
 }
 
 export default function Client(p: Props) {
@@ -219,10 +213,10 @@ export default function Client(p: Props) {
       {tab === "today" && (
         <>
           <div className="pick-row" style={{ marginBottom: 12 }}>
-            <button className="icon-btn" onClick={() => setDay(shiftDay(day, -1))} aria-label="어제">‹</button>
+            <button className="icon-btn" onClick={() => setDay(addDays(day, -1))} aria-label="어제">‹</button>
             <input className="input" type="date" value={day} style={{ width: 148 }}
                    onChange={(e) => setDay(e.target.value || now)} />
-            <button className="icon-btn" onClick={() => setDay(shiftDay(day, 1))} aria-label="내일">›</button>
+            <button className="icon-btn" onClick={() => setDay(addDays(day, 1))} aria-label="내일">›</button>
             {day !== now && (
               <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setDay(now)}>오늘</button>
             )}
@@ -494,10 +488,10 @@ function TaskBoard(props: {
   return (
     <>
       <div className="pick-row" style={{ marginBottom: 12 }}>
-        <button className="icon-btn" onClick={() => setDay(shiftDay(day, -1))} aria-label="어제">‹</button>
+        <button className="icon-btn" onClick={() => setDay(addDays(day, -1))} aria-label="어제">‹</button>
         <input className="input" type="date" value={day} style={{ width: 148 }}
                onChange={(e) => setDay(e.target.value || nowDay)} />
-        <button className="icon-btn" onClick={() => setDay(shiftDay(day, 1))} aria-label="내일">›</button>
+        <button className="icon-btn" onClick={() => setDay(addDays(day, 1))} aria-label="내일">›</button>
         {day !== nowDay && (
           <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setDay(nowDay)}>오늘</button>
         )}

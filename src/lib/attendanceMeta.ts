@@ -5,6 +5,8 @@
  * attendance.ts 안에 두면 화면 코드가 구글 접속 코드까지 끌고 들어가 빌드가 깨진다.
  */
 
+import { weekdayIndex } from "./time";
+
 export const SHEET_T = "근태";
 
 /** 하루가 어떤 날이었는지 */
@@ -26,7 +28,7 @@ export const T_HEADERS = [
   "등록일시", "등록자", "수정일시", "수정자", "삭제여부",
 ];
 
-/** 일요일이 0 — new Date().getDay() 와 자리를 맞춘다 */
+/** 일요일이 0 — weekdayIndex 와 자리를 맞춘다 */
 export const DAY_LETTERS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 export const WEEKDAYS = "월화수목금";
 export const WEEKEND = "토일";
@@ -34,9 +36,9 @@ export const WEEKEND = "토일";
 /** "월화수목금" → 근무하는 요일인지 본다. 비어 있으면 "모르는 것"이라 다 근무일로 친다 */
 export function worksOn(days: string, dateStr: string): boolean {
   if (!days.trim()) return true;
-  const d = new Date(`${dateStr}T00:00:00+09:00`);
-  if (Number.isNaN(d.getTime())) return true;
-  return days.includes(DAY_LETTERS[d.getDay()]);
+  const w = weekdayIndex(dateStr);
+  if (w < 0) return true;
+  return days.includes(DAY_LETTERS[w]);
 }
 
 /** "월화수목금" → "주중" 처럼 짧게 */
