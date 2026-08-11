@@ -7,12 +7,18 @@
  * 업무는 매일 반복되는 일이다. 지점마다 목록이 다르고 담당자가 정해져 있다.
  * 정의(업무)와 기록(업무기록)을 나눠 둔다.
  */
-import { readSheet, appendRow, appendRows, updateRow, updateRows, addColumns, type Row } from "./sheets";
+import {
+  readSheet, appendRow, appendRows, updateRow, updateRows,
+  addColumns, createSheet, listSheetNames, type Row,
+} from "./sheets";
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now, today } from "./time";
-import { SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG, NO_PRIORITY } from "./noticeMeta";
+import {
+  SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG, SHEET_PLAN,
+  PLAN_HEADERS, NO_PRIORITY,
+} from "./noticeMeta";
 
-export { SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG } from "./noticeMeta";
+export { SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG, SHEET_PLAN } from "./noticeMeta";
 
 const N_COLS: ColumnSpec = {
   공지번호: { names: ["공지 번호"], required: true },
@@ -45,6 +51,17 @@ const TASK_COLS: ColumnSpec = {
   순서: { names: ["정렬순서"] },
   메모: { names: ["비고"] },
   사용여부: { names: ["사용"] },
+  등록일시: { names: [] },
+  등록자: { names: [] },
+  수정일시: { names: [] },
+  수정자: { names: [] },
+  삭제여부: { names: [] },
+};
+
+const PLAN_COLS: ColumnSpec = {
+  목록번호: { names: ["목록 번호"], required: true },
+  목록명: { names: ["이름", "목록 이름"], required: true },
+  내용: { names: ["목록", "본문"] },
   등록일시: { names: [] },
   등록자: { names: [] },
   수정일시: { names: [] },
@@ -299,6 +316,80 @@ export async function clearReads(공지번호: string): Promise<void> {
     gone.push({ rowNumber: r.rowNumbers[i], row: { ...row, 공지번호: "", 사번: "" } });
   });
   await updateRows(SHEET_NR, r.headers, gone);
+}
+
+/* ── 저장해 둔 업무 목록 ───────────────────── */
+
+export type Plan = { id: string; 목록명: string; 내용: string };
+
+/**
+ * 탭이 없으면 빈 손으로 돌아온다
+ *
+ * 여기서 오류를 내면 목록 하나 때문에 공지·업무 화면 전체가 안 열린다.
+ * 목록은 있으면 좋은 것이지 없으면 못 쓰는 것이 아니다.
+ */
+export async function listPlans(): Promise<Plan[]> {
+  const names = await listSheetNames();
+  if (!names.includes(SHEET_PLAN)) return [];
+
+  const p = await readSheet(SHEET_PLAN);
+  const pc = resolve(SHEET_PLAN, p.headers, PLAN_COLS);
+  const out: Plan[] = [];
+  p.rows.forEach((r) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    const id = get(r, pc, "목록번호");
+    if (!id) return;
+    out.push({ id, 목록명: get(r, pc, "목록명"), 내용: get(r, pc, "내용") });
+  });
+  out.sort((a, b) => a.목록명.localeCompare(b.목록명, "ko"));
+  return out;
+}
+
+/** 번호를 주면 그 목록을 고치고, 안 주면 새로 만든다 */
+export async function savePlan(
+  id: string,
+  목록명: string,
+  내용: string,
+  byId: string
+): Promise<string> {
+  const name = (목록명 ?? "").trim();
+  if (!name) throw new Error("목록 이름을 적어주세요.");
+  if (!(내용 ?? "").trim()) throw new Error("저장할 내용이 없습니다.");
+
+  // 탭이 없으면 여기서 만든다 — 저장하려는 순간이 곧 필요해진 순간이다
+  await createSheet(SHEET_PLAN, PLAN_HEADERS);
+
+  const p = await readSheet(SHEET_PLAN);
+  const pc = resolve(SHEET_PLAN, p.headers, PLAN_COLS);
+  const stamp = now();
+
+  if (id) {
+    const i = p.rows.findIndex((r) => get(r, pc, "목록번호") === id);
+    if (i < 0) throw new Error("해당 목록을 찾지 못했습니다.");
+    await updateRow(SHEET_PLAN, p.rowNumbers[i], p.headers, {
+      ...p.rows[i],
+      ...toSheetRow({ 목록명: name, 내용, 수정일시: stamp, 수정자: byId }, pc),
+    });
+    return id;
+  }
+
+  const newId = nextId("PL", 5, p.rows.map((r) => get(r, pc, "목록번호")));
+  await appendRow(SHEET_PLAN, p.headers, toSheetRow({
+    목록번호: newId, 목록명: name, 내용,
+    등록일시: stamp, 등록자: byId, 수정일시: stamp, 수정자: byId, 삭제여부: "",
+  }, pc));
+  return newId;
+}
+
+export async function deletePlan(id: string, byId: string): Promise<void> {
+  const p = await readSheet(SHEET_PLAN);
+  const pc = resolve(SHEET_PLAN, p.headers, PLAN_COLS);
+  const i = p.rows.findIndex((r) => get(r, pc, "목록번호") === id);
+  if (i < 0) throw new Error("해당 목록을 찾지 못했습니다.");
+  await updateRow(SHEET_PLAN, p.rowNumbers[i], p.headers, {
+    ...p.rows[i],
+    ...toSheetRow({ 삭제여부: "Y", 수정일시: now(), 수정자: byId }, pc),
+  });
 }
 
 /* ── 업무 ─────────────────────────────────── */
