@@ -86,6 +86,13 @@ export type Task = {
   우선순위: number;
   순서: number;
   메모: string;
+  /**
+   * 지금 돌리고 있는 업무인가
+   *
+   * 계단 에어컨 점검은 겨울에 안 한다. 지워버리면 봄에 다시 적어 넣어야 하고
+   * 지난 기록도 목록에서 떨어져 나간다. 꺼두고 두는 편이 낫다.
+   */
+  쓰는중: boolean;
 };
 
 export type TaskLog = {
@@ -162,7 +169,6 @@ export async function loadAll(): Promise<{
     if ((row["삭제여부"] ?? "").toUpperCase() === "Y") return;
     const id = get(row, tc, "업무번호");
     if (!id) return;
-    if (!yes(get(row, tc, "사용여부") || "Y")) return;
     tasks.push({
       id,
       지점코드: get(row, tc, "지점코드"),
@@ -171,6 +177,8 @@ export async function loadAll(): Promise<{
       우선순위: int(get(row, tc, "우선순위"), 0) || NO_PRIORITY,
       순서: int(get(row, tc, "순서"), 99),
       메모: get(row, tc, "메모"),
+      // 빈 칸은 예전에 넣은 줄이다. 끄지 않은 것으로 본다
+      쓰는중: yes(get(row, tc, "사용여부") || "Y"),
     });
   });
   // 순위가 먼저다. 순위 없는 것은 맨 뒤로 밀린다
@@ -375,6 +383,98 @@ export async function createTasks(
         // 붙여넣은 차례가 곧 화면에 나오는 차례다
         순서: String((i + 1) * 10),
         메모: x.메모 ?? "",
+        사용여부: "Y",
+        등록일시: stamp,
+        등록자: byId,
+        수정일시: stamp,
+        수정자: byId,
+        삭제여부: "",
+      }, tc));
+    });
+  });
+
+  await appendRows(SHEET_TASK, t.headers, rows);
+  return rows.length;
+}
+
+/**
+ * 고른 업무 여럿을 한꺼번에 바꾼다
+ *
+ * 예순 개짜리 목록에서 담당자가 바뀌거나 지점을 잘못 골랐을 때, 한 줄씩
+ * 창을 여닫게 하면 아무도 안 고친다. 쓰기도 한 번에 몰아 보낸다 —
+ * 예순 번을 나눠 보내면 중간에 끊겼을 때 절반만 바뀐 상태로 남는다.
+ *
+ * 바꿀 수 있는 칸을 몇 개로 묶어 둔 것은 화면이 보낸 이름을 그대로 시트에
+ * 쓰지 않기 위해서다.
+ */
+const BATCH_FIELDS = ["담당사번", "우선순위", "사용여부", "삭제여부", "지점코드"];
+
+export async function batchTasks(
+  ids: string[],
+  changes: Record<string, string>,
+  byId: string
+): Promise<number> {
+  if (ids.length === 0) throw new Error("업무를 골라주세요.");
+  const keys = Object.keys(changes).filter((k) => BATCH_FIELDS.includes(k));
+  if (keys.length === 0) throw new Error("바꿀 내용이 없습니다.");
+
+  let t = await readSheet(SHEET_TASK);
+  if (await ensureTaskColumns(t.headers)) t = await readSheet(SHEET_TASK);
+  const tc = resolve(SHEET_TASK, t.headers, TASK_COLS);
+
+  const want = new Set(ids);
+  const stamp = now();
+  const items: { rowNumber: number; row: Row }[] = [];
+
+  t.rows.forEach((row, i) => {
+    if (!want.has(get(row, tc, "업무번호"))) return;
+    const patch: Record<string, string> = { 수정일시: stamp, 수정자: byId };
+    keys.forEach((k) => (patch[k] = changes[k]));
+    items.push({ rowNumber: t.rowNumbers[i], row: { ...row, ...toSheetRow(patch, tc) } });
+  });
+
+  if (items.length === 0) throw new Error("고르신 업무를 찾지 못했습니다.");
+  await updateRows(SHEET_TASK, t.headers, items);
+  return items.length;
+}
+
+/**
+ * 고른 업무를 다른 지점에도 깔아 준다
+ *
+ * 지점마다 목록이 조금씩 다르다. 통째로 복사한 뒤 몇 줄만 고치는 편이
+ * 처음부터 다시 적는 것보다 빠르다. 순위와 순서는 그대로 옮겨 온다.
+ */
+export async function copyTasks(
+  ids: string[],
+  지점들: string[],
+  byId: string
+): Promise<number> {
+  if (ids.length === 0) throw new Error("업무를 골라주세요.");
+  if (지점들.length === 0) throw new Error("어느 지점에 넣을지 골라주세요.");
+
+  let t = await readSheet(SHEET_TASK);
+  if (await ensureTaskColumns(t.headers)) t = await readSheet(SHEET_TASK);
+  const tc = resolve(SHEET_TASK, t.headers, TASK_COLS);
+
+  const want = new Set(ids);
+  const src = t.rows.filter((r) => want.has(get(r, tc, "업무번호")));
+  if (src.length === 0) throw new Error("고르신 업무를 찾지 못했습니다.");
+
+  const seed = nextId("TK", 5, t.rows.map((r) => get(r, tc, "업무번호")));
+  let n = Number(seed.slice(2));
+  const stamp = now();
+
+  const rows: Row[] = [];
+  지점들.forEach((지점코드) => {
+    src.forEach((r) => {
+      rows.push(toSheetRow({
+        업무번호: "TK" + String(n++).padStart(5, "0"),
+        지점코드,
+        업무명: get(r, tc, "업무명"),
+        담당사번: get(r, tc, "담당사번"),
+        우선순위: get(r, tc, "우선순위"),
+        순서: get(r, tc, "순서"),
+        메모: get(r, tc, "메모"),
         사용여부: "Y",
         등록일시: stamp,
         등록자: byId,

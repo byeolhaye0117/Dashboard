@@ -3,7 +3,8 @@ import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import {
   createNotice, patchNotice, softDeleteNotice, markRead,
-  createTask, createTasks, patchTask, softDeleteTask, setTaskDone, clearReads,
+  createTask, createTasks, batchTasks, copyTasks,
+  patchTask, softDeleteTask, setTaskDone, clearReads,
 } from "@/lib/notices";
 
 export const dynamic = "force-dynamic";
@@ -122,6 +123,50 @@ export async function POST(req: Request) {
         })),
         session.staffId
       );
+      return NextResponse.json({ ok: true, count: n });
+    }
+
+    /*
+      여러 개를 한 번에 — 지우기 · 담당 바꾸기 · 순위 옮기기 · 잠시 끄기.
+      화면이 보낸 칸 이름을 그대로 믿지 않는다. 여기서 허용한 것만 시트로 간다.
+    */
+    if (action === "task-batch") {
+      if (!mine.update) {
+        return NextResponse.json({ error: "업무를 고칠 권한이 없습니다." }, { status: 403 });
+      }
+      const ids: string[] = Array.isArray(body.ids) ? body.ids.map(String) : [];
+      const want = body.changes ?? {};
+      const changes: Record<string, string> = {};
+
+      if ("담당사번" in want) changes.담당사번 = String(want.담당사번 ?? "");
+      if ("우선순위" in want) {
+        const v = Number(want.우선순위);
+        changes.우선순위 = v >= 1 && v <= 3 ? String(v) : "";
+      }
+      if ("사용여부" in want) changes.사용여부 = want.사용여부 === "N" ? "N" : "Y";
+      if (want.삭제여부 === "Y") changes.삭제여부 = "Y";
+      if ("지점코드" in want) {
+        const b = String(want.지점코드 ?? "");
+        if (!inScope(b)) {
+          return NextResponse.json({ error: "담당 지점으로만 옮길 수 있습니다." }, { status: 403 });
+        }
+        changes.지점코드 = b;
+      }
+
+      const n = await batchTasks(ids, changes, session.staffId);
+      return NextResponse.json({ ok: true, count: n });
+    }
+
+    if (action === "task-copy") {
+      if (!mine.create) {
+        return NextResponse.json({ error: "업무를 배정할 권한이 없습니다." }, { status: 403 });
+      }
+      const ids: string[] = Array.isArray(body.ids) ? body.ids.map(String) : [];
+      const 지점들: string[] = Array.isArray(body.지점들) ? body.지점들.map(String) : [];
+      if (지점들.some((b) => !inScope(b))) {
+        return NextResponse.json({ error: "담당 지점에만 배정할 수 있습니다." }, { status: 403 });
+      }
+      const n = await copyTasks(ids, 지점들, session.staffId);
       return NextResponse.json({ ok: true, count: n });
     }
 
