@@ -120,6 +120,7 @@ export async function POST(req: Request) {
           담당사번: String(x?.담당사번 ?? ""),
           우선순위: Number(x?.우선순위) || 0,
           메모: String(x?.메모 ?? ""),
+          순서: Number(x?.순서) || 0,
         })),
         session.staffId
       );
