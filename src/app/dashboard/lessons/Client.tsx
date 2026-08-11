@@ -11,7 +11,7 @@
  */
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
-import { korDate, today } from "@/lib/time";
+import { korDate, today, addDays } from "@/lib/time";
 import {
   JOIN_STATES, STATE_TONE, KIND_PT, KIND_GROUP, addMinutes, toMinutes, lastSlot,
 } from "@/lib/lessonMeta";
@@ -139,12 +139,6 @@ function RangePick({ month, day, onMonth, onDay }: {
       )}
     </div>
   );
-}
-
-function shiftDay(d: string, n: number): string {
-  const x = new Date(`${d}T00:00:00+09:00`);
-  x.setDate(x.getDate() + n);
-  return x.toISOString().slice(0, 10);
 }
 
 export default function Client(p: Props) {
@@ -345,10 +339,10 @@ export default function Client(p: Props) {
           <p className="page-sub">수업을 미리 잡아두고, 끝나면 결과를 찍습니다 · 회차는 완료일 때만 빠집니다</p>
         </div>
         <div className="filter-right">
-          <button className="icon-btn" onClick={() => setDay(shiftDay(day, -1))} aria-label="어제">‹</button>
+          <button className="icon-btn" onClick={() => setDay(addDays(day, -1))} aria-label="어제">‹</button>
           <input className="input" type="date" value={day} style={{ width: 148 }}
                  onChange={(e) => setDay(e.target.value || now)} />
-          <button className="icon-btn" onClick={() => setDay(shiftDay(day, 1))} aria-label="내일">›</button>
+          <button className="icon-btn" onClick={() => setDay(addDays(day, 1))} aria-label="내일">›</button>
           {day !== now && (
             <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setDay(now)}>오늘</button>
           )}

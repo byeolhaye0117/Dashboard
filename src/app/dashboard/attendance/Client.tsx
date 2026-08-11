@@ -8,7 +8,7 @@
  * 빠진 칸이 눈에 띄어야 "누가 안 찍었나"를 바로 안다.
  */
 import { useEffect, useMemo, useState } from "react";
-import { today, korDate } from "@/lib/time";
+import { today, korDate, weekdayIndex, hourNow, minuteNow } from "@/lib/time";
 import {
   WORK_KINDS, KIND_MARK as MARK, toMinutes, hourText, worksOn, daysText,
 } from "@/lib/attendanceMeta";
@@ -99,7 +99,7 @@ function daysOf(month: string): string[] {
 }
 
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
-const weekdayOf = (d: string) => new Date(`${d}T00:00:00+09:00`).getDay();
+const weekdayOf = (d: string) => weekdayIndex(d);
 
 export default function Client(p: Props) {
   const now = today();
@@ -158,7 +158,8 @@ export default function Client(p: Props) {
   const restingFor = useMemo(() => {
     if (!meToday?.openRest) return 0;
     const from = toMinutes(meToday.openRest);
-    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    // 서버는 세계표준시로 돈다 — 한국 시각으로 물어야 아홉 시간이 안 밀린다
+    const nowMin = hourNow() * 60 + minuteNow();
     return from === null ? 0 : Math.max(0, nowMin - from);
   }, [meToday?.openRest, tick]);
 

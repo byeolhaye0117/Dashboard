@@ -10,7 +10,7 @@ import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffAll, getProducts, getRoles } from "@/lib/data";
 import { listLessons } from "@/lib/lessons";
 import { loadAll as loadNotices } from "@/lib/notices";
-import { today } from "@/lib/time";
+import { today, hourNow } from "@/lib/time";
 import Icon from "@/components/Icon";
 import Shell from "./Shell";
 import { guard } from "./guard";
@@ -90,7 +90,8 @@ async function body() {
     }
   }
 
-  const hour = new Date().getHours();
+  // 서버는 세계표준시로 돈다. 그냥 물으면 아침 여덟 시에 "수고 많으셨습니다"가 나온다
+  const hour = hourNow();
   const greet = hour < 11 ? "좋은 아침입니다" : hour < 18 ? "안녕하세요" : "수고 많으셨습니다";
 
   return (
