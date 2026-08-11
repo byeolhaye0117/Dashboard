@@ -60,6 +60,44 @@ function byPriority(list: Task[]): { v: number; name: string; tone: string; list
     .filter((g) => g.list.length > 0);
 }
 
+/**
+ * 순위 골라 보기
+ *
+ * 1순위만 스물한 개다. 다 펼쳐두면 2순위를 보려고 한참 내려야 한다.
+ * 숫자는 "끝난 개수"가 아니라 "남은 개수"다 — 눌러야 할 것이 몇 개인지가
+ * 궁금한 것이지, 해치운 것이 몇 개인지는 이미 위에 적혀 있다.
+ *
+ * 순위가 한 종류뿐이면 고를 것이 없으므로 아예 내보내지 않는다.
+ */
+function PrioChips(props: {
+  list: Task[];
+  done: Map<string, Log>;
+  value: number;
+  onPick: (v: number) => void;
+}) {
+  const groups = byPriority(props.list);
+  if (groups.length < 2) return null;
+  const leftOf = (l: Task[]) => l.filter((t) => !props.done.has(t.id)).length;
+
+  const chip = (v: number, name: string, list: Task[]) => {
+    const n = leftOf(list);
+    return (
+      <button key={v} type="button" className={`pickone${props.value === v ? " on" : ""}`}
+              onClick={() => props.onPick(v)}>
+        <span className="nm">{name}</span>
+        <span className="dim">{n > 0 ? `${n} 남음` : "다 끝남"}</span>
+      </button>
+    );
+  };
+
+  return (
+    <div className="pick-row" style={{ marginBottom: 12, flexWrap: "wrap" }}>
+      {chip(0, "전체", props.list)}
+      {groups.map((g) => chip(g.v, g.name, g.list))}
+    </div>
+  );
+}
+
 function shiftDay(d: string, n: number): string {
   const x = new Date(`${d}T00:00:00+09:00`);
   x.setDate(x.getDate() + n);
@@ -74,6 +112,8 @@ export default function Client(p: Props) {
   const [writing, setWriting] = useState<Notice | "new" | null>(null);
   const [taskBox, setTaskBox] = useState<Task | "new" | null>(null);
   const [pasting, setPasting] = useState(false);
+  /** 「업무 완료」에서 보고 있는 순위 — 0이면 전체 */
+  const [prio, setPrio] = useState(0);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -193,6 +233,8 @@ export default function Client(p: Props) {
             {todayTasks.length === 0 ? "정해진 업무 없음" : <b>{todayTasks.length - left.length} / {todayTasks.length} 끝남</b>}
           </p>
 
+          <PrioChips list={todayTasks} done={doneOn} value={prio} onPick={setPrio} />
+
           {todayTasks.length === 0 ? (
             <div className="setup">
               <div>
@@ -207,14 +249,19 @@ export default function Client(p: Props) {
               )}
             </div>
           ) : (
-            byPriority(todayTasks).map((g) => {
+            byPriority(todayTasks)
+              .filter((g) => prio === 0 || g.v === prio)
+              .map((g) => {
               const gLeft = g.list.filter((t) => !doneOn.has(t.id)).length;
               return (
                 <div key={g.v}>
-                  <h4 className="mini-title">
-                    <span className={`pill ${g.tone}`}>{g.name}</span>
-                    {" "}{g.list.length - gLeft} / {g.list.length} 끝남
-                  </h4>
+                  {/* 한 순위만 보고 있으면 위 칸이 이미 말해 준다 */}
+                  {prio === 0 && (
+                    <h4 className="mini-title">
+                      <span className={`pill ${g.tone}`}>{g.name}</span>
+                      {" "}{g.list.length - gLeft} / {g.list.length} 끝남
+                    </h4>
+                  )}
                   <div className="lwrap">
                     {g.list.map((t) => {
                       const log = doneOn.get(t.id);
@@ -387,6 +434,7 @@ function TaskBoard(props: {
 }) {
   const nowDay = today();
   const [day, setDay] = useState(nowDay);
+  const [prio, setPrio] = useState(0);
   const nameOf = new Map(props.people.map((x) => [x.id, x.name]));
 
   const doneOn = useMemo(() => {
@@ -452,6 +500,8 @@ function TaskBoard(props: {
         {leftAll > 0 ? <b className="warn-text">안 끝난 일 {leftAll}개</b> : <b>모두 끝남</b>}
       </p>
 
+      <PrioChips list={props.tasks} done={doneOn} value={prio} onPick={setPrio} />
+
       {groups.length === 0 ? (
         <div className="setup">
           <div>
@@ -471,21 +521,30 @@ function TaskBoard(props: {
           )}
         </div>
       ) : (
-        groups.map(({ b, list }) => {
-          const left = list.filter((t) => !doneOn.has(t.id));
+        groups
+          .filter((g) => prio === 0 || g.list.some((t) => t.우선순위 === prio))
+          .map(({ b, list }) => {
+          // 순위를 골라 보는 중이면 머리글 숫자도 그 순위 것이어야 한다
+          const shown = prio === 0 ? list : list.filter((t) => t.우선순위 === prio);
+          const left = shown.filter((t) => !doneOn.has(t.id));
           return (
             <div key={b.code} style={{ marginBottom: 18 }}>
               <h4 className="mini-title">
-                {b.name} — {list.length - left.length} / {list.length} 끝남
+                {b.name} — {shown.length - left.length} / {shown.length} 끝남
+                {prio > 0 && <span className="dim"> ({priorityName(prio)})</span>}
               </h4>
-              {byPriority(list).map((g) => {
+              {byPriority(list)
+                .filter((g) => prio === 0 || g.v === prio)
+                .map((g) => {
                 const gLeft = g.list.filter((t) => !doneOn.has(t.id)).length;
                 return (
                   <div key={g.v} style={{ marginBottom: 10 }}>
-                    <p className="stat-note" style={{ margin: "0 0 6px" }}>
-                      <span className={`pill ${g.tone}`}>{g.name}</span>
-                      {" "}{g.list.length - gLeft} / {g.list.length} 끝남
-                    </p>
+                    {prio === 0 && (
+                      <p className="stat-note" style={{ margin: "0 0 6px" }}>
+                        <span className={`pill ${g.tone}`}>{g.name}</span>
+                        {" "}{g.list.length - gLeft} / {g.list.length} 끝남
+                      </p>
+                    )}
                     <div className="lwrap">
                       {g.list.map((t) => {
                         const log = doneOn.get(t.id);
