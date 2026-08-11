@@ -371,17 +371,39 @@ export async function createTasks(
   let n = Number(seed.slice(2));
   const stamp = now();
 
+  /*
+    이미 있는 것 뒤에 붙인다
+
+    늘 10부터 매기면, 스물한 개가 있는 1순위에 하나를 더 넣었을 때 그것이
+    맨 위로 올라간다. 새로 넣은 일이 첫 번째 할 일이 될 이유가 없다.
+    지점과 순위가 같은 것들 중 가장 큰 번호를 찾아 그 다음부터 매긴다.
+  */
+  const tail = new Map<string, number>();
+  t.rows.forEach((r) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    if (!get(r, tc, "업무번호")) return;
+    const key = `${get(r, tc, "지점코드")}|${int(get(r, tc, "우선순위"), 0)}`;
+    tail.set(key, Math.max(tail.get(key) ?? 0, int(get(r, tc, "순서"), 0)));
+  });
+  const nextOrder = (지점코드: string, 순위: number) => {
+    const key = `${지점코드}|${순위}`;
+    const v = (tail.get(key) ?? 0) + 10;
+    tail.set(key, v);
+    return v;
+  };
+
   const rows: Row[] = [];
   지점들.forEach((지점코드) => {
-    clean.forEach((x, i) => {
+    clean.forEach((x) => {
+      const 순위 = x.우선순위 > 0 && x.우선순위 < NO_PRIORITY ? x.우선순위 : 0;
       rows.push(toSheetRow({
         업무번호: "TK" + String(n++).padStart(5, "0"),
         지점코드,
         업무명: x.업무명.trim(),
         담당사번: x.담당사번 ?? "",
-        우선순위: x.우선순위 > 0 && x.우선순위 < NO_PRIORITY ? String(x.우선순위) : "",
+        우선순위: 순위 ? String(순위) : "",
         // 붙여넣은 차례가 곧 화면에 나오는 차례다
-        순서: String((i + 1) * 10),
+        순서: String(nextOrder(지점코드, 순위)),
         메모: x.메모 ?? "",
         사용여부: "Y",
         등록일시: stamp,

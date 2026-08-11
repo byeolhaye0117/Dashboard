@@ -104,7 +104,7 @@ export default function Client(p: Props) {
   const [day, setDay] = useState(now);
   const [open, setOpen] = useState<string | null>(null);
   const [writing, setWriting] = useState<Notice | "new" | null>(null);
-  const [taskBox, setTaskBox] = useState<Task | "new" | null>(null);
+  const [taskBox, setTaskBox] = useState<Task | null>(null);
   const [pasting, setPasting] = useState(false);
   /** 「업무 완료」에서 보고 있는 순위 — 0이면 전체 */
   const [prio, setPrio] = useState(0);
@@ -339,8 +339,7 @@ export default function Client(p: Props) {
           canAdd={p.can.create}
           canEdit={p.can.update}
           busy={busy}
-          onAdd={() => setTaskBox("new")}
-          onPaste={() => setPasting(true)}
+          onAdd={() => setPasting(true)}
           onEdit={(t) => setTaskBox(t)}
           onSend={send}
         />
@@ -380,18 +379,14 @@ export default function Client(p: Props) {
 
       {taskBox && (
         <TaskForm
-          task={taskBox === "new" ? null : taskBox}
+          task={taskBox}
           branches={p.branches}
           people={p.people}
           myBranch={p.myBranch}
           canRemove={p.can.remove || p.can.update}
           busy={busy}
-          onSave={(v) =>
-            taskBox === "new"
-              ? send({ action: "task-add", ...v })
-              : send({ action: "task-edit", 업무번호: taskBox.id, changes: v })
-          }
-          onDelete={() => taskBox !== "new" && send({ action: "task-del", 업무번호: taskBox.id })}
+          onSave={(v) => send({ action: "task-edit", 업무번호: taskBox.id, changes: v })}
+          onDelete={() => send({ action: "task-del", 업무번호: taskBox.id })}
           onClose={() => setTaskBox(null)}
         />
       )}
@@ -429,7 +424,6 @@ function TaskBoard(props: {
   canEdit: boolean;
   busy: boolean;
   onAdd: () => void;
-  onPaste: () => void;
   onEdit: (t: Task) => void;
   onSend: (payload: any) => void;
 }) {
@@ -497,14 +491,9 @@ function TaskBoard(props: {
         )}
         <span className="spacer" />
         {props.canAdd && (
-          <>
-            <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onPaste}>
-              목록 붙여넣기
-            </button>
-            <button className="btn-dark" onClick={props.onAdd}>
-              <Icon name="plus" size={14} /> 업무 배정
-            </button>
-          </>
+          <button className="btn-dark" onClick={props.onAdd}>
+            <Icon name="plus" size={14} /> 업무 배정
+          </button>
         )}
       </div>
 
@@ -571,14 +560,7 @@ function TaskBoard(props: {
               <b> 업무 완료</b>에 체크리스트로 나옵니다. 지점마다 따로 넣습니다.
             </p>
           </div>
-          {props.canAdd && (
-            <div className="pick-row">
-              <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onPaste}>
-                목록 붙여넣기
-              </button>
-              <button className="btn-dark" onClick={props.onAdd}>업무 배정</button>
-            </div>
-          )}
+          {props.canAdd && <button className="btn-dark" onClick={props.onAdd}>업무 배정</button>}
         </div>
       ) : (
         groups
@@ -919,7 +901,7 @@ function TaskForm(props: {
   return (
     <div className="modal-back" onClick={props.onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>{t ? "업무 고치기" : "업무 배정"}</h3>
+        <h3>업무 고치기</h3>
 
         <div className="field">
           <label htmlFor="tn">업무 이름</label>
@@ -964,8 +946,8 @@ function TaskForm(props: {
         </div>
 
         <p className="stat-note">
-          매일 반복되는 일만 넣습니다. 한 번만 하는 일은 <b>공지</b>로 알리는 편이 낫습니다.
-          <b>우선순위</b>가 먼저고, 같은 순위 안에서는 순서가 작을수록 위에 나옵니다.
+          <b>우선순위</b>가 먼저고, 같은 순위 안에서는 <b>순서</b>가 작을수록 위에 나옵니다.
+          중간에 끼워 넣으려면 앞뒤 사이의 숫자를 적으시면 됩니다 (10과 20 사이면 15).
         </p>
 
         {err && <div className="alert-bad" style={{ marginTop: 12 }}>{err}</div>}
@@ -1074,9 +1056,25 @@ function TaskPaste(props: {
   const [picked, setPicked] = useState<string[]>(
     props.branches.some((b) => b.code === props.myBranch) ? [props.myBranch] : []
   );
+  /** 줄에 이름을 안 쓴 업무를 맡을 사람 */
+  const [defWho, setDefWho] = useState("");
   const [err, setErr] = useState("");
 
-  const rows = useMemo(() => parseTasks(text, props.people), [text, props.people]);
+  const parsed = useMemo(() => parseTasks(text, props.people), [text, props.people]);
+
+  /*
+    이름을 안 쓴 줄은 위에서 고른 사람이 맡는다. 예순 줄에 「/ 정예진」을
+    예순 번 쓰게 할 이유가 없다. 줄에 쓴 이름이 언제나 위 칸을 이긴다 —
+    한 사람만 다르게 지정하는 것이 흔한 일이다.
+  */
+  const rows = useMemo(() => {
+    if (!defWho) return parsed;
+    const nm = props.people.find((x) => x.id === defWho)?.name ?? "";
+    return parsed.map((r) =>
+      r.담당사번 ? r : { ...r, 담당사번: defWho, 담당표기: nm, 경고: "" }
+    );
+  }, [parsed, defWho, props.people]);
+
   const warns = rows.filter((r) => r.경고);
 
   /** 순위별 몇 개인지 — 붙여넣기가 제대로 나뉘었는지 눈으로 확인하는 자리다 */
@@ -1107,14 +1105,16 @@ function TaskPaste(props: {
   return (
     <div className="modal-back" onClick={props.onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>목록 붙여넣기</h3>
+        <h3>업무 배정</h3>
         <p className="stat-note" style={{ marginTop: 0 }}>
-          한 줄에 업무 하나씩 적습니다. 적은 순서가 그대로 화면 순서가 됩니다.
-          담당자를 정하려면 <b>업무 이름 / 담당자 이름</b>, 메모까지 붙이려면
-          <b> 업무 이름 / 담당자 이름 / 메모</b> 로 적습니다. 앞에 붙은 번호는 알아서 뗍니다.
+          <b>한 줄에 하나씩</b> 적습니다. 하나만 만들 때는 한 줄만 적으시면 됩니다.
+          적은 차례가 그대로 화면에 나오는 차례가 됩니다.
           <br />
-          중간에 <b>1순위</b>·<b>2순위</b>·<b>3순위</b>만 적힌 줄을 넣으면, 그 아래 업무들이
-          그 순위로 묶입니다. 한 번에 다 붙여넣으셔도 됩니다.
+          줄마다 메모를 붙이려면 <b>업무 이름 / 메모</b>, 그 줄만 담당자가 다르면
+          <b> 업무 이름 / 담당자 이름 / 메모</b> 로 적습니다.
+          <br />
+          <b>1순위</b>·<b>2순위</b>·<b>3순위</b>만 적힌 줄을 사이에 넣으면 그 아래가 그 순위로
+          묶입니다. 앞에 붙은 번호(1. 2) -)는 알아서 뗍니다.
         </p>
 
         <div className="field" style={{ marginTop: 16 }}>
@@ -1130,6 +1130,19 @@ function TaskPaste(props: {
           </div>
           <p className="stat-note">
             여러 지점을 고르면 같은 목록이 지점마다 따로 만들어집니다.
+          </p>
+        </div>
+
+        <div className="field">
+          <label htmlFor="defwho">담당 (줄에 이름을 안 쓴 업무)</label>
+          <select id="defwho" className="select" value={defWho}
+                  onChange={(e) => setDefWho(e.target.value)}>
+            <option value="">담당 없음</option>
+            {props.people.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+          <p className="stat-note">
+            줄에 <b>/ 이름</b>을 적은 업무는 그 사람이 맡습니다. 여기서 고른 사람은
+            이름을 안 쓴 줄에만 들어갑니다.
           </p>
         </div>
 
@@ -1187,8 +1200,8 @@ function TaskPaste(props: {
             </div>
             {warns.length > 0 && (
               <p className="stat-note">
-                이름을 못 찾은 줄은 <b>담당 없음</b>으로 만들어집니다. 나중에 한 줄씩 고칠 수 있으니
-                그대로 넣어도 됩니다.
+                이름을 못 찾은 줄은 <b>{defWho ? "위에서 고른 담당" : "담당 없음"}</b>으로
+                만들어집니다. 나중에 한 줄씩 고칠 수 있으니 그대로 넣어도 됩니다.
               </p>
             )}
           </>
@@ -1199,7 +1212,11 @@ function TaskPaste(props: {
         <div className="modal-actions">
           <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onClose}>취소</button>
           <button className="btn-primary" style={{ marginTop: 0 }} disabled={props.busy} onClick={save}>
-            {props.busy ? "만드는 중…" : `${rows.length * Math.max(1, picked.length)}개 만들기`}
+            {props.busy
+              ? "만드는 중…"
+              : rows.length === 0
+                ? "만들기"
+                : `${rows.length * Math.max(1, picked.length)}개 만들기`}
           </button>
         </div>
       </div>
