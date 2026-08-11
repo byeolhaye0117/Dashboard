@@ -19,7 +19,7 @@ type Notice = {
 type Read = { 공지번호: string; 사번: string; 읽은일시: string };
 type Task = {
   id: string; 지점코드: string; 업무명: string; 담당사번: string;
-  우선순위: number; 순서: number; 메모: string;
+  우선순위: number; 순서: number; 메모: string; 쓰는중: boolean;
 };
 type Log = { id: string; 업무번호: string; 날짜: string; 처리자: string; 처리일시: string };
 type Named = { code: string; name: string };
@@ -136,7 +136,8 @@ export default function Client(p: Props) {
 
   /** 오늘 화면에 뿌릴 업무 — 지금 보는 지점 것 */
   const todayTasks = useMemo(
-    () => p.tasks.filter((t) => t.지점코드 === p.myBranch),
+    // 꺼둔 업무는 오늘 할 일이 아니다
+    () => p.tasks.filter((t) => t.지점코드 === p.myBranch && t.쓰는중),
     [p.tasks, p.myBranch]
   );
   const left = todayTasks.filter((t) => !doneOn.has(t.id));
@@ -342,9 +343,12 @@ export default function Client(p: Props) {
           tasks={p.tasks}
           logs={p.logs}
           canAdd={p.can.create}
+          canEdit={p.can.update}
+          busy={busy}
           onAdd={() => setTaskBox("new")}
           onPaste={() => setPasting(true)}
           onEdit={(t) => setTaskBox(t)}
+          onSend={send}
         />
       )}
 
@@ -428,14 +432,30 @@ function TaskBoard(props: {
   tasks: Task[];
   logs: Log[];
   canAdd: boolean;
+  canEdit: boolean;
+  busy: boolean;
   onAdd: () => void;
   onPaste: () => void;
   onEdit: (t: Task) => void;
+  onSend: (payload: any) => void;
 }) {
   const nowDay = today();
   const [day, setDay] = useState(nowDay);
   const [prio, setPrio] = useState(0);
+  /** 골라 둔 업무들 — 한 번에 고치거나 지울 대상 */
+  const [picked, setPicked] = useState<string[]>([]);
+  /** 꺼둔 업무까지 볼 것인가 */
+  const [showOff, setShowOff] = useState(false);
+  /** 열어 둔 일괄 처리 창 */
+  const [box, setBox] = useState<"" | "who" | "prio" | "copy" | "off" | "on" | "del">("");
   const nameOf = new Map(props.people.map((x) => [x.id, x.name]));
+
+  const live = props.tasks.filter((t) => t.쓰는중);
+  const off = props.tasks.filter((t) => !t.쓰는중);
+  const inView = showOff ? props.tasks : live;
+  const pickedSet = new Set(picked);
+  const toggleOne = (id: string) =>
+    setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
 
   const doneOn = useMemo(() => {
     const m = new Map<string, Log>();
@@ -463,7 +483,7 @@ function TaskBoard(props: {
   }, [day, nowDay]);
 
   const groups = props.branches
-    .map((b) => ({ b, list: props.tasks.filter((t) => t.지점코드 === b.code) }))
+    .map((b) => ({ b, list: inView.filter((t) => t.지점코드 === b.code) }))
     .filter((g) => g.list.length > 0);
 
   const leftAll = groups.reduce(
@@ -500,7 +520,53 @@ function TaskBoard(props: {
         {leftAll > 0 ? <b className="warn-text">안 끝난 일 {leftAll}개</b> : <b>모두 끝남</b>}
       </p>
 
-      <PrioChips list={props.tasks} done={doneOn} value={prio} onPick={setPrio} />
+      <PrioChips list={inView} done={doneOn} value={prio} onPick={setPrio} />
+
+      {off.length > 0 && (
+        <p className="stat-note" style={{ margin: "0 0 12px" }}>
+          잠시 꺼둔 업무 {off.length}개{" "}
+          <button className="linkish" onClick={() => { setShowOff(!showOff); setPicked([]); }}>
+            {showOff ? "감추기" : "보기"}
+          </button>
+        </p>
+      )}
+
+      {/*
+        고른 것이 있을 때만 나온다. 늘 떠 있으면 목록을 가리고,
+        아무것도 고르지 않았을 때 눌리면 무엇에 대한 동작인지 알 수 없다.
+      */}
+      {props.canEdit && picked.length > 0 && (
+        <div className="save-bar many" style={{ marginBottom: 12 }}>
+          <span>{picked.length}개 골랐습니다</span>
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setBox("who")}>담당 바꾸기</button>
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setBox("prio")}>순위 바꾸기</button>
+          {props.canAdd && (
+            <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setBox("copy")}>다른 지점에 복사</button>
+          )}
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setBox("off")}>
+            잠시 끄기
+          </button>
+          {showOff && (
+            <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setBox("on")}>
+              다시 켜기
+            </button>
+          )}
+          <button className="btn-danger" style={{ marginTop: 0 }} onClick={() => setBox("del")}>지우기</button>
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setPicked([])}>선택 해제</button>
+        </div>
+      )}
+
+      {box && (
+        <TaskBatch
+          op={box}
+          count={picked.length}
+          people={props.people}
+          branches={props.branches}
+          busy={props.busy}
+          onClose={() => setBox("")}
+          onRun={(payload) => props.onSend({ ...payload, ids: picked })}
+        />
+      )}
 
       {groups.length === 0 ? (
         <div className="setup">
@@ -532,6 +598,20 @@ function TaskBoard(props: {
               <h4 className="mini-title">
                 {b.name} — {shown.length - left.length} / {shown.length} 끝남
                 {prio > 0 && <span className="dim"> ({priorityName(prio)})</span>}
+                {props.canEdit && shown.length > 0 && (
+                  <button className="linkish"
+                          onClick={() => {
+                            const ids = shown.map((t) => t.id);
+                            const allIn = ids.every((id) => pickedSet.has(id));
+                            setPicked((cur) =>
+                              allIn
+                                ? cur.filter((x) => !ids.includes(x))
+                                : [...new Set([...cur, ...ids])]
+                            );
+                          }}>
+                    {shown.every((t) => pickedSet.has(t.id)) ? "선택 해제" : "다 고르기"}
+                  </button>
+                )}
               </h4>
               {byPriority(list)
                 .filter((g) => prio === 0 || g.v === prio)
@@ -551,9 +631,19 @@ function TaskBoard(props: {
                         const did = monthDone.get(t.id) ?? 0;
                         const miss = Math.max(0, passed - did);
                         return (
-                          <div className={`jrow${log ? " is-done" : ""}`} key={t.id}>
+                          <div className={`jrow${log ? " is-done" : ""}${pickedSet.has(t.id) ? " is-picked" : ""}`}
+                               key={t.id}>
                             <div className="jtop">
-                              <b>{t.업무명}</b>
+                              <b>
+                                {props.canEdit && (
+                                  <input type="checkbox" className="pick-box"
+                                         style={{ marginRight: 8 }}
+                                         checked={pickedSet.has(t.id)}
+                                         onChange={() => toggleOne(t.id)}
+                                         aria-label={`${t.업무명} 고르기`} />
+                                )}
+                                {t.업무명}
+                              </b>
                               <span>
                                 {nameOf.get(t.담당사번) ? `담당 ${nameOf.get(t.담당사번)}` : "담당 없음"}
                                 {log
@@ -562,12 +652,14 @@ function TaskBoard(props: {
                               </span>
                             </div>
                             <div className="pick-row">
-                              {log ? (
+                              {!t.쓰는중 ? (
+                                <span className="pill">꺼둠</span>
+                              ) : log ? (
                                 <span className="pill good">완료</span>
                               ) : (
                                 <span className="pill bad">안 함</span>
                               )}
-                              {miss > 0 && <span className="pill">이 달 {miss}일 빠짐</span>}
+                              {t.쓰는중 && miss > 0 && <span className="pill">이 달 {miss}일 빠짐</span>}
                               <span className="spacer" />
                               <button className="mk-btn" onClick={() => props.onEdit(t)}>고치기</button>
                             </div>
@@ -1115,6 +1207,136 @@ function TaskPaste(props: {
           <button className="btn-primary" style={{ marginTop: 0 }} disabled={props.busy} onClick={save}>
             {props.busy ? "만드는 중…" : `${rows.length * Math.max(1, picked.length)}개 만들기`}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 여러 개를 한꺼번에 처리하는 창
+ *
+ * 무엇을, 몇 개에 하는지를 먼저 크게 적는다. 예순 개를 골라 놓고
+ * 무심코 지우는 일이 없어야 한다.
+ */
+function TaskBatch(props: {
+  op: "who" | "prio" | "copy" | "off" | "on" | "del";
+  count: number;
+  people: Person[];
+  branches: Named[];
+  busy: boolean;
+  onClose: () => void;
+  onRun: (payload: any) => void;
+}) {
+  const [who, setWho] = useState("");
+  const [prio, setPrio] = useState("1");
+  const [toBranches, setToBranches] = useState<string[]>([]);
+  const [sure, setSure] = useState(false);
+  const [err, setErr] = useState("");
+
+  const TITLES: Record<string, string> = {
+    who: "담당 바꾸기", prio: "순위 바꾸기", copy: "다른 지점에 복사",
+    off: "잠시 끄기", on: "다시 켜기", del: "지우기",
+  };
+
+  function run() {
+    if (props.op === "who") return props.onRun({ action: "task-batch", changes: { 담당사번: who } });
+    if (props.op === "prio")
+      return props.onRun({ action: "task-batch", changes: { 우선순위: Number(prio) || 0 } });
+    if (props.op === "copy") {
+      if (toBranches.length === 0) return setErr("어느 지점에 넣을지 골라주세요.");
+      return props.onRun({ action: "task-copy", 지점들: toBranches });
+    }
+    if (props.op === "off") return props.onRun({ action: "task-batch", changes: { 사용여부: "N" } });
+    if (props.op === "on") return props.onRun({ action: "task-batch", changes: { 사용여부: "Y" } });
+    return props.onRun({ action: "task-batch", changes: { 삭제여부: "Y" } });
+  }
+
+  return (
+    <div className="modal-back" onClick={props.onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{TITLES[props.op]}</h3>
+        <p className="stat-note" style={{ marginTop: 0 }}>
+          고른 업무 <b>{props.count}개</b>에 적용합니다.
+        </p>
+
+        {props.op === "who" && (
+          <div className="field">
+            <label htmlFor="bw">누구에게</label>
+            <select id="bw" className="select" value={who} onChange={(e) => setWho(e.target.value)}>
+              <option value="">담당 없음으로</option>
+              {props.people.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+          </div>
+        )}
+
+        {props.op === "prio" && (
+          <div className="field">
+            <label htmlFor="bp">어느 순위로</label>
+            <select id="bp" className="select" value={prio} onChange={(e) => setPrio(e.target.value)}>
+              {PRIORITIES.map((x) => <option key={x.v} value={String(x.v)}>{x.name}</option>)}
+              <option value="">순위 없음으로</option>
+            </select>
+          </div>
+        )}
+
+        {props.op === "copy" && (
+          <div className="field">
+            <label>어느 지점에</label>
+            <div className="pickbox">
+              {props.branches.map((b) => (
+                <button key={b.code} type="button"
+                        className={`pickone${toBranches.includes(b.code) ? " on" : ""}`}
+                        onClick={() =>
+                          setToBranches((cur) =>
+                            cur.includes(b.code) ? cur.filter((c) => c !== b.code) : [...cur, b.code]
+                          )
+                        }>
+                  <span className="nm">{b.name}</span>
+                </button>
+              ))}
+            </div>
+            <p className="stat-note">
+              원래 지점 것은 그대로 두고 <b>새로 만듭니다.</b> 순위·순서·담당·메모를 그대로 옮깁니다.
+            </p>
+          </div>
+        )}
+
+        {props.op === "off" && (
+          <p className="stat-note">
+            체크리스트에서 빠지지만 <b>지워지지 않습니다.</b> 지난 기록도 그대로 남습니다.
+            필요해지면 <b>꺼둔 업무 보기 → 다시 켜기</b>로 되돌립니다.
+          </p>
+        )}
+        {props.op === "on" && (
+          <p className="stat-note">다시 오늘 체크리스트에 나옵니다.</p>
+        )}
+        {props.op === "del" && (
+          <p className="stat-note">
+            체크리스트에서 사라집니다. 지난 기록은 남지만 목록에서는 다시 못 켭니다.
+            <b> 잠시 안 하는 일이라면 「잠시 끄기」</b>가 낫습니다.
+          </p>
+        )}
+
+        {err && <div className="alert-bad" style={{ marginTop: 12 }}>{err}</div>}
+
+        <div className="modal-actions">
+          <button className="btn-ghost" style={{ marginTop: 0 }} onClick={props.onClose}>취소</button>
+          {props.op === "del" ? (
+            sure ? (
+              <button className="btn-danger" style={{ marginTop: 0 }} disabled={props.busy} onClick={run}>
+                {props.busy ? "지우는 중…" : "정말 지웁니다"}
+              </button>
+            ) : (
+              <button className="btn-danger" style={{ marginTop: 0 }} onClick={() => setSure(true)}>
+                지우기
+              </button>
+            )
+          ) : (
+            <button className="btn-primary" style={{ marginTop: 0 }} disabled={props.busy} onClick={run}>
+              {props.busy ? "바꾸는 중…" : `${props.count}개 바꾸기`}
+            </button>
+          )}
         </div>
       </div>
     </div>
