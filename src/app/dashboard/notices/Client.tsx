@@ -24,6 +24,7 @@ type Task = {
 type Log = { id: string; 업무번호: string; 날짜: string; 처리자: string; 처리일시: string };
 type Named = { code: string; name: string };
 type Person = { id: string; name: string };
+type Plan = { id: string; 목록명: string; 내용: string };
 
 type Props = {
   me: string;
@@ -34,6 +35,8 @@ type Props = {
   reads: Read[];
   tasks: Task[];
   logs: Log[];
+  /** 저장해 둔 업무 목록 (본보기) */
+  plans: Plan[];
   can: { create: boolean; update: boolean; remove: boolean };
   canSetup: boolean;
   /** 아직 없는 탭 이름들 */
@@ -396,6 +399,7 @@ export default function Client(p: Props) {
           branches={p.branches}
           people={p.people}
           myBranch={p.myBranch}
+          plans={p.plans}
           busy={busy}
           onSave={(payload) => send(payload)}
           onClose={() => setAdding(false)}
@@ -1070,6 +1074,7 @@ function TaskAdd(props: {
   branches: Named[];
   people: Person[];
   myBranch: string;
+  plans: Plan[];
   busy: boolean;
   onSave: (payload: any) => void;
   onClose: () => void;
@@ -1082,6 +1087,20 @@ function TaskAdd(props: {
   /** 줄에 이름을 안 쓴 업무를 맡을 사람 */
   const [defWho, setDefWho] = useState("");
   /** 「한 개씩」에서 쓰는 칸들 */
+  /*
+    본보기 목록 다루기
+
+    저장·삭제는 화면을 새로 그리지 않는다. 적다 만 글이 날아가면 안 된다.
+    그래서 여기서만 쓰는 통로를 따로 두고, 목록도 여기서 들고 있는다.
+  */
+  const [plans, setPlans] = useState<Plan[]>(props.plans);
+  const [planId, setPlanId] = useState("");
+  const [naming, setNaming] = useState(false);
+  const [planName, setPlanName] = useState("");
+  const [planBusy, setPlanBusy] = useState(false);
+  const [killPlan, setKillPlan] = useState(false);
+  const [planMsg, setPlanMsg] = useState("");
+
   const [one, setOne] = useState({
     업무명: "",
     담당사번: "",
@@ -1121,6 +1140,53 @@ function TaskAdd(props: {
 
   const toggle = (code: string) =>
     setPicked((cur) => (cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]));
+
+  async function planPost(payload: any): Promise<any> {
+    setPlanBusy(true);
+    setPlanMsg("");
+    try {
+      const res = await fetch("/api/notices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "처리하지 못했습니다.");
+      return data;
+    } catch (e: any) {
+      setPlanMsg(e.message);
+      return null;
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  /** 지금 적혀 있는 글을 목록으로 저장한다. id를 주면 그 목록을 덮어쓴다 */
+  async function keepPlan(id: string) {
+    const name = (id ? plans.find((x) => x.id === id)?.목록명 : planName) ?? "";
+    const data = await planPost({ action: "plan-save", id, 목록명: name.trim(), 내용: text });
+    if (!data) return;
+    const saved = { id: data.id as string, 목록명: name.trim(), 내용: text };
+    setPlans((cur) =>
+      cur.some((x) => x.id === saved.id)
+        ? cur.map((x) => (x.id === saved.id ? saved : x))
+        : [...cur, saved].sort((a, b) => a.목록명.localeCompare(b.목록명, "ko"))
+    );
+    setPlanId(saved.id);
+    setNaming(false);
+    setPlanName("");
+    setPlanMsg(`「${saved.목록명}」 저장했습니다.`);
+  }
+
+  async function dropPlan() {
+    const gone = plans.find((x) => x.id === planId);
+    if (!gone) return;
+    const data = await planPost({ action: "plan-del", id: planId });
+    if (!data) return;
+    setPlans((cur) => cur.filter((x) => x.id !== planId));
+    setPlanId("");
+    setPlanMsg(`「${gone.목록명}」 지웠습니다.`);
+  }
 
   function save() {
     if (picked.length === 0) return setErr("어느 지점에 넣을지 골라주세요.");
@@ -1263,20 +1329,86 @@ function TaskAdd(props: {
           <label htmlFor="pastebox">업무 목록</label>
           {/*
             예순 개짜리 목록을 휴대폰에서 복사해 붙여넣게 하는 것은 그 자체가 일이다.
-            자주 쓰는 목록은 여기서 바로 채운다.
+            자주 쓰는 목록은 시트에 담아 두고 여기서 바로 꺼낸다.
           */}
-          {PRESETS.length > 0 && (
-            <div className="pick-row" style={{ marginBottom: 8 }}>
-              {PRESETS.map((ps) => (
-                <button key={ps.name} type="button" className="btn-ghost"
-                        style={{ marginTop: 0 }}
-                        onClick={() => { setText(ps.text); setErr(""); }}>
-                  {ps.name} 불러오기
-                </button>
-              ))}
-              <span className="dim" style={{ fontSize: 11.5 }}>{PRESETS[0].note}</span>
+          <div className="bulk-sec" style={{ marginTop: 0, marginBottom: 10 }}>
+            <div className="pick-row" style={{ flexWrap: "wrap" }}>
+              <select className="select" style={{ maxWidth: 240 }} value={planId}
+                      onChange={(e) => { setPlanId(e.target.value); setPlanMsg(""); setKillPlan(false); }}>
+                <option value="">저장해 둔 목록 고르기</option>
+                {plans.map((x) => <option key={x.id} value={x.id}>{x.목록명}</option>)}
+              </select>
+              <button type="button" className="btn-dark" disabled={!planId || planBusy}
+                      onClick={() => {
+                        const hit = plans.find((x) => x.id === planId);
+                        if (hit) { setText(hit.내용); setErr(""); setPlanMsg(""); }
+                      }}>
+                불러오기
+              </button>
+              <span className="spacer" />
+              <button type="button" className="btn-ghost" style={{ marginTop: 0 }}
+                      disabled={planBusy || !text.trim()}
+                      onClick={() => { setNaming(true); setPlanName(""); setPlanMsg(""); }}>
+                지금 내용 저장
+              </button>
+              {planId && (
+                killPlan ? (
+                  <button type="button" className="btn-danger" style={{ marginTop: 0 }}
+                          disabled={planBusy}
+                          onClick={() => { setKillPlan(false); dropPlan(); }}>
+                    정말 지웁니다
+                  </button>
+                ) : (
+                  <button type="button" className="btn-ghost" style={{ marginTop: 0 }}
+                          disabled={planBusy} onClick={() => setKillPlan(true)}>
+                    목록 지우기
+                  </button>
+                )
+              )}
             </div>
-          )}
+
+            {naming && (
+              <div style={{ marginTop: 10 }}>
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <label htmlFor="pn">새 목록 이름</label>
+                  <input id="pn" className="input" value={planName} autoFocus
+                         placeholder="예: 4·5층 일일 점검"
+                         onChange={(e) => setPlanName(e.target.value)} />
+                </div>
+                <div className="pick-row" style={{ flexWrap: "wrap" }}>
+                  <button type="button" className="btn-dark"
+                          disabled={planBusy || !planName.trim()}
+                          onClick={() => keepPlan("")}>
+                    새 목록으로 저장
+                  </button>
+                  {planId && (
+                    <button type="button" className="btn-ghost" style={{ marginTop: 0 }}
+                            disabled={planBusy} onClick={() => keepPlan(planId)}>
+                      「{plans.find((x) => x.id === planId)?.목록명}」 덮어쓰기
+                    </button>
+                  )}
+                  <button type="button" className="btn-ghost" style={{ marginTop: 0 }}
+                          onClick={() => setNaming(false)}>취소</button>
+                </div>
+              </div>
+            )}
+
+            {/* 아직 하나도 없을 때만 — 처음 한 번 깔아 주는 자리다 */}
+            {plans.length === 0 && !naming && PRESETS.length > 0 && (
+              <p className="stat-note" style={{ margin: "8px 0 0" }}>
+                저장해 둔 목록이 없습니다.{" "}
+                <button className="linkish" disabled={planBusy}
+                        onClick={() => { setText(PRESETS[0].text); setErr(""); }}>
+                  {PRESETS[0].name} 불러오기
+                </button>
+                {" "}— 불러온 뒤 고쳐서 <b>지금 내용 저장</b>을 누르면 대표님 목록이 됩니다.
+                <br />
+                <span className="dim">{PRESETS[0].note}</span>
+              </p>
+            )}
+
+            {planMsg && <p className="stat-note" style={{ margin: "8px 0 0" }}>{planMsg}</p>}
+          </div>
           <textarea id="pastebox" className="input" style={{ height: 190 }} value={text} autoFocus
                     placeholder={"1순위\n오픈 청소 / 김코치\n2순위\n수건 정리\n기구 점검 / 김코치 / 오픈 30분 전까지"}
                     onChange={(e) => { setText(e.target.value); setErr(""); }} />

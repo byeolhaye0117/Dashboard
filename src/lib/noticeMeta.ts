@@ -9,6 +9,8 @@ export const SHEET_N = "공지";
 export const SHEET_NR = "공지읽음";
 export const SHEET_TASK = "업무";
 export const SHEET_TASKLOG = "업무기록";
+/** 저장해 두고 다시 꺼내 쓰는 업무 목록 (본보기) */
+export const SHEET_PLAN = "업무목록";
 
 export const N_HEADERS = [
   "공지번호", "지점코드", "제목", "내용", "중요", "게시일", "마감일",
@@ -51,6 +53,17 @@ export function priorityName(v: number): string {
 export function priorityTone(v: number): string {
   return PRIORITIES.find((p) => p.v === v)?.tone ?? "";
 }
+
+/**
+ * 저장해 둔 업무 목록
+ *
+ * 「4·5층 일일 점검」처럼 자주 쓰는 묶음을 통째로 담아 둔다. 내용은 붙여넣기
+ * 창이 읽는 글 그대로다 — 그래야 불러와서 그 자리에서 고칠 수 있다.
+ */
+export const PLAN_HEADERS = [
+  "목록번호", "목록명", "내용",
+  "등록일시", "등록자", "수정일시", "수정자", "삭제여부",
+];
 
 /** 날짜별로 누가 언제 체크했는지 */
 export const TASKLOG_HEADERS = [

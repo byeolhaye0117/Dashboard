@@ -5,6 +5,7 @@ import {
   createNotice, patchNotice, softDeleteNotice, markRead,
   createTask, createTasks, batchTasks, copyTasks,
   patchTask, softDeleteTask, setTaskDone, clearReads,
+  savePlan, deletePlan,
 } from "@/lib/notices";
 
 export const dynamic = "force-dynamic";
@@ -169,6 +170,29 @@ export async function POST(req: Request) {
       }
       const n = await copyTasks(ids, 지점들, session.staffId);
       return NextResponse.json({ ok: true, count: n });
+    }
+
+    /* 저장해 두고 다시 꺼내 쓰는 업무 목록 (본보기) */
+    if (action === "plan-save") {
+      if (!mine.create) {
+        return NextResponse.json({ error: "목록을 저장할 권한이 없습니다." }, { status: 403 });
+      }
+      const id = await savePlan(
+        String(body.id ?? ""),
+        String(body.목록명 ?? ""),
+        String(body.내용 ?? ""),
+        session.staffId
+      );
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (action === "plan-del") {
+      if (!mine.update) {
+        return NextResponse.json({ error: "목록을 지울 권한이 없습니다." }, { status: 403 });
+      }
+      if (!body.id) return NextResponse.json({ error: "목록번호가 필요합니다." }, { status: 400 });
+      await deletePlan(String(body.id), session.staffId);
+      return NextResponse.json({ ok: true });
     }
 
     if (action === "task-edit" || action === "task-del") {

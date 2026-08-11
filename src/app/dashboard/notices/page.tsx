@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffAll, getStaffBranches } from "@/lib/data";
-import { loadAll, SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG } from "@/lib/notices";
+import { loadAll, listPlans, SHEET_N, SHEET_NR, SHEET_TASK, SHEET_TASKLOG } from "@/lib/notices";
 import { listSheetNames } from "@/lib/sheets";
 import Shell from "../Shell";
 import Client from "./Client";
@@ -54,6 +54,7 @@ async function body() {
   let reads: any[] = [];
   let tasks: any[] = [];
   let logs: any[] = [];
+  let plans: any[] = [];
   let ready = true;
   let missing: string[] = [];
   let problem = "";
@@ -76,6 +77,9 @@ async function body() {
       tasks = got.tasks.filter((t) => allowed.has(t.지점코드));
       const tids = new Set(tasks.map((t) => t.id));
       logs = got.logs.filter((l) => tids.has(l.업무번호));
+
+      // 본보기 목록은 있으면 좋은 것이다. 없다고 화면이 안 열려서는 안 된다
+      plans = await listPlans().catch(() => []);
     }
   } catch (e: any) {
     problem = String(e?.message ?? e);
@@ -93,6 +97,7 @@ async function body() {
         reads={reads}
         tasks={tasks}
         logs={logs}
+        plans={plans}
         can={{ create: Boolean(mine.create), update: Boolean(mine.update), remove: Boolean(mine.remove) }}
         canSetup={Boolean(ab.get("직원관리")?.update)}
         missing={missing}
