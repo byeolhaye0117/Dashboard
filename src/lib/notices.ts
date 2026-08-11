@@ -86,6 +86,8 @@ export type Task = {
   우선순위: number;
   순서: number;
   메모: string;
+  /** 이 업무를 만든 날 — 만들기 전날까지 "빠뜨렸다"고 셀 수는 없다 */
+  만든날: string;
   /**
    * 지금 돌리고 있는 업무인가
    *
@@ -177,6 +179,7 @@ export async function loadAll(): Promise<{
       우선순위: int(get(row, tc, "우선순위"), 0) || NO_PRIORITY,
       순서: int(get(row, tc, "순서"), 99),
       메모: get(row, tc, "메모"),
+      만든날: get(row, tc, "등록일시").slice(0, 10),
       // 빈 칸은 예전에 넣은 줄이다. 끄지 않은 것으로 본다
       쓰는중: yes(get(row, tc, "사용여부") || "Y"),
     });
@@ -357,7 +360,7 @@ export async function createTask(
  */
 export async function createTasks(
   지점들: string[],
-  items: { 업무명: string; 담당사번: string; 우선순위: number; 메모: string }[],
+  items: { 업무명: string; 담당사번: string; 우선순위: number; 메모: string; 순서?: number }[],
   byId: string
 ): Promise<number> {
   const clean = items.filter((x) => x.업무명.trim());
@@ -402,8 +405,9 @@ export async function createTasks(
         업무명: x.업무명.trim(),
         담당사번: x.담당사번 ?? "",
         우선순위: 순위 ? String(순위) : "",
-        // 붙여넣은 차례가 곧 화면에 나오는 차례다
-        순서: String(nextOrder(지점코드, 순위)),
+        // 직접 적었으면 그대로 둔다 — 사이에 끼워 넣으려고 적은 숫자다.
+        // 안 적었으면 붙여넣은 차례가 곧 화면에 나오는 차례다
+        순서: String(x.순서 && x.순서 > 0 ? x.순서 : nextOrder(지점코드, 순위)),
         메모: x.메모 ?? "",
         사용여부: "Y",
         등록일시: stamp,
