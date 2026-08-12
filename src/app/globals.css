@@ -1567,6 +1567,61 @@ table.cal td.cell .twice {
 .save-bar.many { flex-wrap: wrap; row-gap: 8px; }
 .save-bar.many > span { flex: 1 0 100%; }
 
+/* ── 회원 대시보드 카드 ───────────────────── */
+/*
+  한 줄로 흐르는 요약은 눈이 한 번에 못 잡는다. 덩어리로 잘라 두면
+  "이용권은 여기, 결제는 여기"가 자리로 기억된다.
+*/
+.mgrid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  align-items: start;
+}
+.mgrid .wide { grid-column: span 2; }
+@media (max-width: 620px) {
+  .mgrid { grid-template-columns: 1fr; }
+  .mgrid .wide { grid-column: auto; }
+}
+
+.mcard {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 13px 15px 15px;
+}
+.mcard-head {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px;
+}
+.mcard-head b { font-size: 12.5px; font-weight: 800; letter-spacing: -.02em; }
+.mcard-head .sub { font-size: 11.5px; color: var(--muted); }
+.mcard-head .more {
+  margin-left: auto; border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; font-size: 11.5px; font-weight: 700; color: var(--muted);
+}
+.mcard-head .more:hover { color: var(--ink); }
+/* 카드 안에서는 점선 상자가 과하다 — 카드 자체가 이미 테두리다 */
+.mcard .empty {
+  display: block; padding: 2px 0 4px; border: 0; text-align: left;
+  font-size: 12.5px; color: var(--muted); line-height: 1.7;
+}
+.mcard .empty b { font-size: inherit; margin: 0; }
+
+/* 남은 기간을 눈으로 — 숫자만 있으면 많은 건지 적은 건지 감이 안 온다 */
+.tbar { height: 5px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 7px; }
+.tbar > i { display: block; height: 100%; border-radius: 999px; background: var(--good); }
+.tbar.warn > i { background: var(--warn); }
+.tbar.bad > i { background: var(--bad); }
+
+.mrow { padding: 9px 0; border-bottom: 1px solid var(--line-soft); }
+.mrow:first-child { padding-top: 0; }
+.mrow:last-child { border-bottom: 0; padding-bottom: 0; }
+.mrow .t { display: flex; align-items: baseline; gap: 7px; }
+.mrow .t b { font-size: 13px; font-weight: 700; letter-spacing: -.02em; }
+.mrow .t .dim { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
+.mrow .sub { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted); }
+
+/* 이름 아래 붙는 단추들 — 제일 자주 누르는 것을 손 가까이 둔다 */
+.who-acts { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+.who-acts > button { flex: 1 1 auto; min-width: 96px; margin-top: 0; }
+
 /* 글처럼 생긴 단추 — 목록을 가리지 않아야 하는 자잘한 조작 */
 .linkish {
   border: 0; background: none; padding: 0; margin-left: 6px;
