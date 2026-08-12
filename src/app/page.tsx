@@ -134,8 +134,13 @@ export default function LoginPage() {
         <p className="auth-foot">
           로그인이 안 되면 <a href="/setup">연결 점검</a> 화면을 확인하세요
           <br />
+          {/*
+            NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA 는 Vercel 설정을 켜야 들어오는 값이라
+            비어 있었다. next.config 에서 직접 박아 넣는 값을 쓴다 — 설정과 무관하게
+            언제나 채워지고, 대시보드 왼쪽 아래 번호와 같은 값이다.
+          */}
           <span className="build-tag">
-            화면 버전 {(process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7) || "로컬"}
+            화면 버전 {process.env.NEXT_PUBLIC_BUILD || "로컬"}
           </span>
         </p>
       </form>
