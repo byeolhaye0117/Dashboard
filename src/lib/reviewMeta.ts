@@ -6,6 +6,12 @@
  */
 
 export const SHEET_RV = "리뷰답글";
+/** 지점마다 다른 것들 — 플레이스 주소, 늘 쓰는 키워드, 끝인사 */
+export const SHEET_RVS = "리뷰설정";
+
+export const RVS_HEADERS = [
+  "지점코드", "플레이스ID", "키워드", "끝인사", "수정일시", "수정자",
+];
 
 export const RV_HEADERS = [
   "답글번호", "지점코드", "별점", "리뷰내용", "주제", "답글",
@@ -50,23 +56,36 @@ export function suggestTone(stars: number): string {
   return stars > 0 && stars <= 3 ? "사과" : "정중";
 }
 
+/**
+ * AI 고르기
+ *
+ * 금액은 어림잡은 값이다. 실제 요금표는 바뀔 수 있으니 여기 숫자를 믿지 말고
+ * 몇 번 써 보신 뒤 콘솔 잔액으로 확인하시는 편이 정확하다.
+ * 그래도 적어 두는 이유는, 얼마짜리 단추인지 모르고 누르는 것보다는 낫기 때문이다.
+ */
 export const MODELS = [
   {
     v: "빠름",
     label: "기본",
-    hint: "빠르고 저렴 · 평소엔 이걸로",
+    hint: "빠르고 쌈 · 칭찬 리뷰엔 이걸로",
     id: "claude-haiku-4-5-20251001",
+    won: 10,
   },
   {
     v: "꼼꼼",
-    label: "꼼꼼",
-    hint: "더 자연스럽게 · 별점 낮은 리뷰에",
+    label: "좋은 것",
+    hint: "말의 결을 읽음 · 불만·비꼬는 리뷰에",
     id: "claude-sonnet-5",
+    won: 50,
   },
 ];
 
 export function modelId(v: string): string {
   return MODELS.find((m) => m.v === v)?.id ?? MODELS[0].id;
+}
+
+export function modelWon(v: string): number {
+  return MODELS.find((m) => m.v === v)?.won ?? MODELS[0].won;
 }
 
 /**

@@ -8,7 +8,8 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffAll } from "@/lib/data";
-import { listReplies } from "@/lib/reviews";
+import { listReplies, listSettings } from "@/lib/reviews";
+import { placeReady } from "@/lib/place";
 import { DAILY_LIMIT_DEFAULT } from "@/lib/reviewMeta";
 import Shell from "../Shell";
 import Client from "./Client";
@@ -37,9 +38,10 @@ async function body() {
     session.scope === "전체" ? branches : branches.filter((b) => session.branches.includes(b.code));
 
   let replies: any[] = [];
+  let settings: any[] = [];
   let problem = "";
   try {
-    replies = await listReplies();
+    [replies, settings] = await Promise.all([listReplies(), listSettings()]);
   } catch (e: any) {
     problem = String(e?.message ?? e);
   }
@@ -59,8 +61,14 @@ async function body() {
         branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
         people={staff.map((s) => ({ id: s.id, name: s.name }))}
         replies={replies}
-        can={{ create: Boolean(mine.create), remove: Boolean(mine.remove) }}
+        settings={settings.filter((s) => codes.has(s.지점코드))}
+        can={{
+          create: Boolean(mine.create),
+          update: Boolean(mine.update),
+          remove: Boolean(mine.remove),
+        }}
         hasKey={hasKey}
+        hasPlace={placeReady()}
         limit={limit}
         problem={problem}
       />
