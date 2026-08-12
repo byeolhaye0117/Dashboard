@@ -1,14 +1,15 @@
 /**
  * 상품 원장 (서버 전용)
  *
- * 회원에게 파는 것들의 정의다. 여기서 정한 갈래·기간·가격이 회원 화면의
+ * 회원에게 파는 것들의 정의다. 여기서 정한 카테고리·기간·가격이 회원 화면의
  * 이용권 줄과 매출 계산에 그대로 쓰인다.
  *
  * 상품 한 줄을 고치면 그 상품으로 판 이용권 전부의 성격이 바뀐다.
  * 회원 한 명을 고치는 것과 무게가 다르다.
  */
 import {
-  readSheet, appendRow, appendRows, updateRow, updateRows, createSheet, type Row,
+  readSheet, appendRow, appendRows, updateRow, updateRows,
+  addColumns, createSheet, type Row,
 } from "./sheets";
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now } from "./time";
@@ -22,7 +23,8 @@ const PRB_HEADERS = ["상품코드", "지점코드", "등록일시", "등록자"
 const PR_COLS: ColumnSpec = {
   상품코드: { names: ["상품 코드", "상품번호"], required: true },
   상품명: { names: ["상품 이름", "이름"], required: true },
-  상품분류: { names: ["분류", "구분"] },
+  상품분류: { names: ["분류", "구분", "카테고리"] },
+  정렬순서: { names: ["순서", "정렬"] },
   판매상태: { names: ["상태", "판매"] },
   결제개월: { names: [] },
   서비스개월: { names: [] },
@@ -49,8 +51,11 @@ const PRB_COLS: ColumnSpec = {
   삭제여부: { names: [] },
 };
 
-/** 갈래는 이 넷뿐이다. 오타 하나로 갈래가 다섯 개가 되면 안 된다 */
-export const KINDS = ["회원권", "수강권", "케어권", "부가상품권"] as const;
+/**
+ * 카테고리는 이 다섯뿐이다. 오타 하나로 여섯 개가 되면 안 된다.
+ * 적힌 차례가 화면에 나오는 차례다.
+ */
+export const KINDS = ["회원권", "수강권", "케어권", "부가상품권", "서비스"] as const;
 
 export type AdminProduct = {
   code: string;
@@ -67,6 +72,8 @@ export type AdminProduct = {
   카드가: string;
   서비스상품: boolean;
   옵션상품: boolean;
+  /** 목록에 나오는 차례. 작을수록 위 */
+  순서: number;
   /** 이 상품을 파는 지점들. 비어 있으면 "아직 아무 지점에도 안 걸림" */
   지점들: string[];
 };
@@ -120,11 +127,27 @@ export async function listProductsAdmin(): Promise<AdminProduct[]> {
       카드가: get(r, cols, "카드가"),
       서비스상품: yes(get(r, cols, "서비스상품")),
       옵션상품: yes(get(r, cols, "옵션상품")),
+      순서: Number((get(r, cols, "정렬순서") ?? "").replace(/[^0-9]/g, "")) || 0,
       지점들: byCode.get(code) ?? [],
     });
   });
 
-  out.sort((a, b) => a.kind.localeCompare(b.kind, "ko") || a.name.localeCompare(b.name, "ko"));
+  /*
+    카테고리 차례 → 정한 순서 → 이름
+
+    순서를 아직 안 정한 것(0)은 정한 것들 뒤로 보낸다. 0 을 그대로 쓰면
+    손대지 않은 상품이 전부 맨 위로 올라온다.
+  */
+  const rank = (k: string) => {
+    const i = (KINDS as readonly string[]).indexOf(k);
+    return i < 0 ? KINDS.length : i;
+  };
+  out.sort(
+    (a, b) =>
+      rank(a.kind) - rank(b.kind) ||
+      (a.순서 || 1e9) - (b.순서 || 1e9) ||
+      a.name.localeCompare(b.name, "ko")
+  );
   return out;
 }
 
@@ -167,7 +190,7 @@ export type NewProduct = {
 export async function createProduct(input: NewProduct, staffId: string): Promise<string> {
   const name = (input.상품명 ?? "").trim();
   if (!name) throw new Error("상품 이름을 적어주세요.");
-  if (!KINDS.includes(input.상품분류 as any)) throw new Error("갈래를 골라주세요.");
+  if (!KINDS.includes(input.상품분류 as any)) throw new Error("카테고리를 골라주세요.");
 
   const p = await readSheet(SHEET_PR);
   const cols = resolve(SHEET_PR, p.headers, PR_COLS);
@@ -210,7 +233,7 @@ const EDITABLE = [
   "상품명", "상품분류", "판매상태",
   "결제개월", "서비스개월", "총이용개월",
   "결제횟수", "서비스횟수", "총횟수",
-  "현금가", "카드가", "서비스상품", "옵션상품", "삭제여부",
+  "현금가", "카드가", "서비스상품", "옵션상품", "정렬순서", "삭제여부",
 ];
 
 export async function patchProduct(
@@ -381,6 +404,46 @@ export async function setBranchesMany(
   if (updates.length > 0) await updateRows(SHEET_PRB, b.headers, updates);
   if (adds.length > 0) await appendRows(SHEET_PRB, b.headers, adds);
   return codes.length;
+}
+
+/**
+ * 끌어 옮긴 차례를 시트에 적는다
+ *
+ * 받은 차례대로 10, 20, 30… 을 매긴다. 사이 번호를 비워 두면 나중에
+ * 하나를 끼워 넣을 때 그 줄만 고치면 된다.
+ *
+ * 보내온 상품들만 손댄다. 한 카테고리 안에서 옮겼는데 다른 카테고리 번호까지
+ * 흔들리면, 눈에 안 보이는 곳이 바뀌는 셈이라 믿을 수 없게 된다.
+ */
+export async function reorderProducts(codes: string[], staffId: string): Promise<number> {
+  if (codes.length === 0) throw new Error("옮길 상품이 없습니다.");
+
+  let p = await readSheet(SHEET_PR);
+  if (!p.headers.includes("정렬순서")) {
+    await addColumns(SHEET_PR, ["정렬순서"]);
+    p = await readSheet(SHEET_PR);
+  }
+  const cols = resolve(SHEET_PR, p.headers, PR_COLS);
+  const at = new Map(codes.map((c, i) => [c, (i + 1) * 10]));
+  const stamp = now();
+
+  const items: { rowNumber: number; row: Row }[] = [];
+  p.rows.forEach((r, i) => {
+    const code = get(r, cols, "상품코드");
+    const n = at.get(code);
+    if (!n) return;
+    items.push({
+      rowNumber: p.rowNumbers[i],
+      row: {
+        ...r,
+        ...toSheetRow({ 정렬순서: String(n), 수정일시: stamp, 수정자: staffId }, cols),
+      },
+    });
+  });
+  if (items.length === 0) throw new Error("옮길 상품을 찾지 못했습니다.");
+
+  await updateRows(SHEET_PR, p.headers, items);
+  return items.length;
 }
 
 /** 상품 지우기 — 판 기록은 그대로 두고 목록에서만 뺀다 */

@@ -3,16 +3,16 @@
 /**
  * 상품 관리
  *
- * 갈래별로 묶어 보여준다. "회원권이 몇 개고 수강권이 몇 개인가"가 먼저 보여야
+ * 카테고리별로 묶어 보여준다. "회원권이 몇 개고 수강권이 몇 개인가"가 먼저 보여야
  * 상품이 어디에 몰려 있는지 안다.
  *
- * 파는 화면과 같은 갈래 이름을 쓴다 — 여기서 정한 갈래가 그대로 회원 화면에
+ * 파는 화면과 같은 카테고리 이름을 쓴다 — 여기서 정한 것이 그대로 회원 화면에
  * 나오므로, 이름이 다르면 어디서 정해지는지 알 수 없게 된다.
  */
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 
-const KINDS = ["회원권", "수강권", "케어권", "부가상품권"];
+const KINDS = ["회원권", "수강권", "케어권", "부가상품권", "서비스"];
 
 type Product = {
   code: string;
@@ -55,7 +55,7 @@ function spec(p: Product): string {
 
 export default function Client(p: Props) {
   const [q, setQ] = useState("");
-  /** 지금 보고 있는 갈래 — 빈 값이면 전체 */
+  /** 지금 보고 있는 카테고리 — 빈 값이면 전체 */
   const [cat, setCat] = useState("");
   const [showOff, setShowOff] = useState(false);
   const [edit, setEdit] = useState<Product | "new" | null>(null);
@@ -64,6 +64,14 @@ export default function Client(p: Props) {
   /** 골라 둔 상품들 — 한 번에 바꿀 대상 */
   const [picked, setPicked] = useState<string[]>([]);
   const [box, setBox] = useState<"" | "kind" | "sell" | "branch" | "del">("");
+  /*
+    끌어 옮기는 중
+
+    옮기는 동안에는 화면에 바로 반영하고, 손을 뗄 때 한 번만 저장한다.
+    한 칸 옮길 때마다 저장하면 시트를 스무 번 두드리게 된다.
+  */
+  const [drag, setDrag] = useState<{ code: string; cat: string } | null>(null);
+  const [local, setLocal] = useState<string[] | null>(null);
 
   const nameOf = useMemo(
     () => new Map(p.branches.map((b) => [b.code, b.name])),
@@ -79,7 +87,13 @@ export default function Client(p: Props) {
 
   const off = p.items.filter((x) => !x.판매중).length;
 
-  /** 갈래 이름이 넷 밖이면 회원권으로 본다 — 화면과 셈이 어긋나면 안 된다 */
+  /** 끌어 옮기는 중에는 그 차례대로 보여준다 */
+  const orderOf = (code: string) => {
+    const i = local?.indexOf(code) ?? -1;
+    return i < 0 ? 1e9 : i;
+  };
+
+  /** 카테고리 이름이 목록 밖이면 회원권으로 본다 — 화면과 셈이 어긋나면 안 된다 */
   const kindOf = (x: Product) => (KINDS.includes(x.kind) ? x.kind : "회원권");
   const countIn = (k: string) => shown.filter((x) => kindOf(x) === k).length;
   const list = cat ? shown.filter((x) => kindOf(x) === cat) : shown;
@@ -120,7 +134,7 @@ export default function Client(p: Props) {
         <div>
           <h1 className="page-title">상품 관리</h1>
           <p className="page-sub">
-            여기서 정한 갈래 · 기간 · 가격이 회원 화면과 매출에 그대로 쓰입니다
+            여기서 정한 카테고리 · 기간 · 가격이 회원 화면과 매출에 그대로 쓰입니다
           </p>
         </div>
         {p.can.create && (
@@ -133,7 +147,7 @@ export default function Client(p: Props) {
       {msg && <div className="alert-bad" style={{ marginBottom: 14 }}>{msg}</div>}
 
       {/*
-        갈래 골라 보기
+        카테고리 골라 보기
 
         상품이 스무 개를 넘어가면 한 화면에 다 뿌려도 찾기 어렵다.
         숫자는 지금 걸린 조건(찾기 · 판매중지 보기)을 거친 뒤의 개수다 —
@@ -187,7 +201,7 @@ export default function Client(p: Props) {
                 {picked.length}개 골랐습니다
               </span>
               <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setBox("kind")}>
-                갈래 바꾸기
+                카테고리 바꾸기
               </button>
               <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setBox("sell")}>
                 판매 상태
@@ -227,13 +241,44 @@ export default function Client(p: Props) {
         (cat ? [cat] : KINDS).map((k) => {
           const rows = list.filter((x) => kindOf(x) === k);
           if (rows.length === 0) return null;
+          if (local) rows.sort((a, b) => orderOf(a.code) - orderOf(b.code));
+
+          /** 끌고 온 줄을 이 자리에 끼운다 */
+          const dropOn = (target: string) => {
+            if (!drag || drag.cat !== k || drag.code === target) return;
+            const cur = local ?? rows.map((x) => x.code);
+            const from = cur.indexOf(drag.code);
+            const to = cur.indexOf(target);
+            if (from < 0 || to < 0) return;
+            const next = [...cur];
+            next.splice(to, 0, ...next.splice(from, 1));
+            setLocal(next);
+          };
           return (
             <div className="cbox" key={k} style={{ marginBottom: 12 }}>
-              {/* 한 갈래만 보고 있으면 위 칸이 이미 말해 준다 */}
+              {/* 한 카테고리만 보고 있으면 위 칸이 이미 말해 준다 */}
               {!cat && <p className="csec">{k} <span>{rows.length}</span></p>}
               {rows.map((x) => (
-                <div className={`mrow prow-wrap${picked.includes(x.code) ? " is-picked" : ""}`}
-                     key={x.code}>
+                <div className={`mrow prow-wrap${picked.includes(x.code) ? " is-picked" : ""}`
+                       + `${drag?.code === x.code ? " is-dragging" : ""}`}
+                     key={x.code}
+                     onDragOver={(e) => { e.preventDefault(); dropOn(x.code); }}
+                     onDrop={(e) => e.preventDefault()}>
+                  {p.can.update && (
+                    <span className="grip" title="끌어서 순서 바꾸기"
+                          draggable
+                          onDragStart={() => {
+                            setDrag({ code: x.code, cat: k });
+                            setLocal(rows.map((r) => r.code));
+                          }}
+                          onDragEnd={() => {
+                            const codes = local;
+                            setDrag(null);
+                            if (codes) send({ action: "order", codes });
+                          }}>
+                      ⠿
+                    </span>
+                  )}
                   {p.can.update && (
                     <input type="checkbox" className="pick-box" checked={picked.includes(x.code)}
                            aria-label={`${x.name} 고르기`}
@@ -305,7 +350,7 @@ export default function Client(p: Props) {
  * 여러 개를 한꺼번에 바꾸는 창
  *
  * 무엇을, 몇 개에 하는지를 먼저 크게 적는다. 쉰 개를 골라 놓고 무심코
- * 갈래를 옮기면 회원 화면이 통째로 달라진다.
+ * 카테고리를 옮기면 회원 화면이 통째로 달라진다.
  */
 function BatchBox({ op, count, branches, busy, onClose, onRun }: {
   op: "kind" | "sell" | "branch" | "del";
@@ -322,7 +367,7 @@ function BatchBox({ op, count, branches, busy, onClose, onRun }: {
   const [err, setErr] = useState("");
 
   const TITLES: Record<string, string> = {
-    kind: "갈래 바꾸기", sell: "판매 상태 바꾸기",
+    kind: "카테고리 바꾸기", sell: "판매 상태 바꾸기",
     branch: "파는 지점 바꾸기", del: "상품 지우기",
   };
 
@@ -347,7 +392,7 @@ function BatchBox({ op, count, branches, busy, onClose, onRun }: {
         {op === "kind" && (
           <>
             <div className="field">
-              <label htmlFor="bk">어느 갈래로</label>
+              <label htmlFor="bk">어느 카테고리로</label>
               <select id="bk" className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
                 {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
               </select>
@@ -510,7 +555,7 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
 
         <div className="form-grid">
           <div className="field">
-            <label htmlFor="pk">갈래</label>
+            <label htmlFor="pk">카테고리</label>
             <select id="pk" className="select" value={f.상품분류}
                     onChange={(e) => set("상품분류", e.target.value)}>
               {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
