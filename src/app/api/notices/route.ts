@@ -177,10 +177,11 @@ export async function POST(req: Request) {
       if (!mine.create) {
         return NextResponse.json({ error: "목록을 저장할 권한이 없습니다." }, { status: 403 });
       }
+      // 내용을 안 보내면 이름만 바꾸겠다는 뜻이다
       const id = await savePlan(
         String(body.id ?? ""),
         String(body.목록명 ?? ""),
-        String(body.내용 ?? ""),
+        body.내용 === undefined || body.내용 === null ? null : String(body.내용),
         session.staffId
       );
       return NextResponse.json({ ok: true, id });
