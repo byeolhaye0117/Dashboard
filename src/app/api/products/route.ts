@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import {
-  createProduct, patchProduct, setBranches, softDeleteProduct, KINDS,
+  createProduct, patchProduct, setBranches, softDeleteProduct,
+  batchProducts, setBranchesMany, KINDS,
 } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +62,45 @@ export async function POST(req: Request) {
         session.staffId
       );
       return NextResponse.json({ ok: true, code });
+    }
+
+    /* 여러 개 한 번에 — 갈래 · 판매 상태 · 파는 지점 */
+    if (action === "batch") {
+      if (!mine.update) {
+        return NextResponse.json({ error: "상품을 고칠 권한이 없습니다." }, { status: 403 });
+      }
+      const codes: string[] = Array.isArray(body.codes) ? body.codes.map(String) : [];
+      const want = body.changes ?? {};
+      const changes: Record<string, string> = {};
+
+      if ("상품분류" in want) {
+        const k = String(want.상품분류 ?? "");
+        if (!KINDS.includes(k as any)) {
+          return NextResponse.json({ error: "쓸 수 없는 갈래입니다." }, { status: 400 });
+        }
+        changes.상품분류 = k;
+      }
+      if ("판매상태" in want) {
+        changes.판매상태 = want.판매상태 === "판매중지" ? "판매중지" : "판매중";
+      }
+      if ("서비스상품" in want) changes.서비스상품 = want.서비스상품 ? "Y" : "";
+      if ("옵션상품" in want) changes.옵션상품 = want.옵션상품 ? "Y" : "";
+      if (want.삭제여부 === "Y") {
+        if (!mine.remove) {
+          return NextResponse.json({ error: "상품을 지울 권한이 없습니다." }, { status: 403 });
+        }
+        changes.삭제여부 = "Y";
+      }
+
+      let n = 0;
+      if (Object.keys(changes).length > 0) {
+        n = await batchProducts(codes, changes, session.staffId);
+      }
+      if (Array.isArray(body.지점들)) {
+        n = await setBranchesMany(codes, 지점들, session.staffId);
+      }
+      if (n === 0) return NextResponse.json({ error: "바꿀 내용이 없습니다." }, { status: 400 });
+      return NextResponse.json({ ok: true, count: n });
     }
 
     const code = String(body.상품코드 ?? "");

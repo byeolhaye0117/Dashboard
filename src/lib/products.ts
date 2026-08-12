@@ -7,7 +7,9 @@
  * 상품 한 줄을 고치면 그 상품으로 판 이용권 전부의 성격이 바뀐다.
  * 회원 한 명을 고치는 것과 무게가 다르다.
  */
-import { readSheet, appendRow, updateRow, createSheet, type Row } from "./sheets";
+import {
+  readSheet, appendRow, appendRows, updateRow, updateRows, createSheet, type Row,
+} from "./sheets";
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now } from "./time";
 
@@ -277,6 +279,108 @@ export async function setBranches(
       등록일시: stamp, 등록자: staffId, 삭제여부: "",
     }, cols));
   }
+}
+
+/**
+ * 여러 상품을 한꺼번에 바꾼다
+ *
+ * 쉰 개가 넘는 상품의 갈래를 하나씩 고치게 하면 아무도 안 고친다.
+ * 쓰기도 한 번에 몰아 보낸다 — 쉰 번을 나눠 보내면 중간에 끊겼을 때
+ * 절반만 바뀐 상태로 남는다.
+ */
+export async function batchProducts(
+  codes: string[],
+  changes: Record<string, string>,
+  staffId: string
+): Promise<number> {
+  if (codes.length === 0) throw new Error("상품을 골라주세요.");
+  const safe: Record<string, string> = {};
+  Object.entries(changes).forEach(([k, v]) => {
+    if (EDITABLE.includes(k)) safe[k] = String(v ?? "");
+  });
+  if (Object.keys(safe).length === 0) throw new Error("바꿀 내용이 없습니다.");
+
+  const p = await readSheet(SHEET_PR);
+  const cols = resolve(SHEET_PR, p.headers, PR_COLS);
+  const want = new Set(codes);
+  const stamp = now();
+
+  const items: { rowNumber: number; row: Row }[] = [];
+  p.rows.forEach((r, i) => {
+    if (!want.has(get(r, cols, "상품코드"))) return;
+    items.push({
+      rowNumber: p.rowNumbers[i],
+      row: { ...r, ...toSheetRow({ ...safe, 수정일시: stamp, 수정자: staffId }, cols) },
+    });
+  });
+  if (items.length === 0) throw new Error("고르신 상품을 찾지 못했습니다.");
+
+  await updateRows(SHEET_PR, p.headers, items);
+  return items.length;
+}
+
+/**
+ * 여러 상품의 「파는 지점」을 한꺼번에 맞춘다
+ *
+ * 상품마다 setBranches 를 부르면 상품 수만큼 시트를 다시 읽는다.
+ * 한 번 읽고 한 번에 쓴다.
+ */
+export async function setBranchesMany(
+  codes: string[],
+  지점들: string[],
+  staffId: string
+): Promise<number> {
+  if (codes.length === 0) throw new Error("상품을 골라주세요.");
+  await createSheet(SHEET_PRB, PRB_HEADERS);
+
+  const b = await readSheet(SHEET_PRB);
+  const cols = resolve(SHEET_PRB, b.headers, PRB_COLS);
+  const want = new Set(지점들.filter(Boolean));
+  const codeSet = new Set(codes);
+  const stamp = now();
+
+  /** 이미 줄이 있는 (상품, 지점) 짝 */
+  const have = new Map<string, { rowNumber: number; row: Row; gone: boolean }>();
+  b.rows.forEach((r, i) => {
+    const code = get(r, cols, "상품코드");
+    if (!codeSet.has(code)) return;
+    const br = get(r, cols, "지점코드");
+    if (!br) return;
+    have.set(`${code}|${br}`, {
+      rowNumber: b.rowNumbers[i],
+      row: r,
+      gone: (r["삭제여부"] ?? "").toUpperCase() === "Y",
+    });
+  });
+
+  const updates: { rowNumber: number; row: Row }[] = [];
+  const adds: Row[] = [];
+
+  codes.forEach((code) => {
+    // 켜야 하는 지점
+    want.forEach((br) => {
+      const hit = have.get(`${code}|${br}`);
+      if (!hit) {
+        adds.push(toSheetRow({
+          상품코드: code, 지점코드: br,
+          등록일시: stamp, 등록자: staffId, 삭제여부: "",
+        }, cols));
+      } else if (hit.gone) {
+        updates.push({ rowNumber: hit.rowNumber, row: { ...hit.row, ...toSheetRow({ 삭제여부: "" }, cols) } });
+      }
+    });
+  });
+
+  // 꺼야 하는 지점
+  have.forEach((hit, key) => {
+    const br = key.split("|")[1];
+    if (want.has(br) || hit.gone) return;
+    updates.push({ rowNumber: hit.rowNumber, row: { ...hit.row, ...toSheetRow({ 삭제여부: "Y" }, cols) } });
+  });
+
+  if (updates.length > 0) await updateRows(SHEET_PRB, b.headers, updates);
+  if (adds.length > 0) await appendRows(SHEET_PRB, b.headers, adds);
+  return codes.length;
 }
 
 /** 상품 지우기 — 판 기록은 그대로 두고 목록에서만 뺀다 */
