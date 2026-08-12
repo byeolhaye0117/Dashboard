@@ -1058,6 +1058,32 @@ export async function softDeleteMember(id: string, staffId: string): Promise<voi
   });
 }
 
+/**
+ * 여러 명을 한 번에 지운다
+ *
+ * 한 명씩 보내면 사람 수만큼 시트를 두드린다. 중간에 끊기면 절반만 지워진
+ * 상태로 남는데, 지우는 일은 특히 그런 상태가 남으면 안 된다.
+ */
+export async function softDeleteMembers(ids: string[], staffId: string): Promise<number> {
+  if (ids.length === 0) throw new Error("지울 회원을 골라주세요.");
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_M);
+  const cols = resolve(SHEET_M, headers, M_COLS);
+  const want = new Set(ids);
+  const stamp = now();
+
+  const items: { rowNumber: number; row: Row }[] = [];
+  rows.forEach((r, i) => {
+    if (!want.has(get(r, cols, "회원번호"))) return;
+    items.push({
+      rowNumber: rowNumbers[i],
+      row: { ...r, 삭제여부: "Y", ...toSheetRow({ 수정일시: stamp, 수정자: staffId }, cols) },
+    });
+  });
+  if (items.length === 0) throw new Error("고르신 회원을 찾지 못했습니다.");
+
+  await updateRows(SHEET_M, headers, items);
+  return items.length;
+}
 
 /* ── 화면 확인용 샘플 자료 ─────────────────── */
 

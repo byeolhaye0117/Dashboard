@@ -184,6 +184,19 @@ export default function Client(p: Props) {
   const [q, setQ] = useState("");
   const [openNew, setOpenNew] = useState(false);
   const [detail, setDetail] = useState<Member | null>(null);
+  /*
+    지금 보고 있는 지점
+
+    위쪽에서 지점을 고르는데 목록이 그대로였다. 두정점을 보고 있는데 쌍용점
+    회원이 뜨면, 화면에 적힌 지점을 믿을 수 없게 된다.
+    빈 값이면 담당 지점 전부 — 여러 지점을 맡은 사람은 한 번에 보기도 해야 한다.
+  */
+  const [branch, setBranch] = useState(p.currentBranch);
+  /** 골라 둔 회원들 — 한 번에 지울 대상 */
+  const [picked, setPicked] = useState<string[]>([]);
+  const [killing, setKilling] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
 
   const now = today();
   const thisMonth = now.slice(0, 7);
@@ -229,13 +242,19 @@ export default function Client(p: Props) {
     return soonest <= SOON ? "만료임박" : "이용중";
   };
 
-  const newThisMonth = p.items.filter((m) => (m.가입일 ?? "").startsWith(thisMonth)).length;
-  const using = p.items.filter((m) => stateOf(m) === "이용중").length;
-  const soon = p.items.filter((m) => stateOf(m) === "만료임박").length;
-  const expired = p.items.filter((m) => stateOf(m) === "만료").length;
+  /** 고른 지점 회원만 — 숫자도 목록도 전부 이걸 바탕으로 센다 */
+  const scoped = useMemo(
+    () => (branch ? p.items.filter((m) => m.지점코드 === branch) : p.items),
+    [p.items, branch]
+  );
+
+  const newThisMonth = scoped.filter((m) => (m.가입일 ?? "").startsWith(thisMonth)).length;
+  const using = scoped.filter((m) => stateOf(m) === "이용중").length;
+  const soon = scoped.filter((m) => stateOf(m) === "만료임박").length;
+  const expired = scoped.filter((m) => stateOf(m) === "만료").length;
 
   const list = useMemo(() => {
-    return p.items.filter((m) => {
+    return scoped.filter((m) => {
       if (tab !== "전체" && stateOf(m) !== tab) return false;
       if (q) {
         const hay = `${m.이름} ${m.전화번호} ${m.거주동네}`.toLowerCase();
@@ -243,7 +262,7 @@ export default function Client(p: Props) {
       }
       return true;
     });
-  }, [p.items, p.tickets, tab, q, now]);
+  }, [scoped, p.tickets, tab, q, now]);
 
   if (p.problem) {
     return (
@@ -281,7 +300,7 @@ export default function Client(p: Props) {
       <div className="stats">
         <div className="stat">
           <div className="lb">전체 회원</div>
-          <div className="vl num">{p.items.length}</div>
+          <div className="vl num">{scoped.length}</div>
           <div className="dt">이용중 {using}명</div>
         </div>
         <div className="stat">
@@ -307,13 +326,64 @@ export default function Client(p: Props) {
         </p>
       )}
 
+      {msg && <div className="alert-bad" style={{ marginBottom: 12 }}>{msg}</div>}
+
+      {/* 지점이 하나뿐인 사람에게는 고를 것이 없다 */}
+      {p.branches.length > 1 && (
+        <div className="pick-row" style={{ margin: "0 0 12px", flexWrap: "wrap" }}>
+          {p.branches.map((b) => (
+            <button key={b.code} className={`mini-tab${branch === b.code ? " on" : ""}`}
+                    onClick={() => { setBranch(b.code); setPicked([]); }}>
+              {b.name}
+              {/* 0 을 빨간 딱지로 달면 아무 일도 없는데 뭔가 있는 것처럼 보인다 */}
+              {p.items.filter((m) => m.지점코드 === b.code).length > 0 && (
+                <span className="dot">{p.items.filter((m) => m.지점코드 === b.code).length}</span>
+              )}
+            </button>
+          ))}
+          <button className={`mini-tab${branch === "" ? " on" : ""}`}
+                  onClick={() => { setBranch(""); setPicked([]); }}>
+            전 지점{p.items.length > 0 && <span className="dot">{p.items.length}</span>}
+          </button>
+        </div>
+      )}
+
+      {p.can.remove && picked.length > 0 && (
+        <div className="save-bar many" style={{ marginBottom: 12 }}>
+          <span>{picked.length}명 골랐습니다</span>
+          {killing ? (
+            <button className="btn-danger" style={{ marginTop: 0 }} disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      setMsg("");
+                      const res = await fetch("/api/members/delete", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ ids: picked }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) { setBusy(false); setKilling(false); return setMsg(data.error); }
+                      location.reload();
+                    }}>
+              {busy ? "지우는 중…" : `정말 ${picked.length}명을 지웁니다`}
+            </button>
+          ) : (
+            <button className="btn-danger" style={{ marginTop: 0 }} onClick={() => setKilling(true)}>
+              지우기
+            </button>
+          )}
+          <button className="btn-ghost" style={{ marginTop: 0 }}
+                  onClick={() => { setPicked([]); setKilling(false); }}>선택 해제</button>
+        </div>
+      )}
+
       <div className="filters">
         <div className="chips">
           {["전체", "이용중", "만료임박", "만료", "이용권 없음"].map((t) => (
             <button key={t} className={`chip${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>
               {t}
               <span className="cnt num">
-                {t === "전체" ? p.items.length : p.items.filter((m) => stateOf(m) === t).length}
+                {t === "전체" ? scoped.length : scoped.filter((m) => stateOf(m) === t).length}
               </span>
             </button>
           ))}
@@ -329,7 +399,7 @@ export default function Client(p: Props) {
           <Icon name="users" size={26} />
           <b>{p.items.length === 0 ? "아직 등록된 회원이 없습니다" : "조건에 맞는 회원이 없습니다"}</b>
           <p>
-            {p.items.length === 0
+            {scoped.length === 0
               ? "오른쪽 위 회원 등록 단추로 첫 회원을 넣어보세요."
               : "필터를 바꿔보세요."}
           </p>
@@ -339,6 +409,15 @@ export default function Client(p: Props) {
           <table className="grid">
             <thead>
               <tr>
+                {p.can.remove && (
+                  <th style={{ width: 34 }}>
+                    <input type="checkbox" className="pick-box" aria-label="모두 고르기"
+                           checked={list.length > 0 && list.every((m) => picked.includes(m.id))}
+                           onChange={(e) =>
+                             setPicked(e.target.checked ? list.map((m) => m.id) : [])
+                           } />
+                  </th>
+                )}
                 <th>이름</th>
                 <th>연락처</th>
                 <th>성별 · 나이</th>
@@ -355,7 +434,23 @@ export default function Client(p: Props) {
                 const st = stateOf(m);
                 const end = endOf[m.id];
                 return (
-                  <tr key={m.id} onClick={() => setDetail(m)}>
+                  <tr key={m.id} className={picked.includes(m.id) ? "is-picked" : ""}
+                      onClick={() => setDetail(m)}>
+                    {p.can.remove && (
+                      /* 지우려고 고르는 칸이라 줄을 여는 것과 겹치면 안 된다 */
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" className="pick-box"
+                               aria-label={`${m.이름} 고르기`}
+                               checked={picked.includes(m.id)}
+                               onChange={() =>
+                                 setPicked((cur) =>
+                                   cur.includes(m.id)
+                                     ? cur.filter((x) => x !== m.id)
+                                     : [...cur, m.id]
+                                 )
+                               } />
+                      </td>
+                    )}
                     <td className="strong">{m.이름}</td>
                     <td className="num">{showPhone(m.전화번호)}</td>
                     <td className="dim">
