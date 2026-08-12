@@ -11,9 +11,9 @@
 import { readSheet, appendRow, updateRow, createSheet, type Row } from "./sheets";
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now, today } from "./time";
-import { SHEET_RV, RV_HEADERS } from "./reviewMeta";
+import { SHEET_RV, RV_HEADERS, SHEET_RVS, RVS_HEADERS } from "./reviewMeta";
 
-export { SHEET_RV } from "./reviewMeta";
+export { SHEET_RV, SHEET_RVS } from "./reviewMeta";
 
 const RV_COLS: ColumnSpec = {
   답글번호: { names: ["답글 번호"], required: true },
@@ -42,6 +42,7 @@ export type Reply = {
   키워드: string[];
   말투: string;
   길이: string;
+  모델: string;
   등록일시: string;
   등록자: string;
 };
@@ -84,6 +85,7 @@ export async function listReplies(): Promise<Reply[]> {
       키워드: splitList(get(r, c, "키워드")),
       말투: get(r, c, "말투"),
       길이: get(r, c, "길이"),
+      모델: get(r, c, "모델"),
       등록일시: get(r, c, "등록일시"),
       등록자: get(r, c, "등록자"),
     });
@@ -154,6 +156,78 @@ export async function saveReply(r: {
     ) as Row
   );
   return id;
+}
+
+/* ── 지점마다 다른 것들 ──────────────────────────────────
+ *
+ * 플레이스 주소는 지점마다 다르고, 늘 쓰는 키워드와 끝인사도 다르다.
+ * 브라우저에만 담아두면 다른 직원이 열었을 때 텅 비어 있다. 시트에 둔다.
+ * ──────────────────────────────────────────────────── */
+
+const RVS_COLS: ColumnSpec = {
+  지점코드: { names: ["지점"], required: true },
+  플레이스ID: { names: ["플레이스", "플레이스주소", "place"] },
+  키워드: { names: [] },
+  끝인사: { names: [] },
+  수정일시: { names: [] },
+  수정자: { names: [] },
+};
+
+export type ReviewSetting = { 지점코드: string; 플레이스ID: string; 키워드: string[]; 끝인사: string };
+
+export async function listSettings(): Promise<ReviewSetting[]> {
+  let data;
+  try {
+    data = await readSheet(SHEET_RVS);
+  } catch {
+    return [];
+  }
+  const c = resolve(SHEET_RVS, data.headers, RVS_COLS);
+  const out: ReviewSetting[] = [];
+  data.rows.forEach((r) => {
+    const code = get(r, c, "지점코드");
+    if (!code) return;
+    out.push({
+      지점코드: code,
+      플레이스ID: get(r, c, "플레이스ID"),
+      키워드: splitList(get(r, c, "키워드")),
+      끝인사: get(r, c, "끝인사"),
+    });
+  });
+  return out;
+}
+
+/** 지점 한 줄을 고치거나, 없으면 새로 만든다 */
+export async function saveSetting(
+  지점코드: string,
+  patch: { 플레이스ID?: string; 키워드?: string[]; 끝인사?: string },
+  byId: string
+): Promise<void> {
+  if (!지점코드) throw new Error("지점을 고르지 않았습니다.");
+  await createSheet(SHEET_RVS, RVS_HEADERS);
+
+  const data = await readSheet(SHEET_RVS);
+  const c = resolve(SHEET_RVS, data.headers, RVS_COLS);
+  const stamp = now();
+
+  const fields: Record<string, string> = { 수정일시: stamp, 수정자: byId };
+  if (patch.플레이스ID !== undefined) fields.플레이스ID = patch.플레이스ID.trim();
+  if (patch.키워드 !== undefined) fields.키워드 = patch.키워드.join(", ");
+  if (patch.끝인사 !== undefined) fields.끝인사 = patch.끝인사;
+
+  const i = data.rows.findIndex((r) => get(r, c, "지점코드") === 지점코드);
+  if (i >= 0) {
+    await updateRow(SHEET_RVS, data.rowNumbers[i], data.headers, {
+      ...data.rows[i],
+      ...(toSheetRow(fields, c) as Row),
+    });
+    return;
+  }
+  await appendRow(
+    SHEET_RVS,
+    data.headers,
+    toSheetRow({ 지점코드, 플레이스ID: "", 키워드: "", 끝인사: "", ...fields }, c) as Row
+  );
 }
 
 /** 마음에 안 드는 답글은 지운다 — 줄은 남기고 표시만 한다 */

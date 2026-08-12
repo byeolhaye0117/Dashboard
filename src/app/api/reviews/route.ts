@@ -3,12 +3,13 @@ import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import { getBranches } from "@/lib/data";
 import { ask, parseJson } from "@/lib/ai";
-import { saveReply, softDeleteReply, countToday } from "@/lib/reviews";
-import { LENGTHS, TONES, modelId, DAILY_LIMIT_DEFAULT } from "@/lib/reviewMeta";
+import { saveReply, softDeleteReply, countToday, listSettings, saveSetting } from "@/lib/reviews";
+import { collectPlace } from "@/lib/place";
+import { LENGTHS, TONES, modelId, modelWon, DAILY_LIMIT_DEFAULT } from "@/lib/reviewMeta";
 
 export const dynamic = "force-dynamic";
-/* AI 가 답을 쓰는 데 시간이 걸린다 — 기본 제한(10초)이면 중간에 끊긴다 */
-export const maxDuration = 60;
+/* AI 가 답을 쓰는 데도, 네이버에서 리뷰를 긁어오는 데도 시간이 걸린다 */
+export const maxDuration = 120;
 
 /**
  * 답글을 어떻게 쓰라고 시킬지
@@ -18,6 +19,7 @@ export const maxDuration = 60;
  *  - 손님 이름·나이·성별을 추측하지 않는다
  *  - 키워드는 자연스럽게 한두 번만 — 억지로 밀어 넣으면 읽는 사람이 먼저 안다
  *  - 별점이 낮으면 반박하지 않는다
+ *  - 지금 지킬 수 없게 될 약속을 하지 않는다 — 답글은 몇 년씩 남는다
  */
 function buildPrompt(p: {
   branchName: string;
@@ -27,6 +29,9 @@ function buildPrompt(p: {
   tone: string;
   keywords: string[];
   ending: string;
+  /** 플레이스에서 실제로 확인된 우리 가게 사실 */
+  facts: string[];
+  landmarks: string[];
 }) {
   const len = LENGTHS.find((x) => x.v === p.length) ?? LENGTHS[1];
   const tone = TONES.find((x) => x.v === p.tone) ?? TONES[0];
@@ -37,11 +42,21 @@ function buildPrompt(p: {
     "",
     "[반드시 지킬 것]",
     "1. 리뷰에 실제로 적힌 내용을 하나 이상 구체적으로 짚어서 답한다. 두루뭉술한 감사 인사만 쓰지 않는다.",
-    "2. 리뷰에 없는 사실을 지어내지 않는다. 없는 시설·행사·할인·직원 이름을 만들어내지 않는다.",
-    "3. 손님의 이름·나이·성별·직업을 추측해서 부르지 않는다.",
-    "4. 존댓말로 쓴다. 이모지는 아예 쓰지 않거나 많아도 한 개까지.",
-    "5. 과장하거나 단정하지 않는다. \"최고\", \"1등\", \"무조건\" 같은 말을 쓰지 않는다.",
-    "6. 다른 손님의 개인정보를 언급하지 않는다.",
+    "2. 손님이 쓴 낱말을 한 번은 그대로 되받아서, 읽었다는 것이 드러나게 한다.",
+    "3. 아래 [우리 가게 사실]에 없는 것을 지어내지 않는다. 없는 시설·행사·할인·직원 이름을 만들지 않는다.",
+    "4. 손님의 이름·나이·성별·직업을 추측해서 부르지 않는다.",
+    "5. 앞날을 약속하지 않는다. 특히 가격은 \"앞으로도 올리지 않겠다\" 같은 말을 절대 쓰지 않는다. 답글은 몇 년씩 남고 그대로 증거가 된다.",
+    "6. 존댓말로 쓴다. 이모지는 아예 쓰지 않거나 많아도 한 개까지.",
+    "7. 과장하거나 단정하지 않는다. \"최고\", \"1등\", \"무조건\" 같은 말을 쓰지 않는다.",
+    "8. 다른 손님의 개인정보를 언급하지 않는다.",
+    "",
+    "[누구를 위한 글인가] 답글은 리뷰를 쓴 손님보다, 그 답글을 읽을 다음 손님을 위한 것이다.",
+    "그래서 우리 가게의 강점 한 가지가 자연스럽게 한 번은 드러나게 쓴다.",
+    "",
+    p.facts.length
+      ? `[우리 가게 사실] 아래는 네이버 플레이스에서 실제로 확인된 것이다. 답글에 써도 된다.\n- ${p.facts.join("\n- ")}`
+      : "[우리 가게 사실] 확인된 것이 없다. 시설이나 프로그램을 구체적으로 말하지 말고, 리뷰 내용에만 답한다.",
+    p.landmarks.length ? `[근처] ${p.landmarks.join(", ")}` : "",
     "",
     `[길이] ${len.rule}로 쓴다.`,
     `[말투] ${tone.rule}`,
@@ -80,6 +95,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "리뷰 답글을 쓸 수 없는 계정입니다." }, { status: 403 });
   }
 
+  /* 화면이 보낸 지점을 그대로 믿지 않는다 */
+  const inScope = (b: string) => session.scope === "전체" || session.branches.includes(b);
+
   try {
     const body = await req.json();
     const action = String(body.action ?? "");
@@ -94,18 +112,60 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    const branch = String(body.지점코드 ?? "");
+
+    /* ── 지점 설정 저장 — 플레이스 주소 · 키워드 · 끝인사 ── */
+    if (action === "settings") {
+      if (!mine.update && !mine.create) {
+        return NextResponse.json({ error: "설정을 바꿀 권한이 없습니다." }, { status: 403 });
+      }
+      if (!branch || !inScope(branch)) {
+        return NextResponse.json({ error: "담당 지점만 고칠 수 있습니다." }, { status: 403 });
+      }
+      const patch: any = {};
+      if (body.플레이스ID !== undefined) patch.플레이스ID = String(body.플레이스ID ?? "");
+      if (Array.isArray(body.키워드)) {
+        patch.키워드 = body.키워드.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 5);
+      }
+      if (body.끝인사 !== undefined) patch.끝인사 = String(body.끝인사 ?? "");
+      await saveSetting(branch, patch, session.staffId);
+      return NextResponse.json({ ok: true });
+    }
+
+    /* ── 밀린 리뷰 불러오기 ── */
+    if (action === "collect") {
+      if (!branch || !inScope(branch)) {
+        return NextResponse.json({ error: "담당 지점만 볼 수 있습니다." }, { status: 403 });
+      }
+      const setting = (await listSettings()).find((s) => s.지점코드 === branch);
+      const placeId = (setting?.플레이스ID ?? "").trim();
+      if (!placeId) {
+        return NextResponse.json(
+          { error: "이 지점의 플레이스 주소가 아직 없습니다. 위 칸에 넣고 저장해주세요." },
+          { status: 400 }
+        );
+      }
+      const got = await collectPlace(placeId);
+      return NextResponse.json({
+        ok: true,
+        placeId: got.placeId,
+        openReviews: got.openReviews,
+        facts: got.facts,
+        landmarks: got.landmarks,
+        feeds: got.feeds,
+      });
+    }
+
     if (action !== "write") {
       return NextResponse.json({ error: "알 수 없는 요청입니다." }, { status: 400 });
     }
 
+    /* ── 답글 만들기 ── */
     if (!mine.create) {
       return NextResponse.json({ error: "답글을 만들 권한이 없습니다." }, { status: 403 });
     }
-
-    /* 화면이 보낸 지점을 그대로 믿지 않는다 */
-    const branch = String(body.지점코드 ?? "");
     if (!branch) return NextResponse.json({ error: "지점을 고르지 않았습니다." }, { status: 400 });
-    if (session.scope !== "전체" && !session.branches.includes(branch)) {
+    if (!inScope(branch)) {
       return NextResponse.json({ error: "담당 지점에만 쓸 수 있습니다." }, { status: 403 });
     }
 
@@ -135,10 +195,18 @@ export async function POST(req: Request) {
     const keywords: string[] = Array.isArray(body.키워드)
       ? body.키워드.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 5)
       : [];
+    /* 수집한 사실은 화면이 들고 있다가 같이 보낸다 — 답글 하나 만들 때마다
+       네이버를 다시 긁으면 느리고, 긁는 쪽이 막힐 이유만 늘어난다 */
+    const facts: string[] = Array.isArray(body.사실)
+      ? body.사실.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 12)
+      : [];
+    const landmarks: string[] = Array.isArray(body.근처)
+      ? body.근처.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 4)
+      : [];
     const modelPick = String(body.모델 ?? "빠름");
 
     const { system, user } = buildPrompt({
-      branchName, review, stars, length, tone, keywords, ending,
+      branchName, review, stars, length, tone, keywords, ending, facts, landmarks,
     });
 
     const out = await ask({
@@ -164,6 +232,15 @@ export async function POST(req: Request) {
       session.staffId
     );
 
+    /* 이번에 실제로 쓴 키워드·끝인사를 그 지점의 기본값으로 남긴다.
+       화면에서 누를 때마다 저장하면 쓰기가 겹쳐 서로 덮어쓴다 — 정해진 순간은 지금이다.
+       실패해도 답글은 이미 만들어졌으므로 그것 때문에 오류를 내지 않는다. */
+    try {
+      await saveSetting(branch, { 키워드: keywords, 끝인사: ending }, session.staffId);
+    } catch {
+      /* 설정 저장은 곁다리다 */
+    }
+
     return NextResponse.json({
       ok: true,
       id,
@@ -171,6 +248,8 @@ export async function POST(req: Request) {
       답글,
       used: used + 1,
       limit,
+      /* 얼마짜리 단추를 눌렀는지 — 어림값이다 */
+      원: modelWon(modelPick),
       등록일시: new Date().toISOString(),
     });
   } catch (e: any) {
