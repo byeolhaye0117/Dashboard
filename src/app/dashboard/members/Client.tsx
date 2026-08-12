@@ -1326,6 +1326,10 @@ function Detail({
   return (
     <div className="modal-back" onClick={onClose}>
       <div className={`modal ${editing ? "wide" : "xl"}`} onClick={(e) => e.stopPropagation()}>
+        {/* 아래 단추 줄을 없앴으니 닫는 길이 눈에 보여야 한다 */}
+        {!editing && (
+          <button className="modal-x" onClick={onClose} aria-label="닫기">×</button>
+        )}
 
         {editing ? (
           <>
@@ -1366,8 +1370,30 @@ function Detail({
 
             {msg && <div className="alert-bad">{msg}</div>}
 
+            {confirmDel && (
+              <div className="confirm-box">
+                <b>{item.이름}님을 목록에서 지울까요?</b>
+                <p>
+                  결제 · 이용권 기록은 그대로 남습니다. 시트에서도 줄을 지우지 않고
+                  삭제 표시만 하므로 되살릴 수 있습니다.
+                </p>
+                <div className="modal-actions" style={{ marginTop: 12 }}>
+                  <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
+                  <button className="btn-danger" onClick={remove} disabled={busy}>
+                    {busy ? "처리 중…" : "지우기"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => { setEditing(false); setF({ ...(item as any) }); setMsg(""); }}>
+              {can.remove && !confirmDel && (
+                <button className="btn-ghost danger" style={{ marginRight: "auto" }}
+                        onClick={() => setConfirmDel(true)}>회원 지우기</button>
+              )}
+              <button className="btn-ghost" onClick={() => {
+                setEditing(false); setConfirmDel(false); setF({ ...(item as any) }); setMsg("");
+              }}>
                 취소
               </button>
               <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
@@ -1501,31 +1527,6 @@ function Detail({
 
             {msg && <div className="alert-bad">{msg}</div>}
 
-            {confirmDel ? (
-              <div className="confirm-box">
-                <b>{item.이름}님을 목록에서 지울까요?</b>
-                <p>
-                  결제 · 이용권 기록은 그대로 남습니다. 시트에서도 줄을 지우지 않고
-                  삭제 표시만 하므로 되살릴 수 있습니다.
-                </p>
-                <div className="modal-actions" style={{ marginTop: 12 }}>
-                  <button className="btn-ghost" onClick={() => setConfirmDel(false)}>그만두기</button>
-                  <button className="btn-danger" onClick={remove} disabled={busy}>
-                    {busy ? "처리 중…" : "지우기"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="modal-actions">
-                {can.remove && (
-                  <button className="btn-ghost danger" onClick={() => setConfirmDel(true)}>지우기</button>
-                )}
-                {can.update && (
-                  <button className="btn-ghost" onClick={() => { setEditing(true); setMsg(""); }}>수정</button>
-                )}
-                <button className="btn-ghost" onClick={onClose}>닫기</button>
-              </div>
-            )}
           </>
         )}
       </div>
@@ -1605,66 +1606,78 @@ function Board({
       <div className="mcard">
         {head("이용권", `유효 ${live.rows.length} · 만료 ${만료}`, "이용권")}
 
-        {live.rows.length === 0 && live.extraRows.length === 0 ? (
-          <p className="empty">
-            지금 쓸 수 있는 회원권 · 수강권이 없습니다. <b>재등록 대상</b>입니다.
-          </p>
-        ) : (
-          CATS.map((c) => {
-            const rows = [...live.rows, ...live.extraRows].filter(
-              (t) => ticketCat(productOf(t.상품코드)) === c.key
-            );
-            if (rows.length === 0) return null;
-            return (
-              <div key={c.key}>
-                <p className="csec">{c.key} <span>{rows.length}</span></p>
-                {rows.map((t) => (
-                  <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
-                             onClick={can.update ? () => onTicket(t) : undefined} />
-                ))}
-              </div>
-            );
-          })
-        )}
+        {(() => {
+          /*
+            무료로 받은 것도 같은 갈래에 넣는다
 
-        {(live.serviceRows.length > 0 || extras.length > 0) && (
-          <>
-            <p className="csec">
-              받은 서비스 · 옵션 <span>{live.serviceRows.length + extras.length}</span>
-            </p>
-            {live.serviceRows.map((t) => (
-              <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free
-                         onClick={can.update ? () => onTicket(t) : undefined} />
-            ))}
-            {/*
-              회원권을 팔 때 얹어준 것
+            「완초자 PT 20회 서비스」는 돈을 안 냈을 뿐 수강권이다. 따로 빼두면
+            수강권이 몇 개인지 볼 때마다 두 군데를 더해야 한다.
+            공짜라는 사실은 줄에 붙는 「무료」 딱지로 말한다.
 
-              제 기간이 따로 없다. 붙어 있는 회원권이 살아 있는 동안만 쓰는
-              것이므로 그 회원권의 기간을 그대로 빌려 막대로 보여준다.
-              붙은 회원권을 못 찾으면 막대 없이 이름만 적는다.
-            */}
-            {extras.map((x) => {
-              const host = tickets.find((t) => t.id === x.이용권번호);
-              const 값 = Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "무료";
-              if (!host) {
-                return (
-                  <div className="mrow" key={x.id}>
-                    <div className="t">
-                      <b>{productOf(x.상품코드)?.name ?? x.상품코드}</b>
-                      <span className="dim">{값}</span>
-                    </div>
-                  </div>
-                );
-              }
-              return (
-                <TicketBar key={x.id} t={{ ...host, 상품코드: x.상품코드 }}
-                           pr={productOf(x.상품코드)} now={now}
+            얹어준 것(extras)은 제 기간이 없어 붙은 회원권의 기간을 빌려 쓴다.
+          */
+          type Line = { key: string; cat: string; el: any };
+          const lines: Line[] = [];
+
+          [...live.rows, ...live.extraRows].forEach((t) => {
+            lines.push({
+              key: t.id,
+              cat: ticketCat(productOf(t.상품코드)),
+              el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                             onClick={can.update ? () => onTicket(t) : undefined} />,
+            });
+          });
+
+          live.serviceRows.forEach((t) => {
+            lines.push({
+              key: t.id,
+              cat: ticketCat(productOf(t.상품코드)),
+              el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free
+                             onClick={can.update ? () => onTicket(t) : undefined} />,
+            });
+          });
+
+          extras.forEach((x) => {
+            const host = tickets.find((t) => t.id === x.이용권번호);
+            const 값 = Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "무료";
+            const pr = productOf(x.상품코드);
+            lines.push({
+              key: x.id,
+              cat: ticketCat(pr),
+              el: host ? (
+                <TicketBar key={x.id} t={{ ...host, 상품코드: x.상품코드 }} pr={pr} now={now}
                            free={Number(x.추가금액) <= 0} note={`회원권에 얹음 · ${값}`}
                            onClick={can.update ? () => onTicket(host) : undefined} />
-              );
-            })}
-          </>
-        )}
+              ) : (
+                <div className="mrow" key={x.id}>
+                  <div className="t">
+                    <b>{pr?.name ?? x.상품코드}</b>
+                    <span className="dim">{값}</span>
+                  </div>
+                </div>
+              ),
+            });
+          });
+
+          if (lines.length === 0) {
+            return (
+              <p className="empty">
+                지금 쓸 수 있는 회원권 · 수강권이 없습니다. <b>재등록 대상</b>입니다.
+              </p>
+            );
+          }
+
+          return CATS.map((c) => {
+            const mine = lines.filter((l) => l.cat === c.key);
+            if (mine.length === 0) return null;
+            return (
+              <div className="cbox" key={c.key}>
+                <p className="csec">{c.key} <span>{mine.length}</span></p>
+                {mine.map((l) => l.el)}
+              </div>
+            );
+          });
+        })()}
       </div>
 
       <div className="mcols">
@@ -1842,16 +1855,59 @@ function TicketGroups({
     );
   }
 
-  const section = (title: string, rows: Ticket[], free?: boolean) =>
-    rows.length > 0 && (
-      <div key={title}>
-        <p className="csec">{title} <span>{rows.length}</span></p>
-        {rows.slice().sort(byEnd).map((t) => (
-          <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free={free}
-                     onClick={onEdit && (() => onEdit(t))} />
-        ))}
-      </div>
+  /** 무료로 받은 것도 같은 갈래에 넣는다. 공짜라는 사실은 「무료」 딱지로 말한다 */
+  const board = (paid: Ticket[], svc: Ticket[], withExtras: boolean) => {
+    type Line = { cat: string; el: any };
+    const lines: Line[] = [];
+
+    paid.slice().sort(byEnd).forEach((t) =>
+      lines.push({
+        cat: ticketCat(productOf(t.상품코드)),
+        el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                       onClick={onEdit && (() => onEdit(t))} />,
+      })
     );
+    svc.slice().sort(byEnd).forEach((t) =>
+      lines.push({
+        cat: ticketCat(productOf(t.상품코드)),
+        el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free
+                       onClick={onEdit && (() => onEdit(t))} />,
+      })
+    );
+    if (withExtras) {
+      extras.forEach((x) => {
+        const host = ticketOf(x.이용권번호);
+        const 값 = Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "무료";
+        const pr = productOf(x.상품코드);
+        lines.push({
+          cat: ticketCat(pr),
+          el: host ? (
+            <TicketBar key={x.id} t={{ ...host, 상품코드: x.상품코드 }} pr={pr} now={now}
+                       free={Number(x.추가금액) <= 0} note={`회원권에 얹음 · ${값}`}
+                       onClick={onEdit && (() => onEdit(host))} />
+          ) : (
+            <div className="mrow" key={x.id}>
+              <div className="t">
+                <b>{pr?.name ?? x.상품코드}</b>
+                <span className="dim">{값}</span>
+              </div>
+            </div>
+          ),
+        });
+      });
+    }
+
+    return CATS.map((c) => {
+      const mine = lines.filter((l) => l.cat === c.key);
+      if (mine.length === 0) return null;
+      return (
+        <div className="cbox" key={c.key}>
+          <p className="csec">{c.key} <span>{mine.length}</span></p>
+          {mine.map((l) => l.el)}
+        </div>
+      );
+    });
+  };
 
   return (
     <div className="mcard" style={{ padding: "4px 0 0", border: 0, background: "none" }}>
@@ -1866,59 +1922,19 @@ function TicketGroups({
 
       {side === "live" ? (
         <>
-          {live.length + liveExtra.length + liveOpts.length === 0 ? (
+          {liveN === 0 ? (
             <p className="empty">
               지금 쓸 수 있는 회원권 · 수강권이 없습니다. <b>재등록 대상</b>입니다.
             </p>
           ) : (
-            CATS.map((c) =>
-              section(c.key, [...live, ...liveExtra, ...liveOpts].filter(
-                (t) => ticketCat(productOf(t.상품코드)) === c.key
-              ))
-            )
-          )}
-
-          {(liveSvc.length > 0 || extras.length > 0) && (
-            <>
-              <p className="csec">받은 서비스 · 옵션 <span>{liveSvc.length + extras.length}</span></p>
-              {liveSvc.slice().sort(byEnd).map((t) => (
-                <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free
-                           onClick={onEdit && (() => onEdit(t))} />
-              ))}
-              {/* 얹어준 것은 제 기간이 없다 — 붙은 회원권의 기간을 빌려 쓴다 */}
-              {extras.map((x) => {
-                const host = ticketOf(x.이용권번호);
-                const 값 = Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "무료";
-                if (!host) {
-                  return (
-                    <div className="mrow" key={x.id}>
-                      <div className="t">
-                        <b>{productOf(x.상품코드)?.name ?? x.상품코드}</b>
-                        <span className="dim">{값}</span>
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <TicketBar key={x.id} t={{ ...host, 상품코드: x.상품코드 }}
-                             pr={productOf(x.상품코드)} now={now}
-                             free={Number(x.추가금액) <= 0} note={`회원권에 얹음 · ${값}`}
-                             onClick={onEdit && (() => onEdit(host))} />
-                );
-              })}
-            </>
+            board([...live, ...liveExtra, ...liveOpts], liveSvc, true)
           )}
         </>
       ) : pastN === 0 ? (
         <p className="empty">아직 만료된 이용권이 없습니다.</p>
       ) : (
         <>
-          {CATS.map((c) =>
-            section(c.key, [...past, ...pastExtra, ...pastOpts].filter(
-              (t) => ticketCat(productOf(t.상품코드)) === c.key
-            ))
-          )}
-          {section("받은 서비스 · 옵션", pastSvc, true)}
+          {board([...past, ...pastExtra, ...pastOpts], pastSvc, false)}
         </>
       )}
     </div>
