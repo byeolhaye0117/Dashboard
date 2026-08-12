@@ -124,6 +124,12 @@ export default function Shell({
             <Icon name={theme === "dark" ? "sun" : "moon"} size={16} />
             <span>{theme === "dark" ? "밝게" : "어둡게"}</span>
           </button>
+          {/* 지금 보고 있는 판 번호 — 새로고침이 됐는지 여기서 확인한다 */}
+          {!collapsed && (
+            <span className="build-tag" title="화면 판 번호">
+              {process.env.NEXT_PUBLIC_BUILD}
+            </span>
+          )}
         </div>
       </aside>
 

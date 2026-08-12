@@ -745,7 +745,7 @@ i.s6 { background: var(--s6); }
 .bc-line b { color: var(--ink); font-weight: 700; font-size: 12px; }
 
 /* ── 회원 상세 — 왼쪽 사람 정보 + 오른쪽 탭 ── */
-.m-detail { display: grid; grid-template-columns: 232px 1fr; gap: 18px; align-items: start; }
+.m-detail { display: grid; grid-template-columns: 258px 1fr; gap: 18px; align-items: start; }
 
 .m-profile {
   display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
@@ -1622,9 +1622,9 @@ table.cal td.cell .twice {
    왼쪽 칸이 좁아 둘이 한 줄에 들어가려면 작아져야 한다 */
 .who-acts { display: flex; gap: 6px; margin: 10px 0 4px; }
 .who-acts > button {
-  flex: 1 1 0; min-width: 0; width: auto; margin-top: 0;
-  height: 34px; padding: 0 6px; gap: 0;
-  font-size: 12px; white-space: nowrap; overflow: visible;
+  flex: 1 1 auto; width: auto; margin-top: 0;
+  height: 34px; padding: 0 12px; gap: 0;
+  font-size: 12.5px; white-space: nowrap; overflow: visible;
 }
 
 /* 카드 안에서 다시 갈래를 나눌 때 */
@@ -1634,6 +1634,12 @@ table.cal td.cell .twice {
 }
 .csec:first-child { margin-top: 0; }
 .csec span { font-weight: 600; }
+
+/* 판 번호 — 있는 줄도 모를 만큼 작게, 찾으면 보이게 */
+.build-tag {
+  display: block; margin-top: 8px; text-align: center;
+  font-size: 10px; letter-spacing: .02em; color: var(--muted); opacity: .6;
+}
 
 /* 글처럼 생긴 단추 — 목록을 가리지 않아야 하는 자잘한 조작 */
 .linkish {
