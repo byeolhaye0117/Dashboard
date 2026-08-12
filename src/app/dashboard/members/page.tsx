@@ -11,6 +11,8 @@ import { getBranches, getAllOptions, getStaffNames, getStaffAll, getProducts } f
 import { listMembers, listTickets, listPayments, listTicketServices } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
 import { listConsultations } from "@/lib/consultations";
+import { listLessons } from "@/lib/lessons";
+import { listTransfers } from "@/lib/members";
 import Shell from "../Shell";
 import Client from "./Client";
 import { guard } from "../guard";
@@ -67,6 +69,31 @@ async function body() {
     extras = [];
   }
 
+  /*
+    회원 한 명을 열었을 때 "이번 주에 무슨 수업이 잡혀 있나"를 같이 보여준다.
+    수업 화면까지 가서 이름을 찾아야 한다면 상담 중에는 못 본다.
+  */
+  let lessons: any[] = [];
+  let joins: any[] = [];
+  try {
+    const got = await listLessons();
+    const ids = new Set(members.map((x) => x.id));
+    joins = got.joins.filter((j: any) => ids.has(j.회원번호));
+    const used = new Set(joins.map((j: any) => j.수업번호));
+    lessons = got.lessons.filter((l: any) => used.has(l.id));
+  } catch {
+    lessons = [];
+    joins = [];
+  }
+
+  // 이용권이 누구에게서 넘어왔는지 — 탭이 없으면 그냥 빈 손이다
+  let transfers: any[] = [];
+  try {
+    transfers = await listTransfers();
+  } catch {
+    transfers = [];
+  }
+
   // 상담에서 약속까지 잡혔는데 아직 등록 처리가 안 된 사람 — 바로 회원으로 만들 수 있게
   try {
     const { items } = await listConsultations();
@@ -102,6 +129,9 @@ async function body() {
         extras={extras}
         products={products.map(readProduct)}
         waiting={waiting}
+        lessons={lessons}
+        joins={joins}
+        transfers={transfers}
         options={options}
         branches={myBranches}
         staffNames={staffNames}

@@ -5,7 +5,7 @@
  */
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
-import { korDate, today, daysBetween } from "@/lib/time";
+import { korDate, today, daysBetween, weekdayIndex } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
 import type { ProductMeta } from "@/lib/productMeta";
@@ -81,6 +81,16 @@ type Extra = {
 type Waiting = { id: string; 이름: string; 전화번호: string; 지점코드: string };
 type Named = { code: string; name: string };
 
+type LessonRow = {
+  id: string; 수업구분: string; 트레이너사번: string;
+  날짜: string; 시작시각: string; 종료시각: string; 진행상태: string;
+};
+type JoinRow = { id: string; 수업번호: string; 회원번호: string; 진행상태: string };
+type TransferRow = {
+  id: string; 이용권번호: string; 준회원번호: string; 받은회원번호: string;
+  양도일: string; 수수료: string;
+};
+
 type Props = {
   items: Member[];
   tickets: Ticket[];
@@ -88,6 +98,11 @@ type Props = {
   extras: Extra[];
   products: ProductMeta[];
   waiting: Waiting[];
+  /** 이 회원들이 낀 수업 — 이번 주 예약 카드에 쓴다 */
+  lessons: LessonRow[];
+  joins: JoinRow[];
+  /** 이용권이 오간 기록 */
+  transfers: TransferRow[];
   options: Record<string, string[]>;
   branches: Named[];
   staffNames: Record<string, string>;
@@ -362,6 +377,11 @@ export default function Client(p: Props) {
           branchName={branchName(detail.지점코드)}
           can={p.can}
           members={p.items}
+          lessons={p.lessons}
+          joins={p.joins.filter((j) => j.회원번호 === detail.id)}
+          transfers={p.transfers.filter(
+            (x) => x.준회원번호 === detail.id || x.받은회원번호 === detail.id
+          )}
           onClose={() => setDetail(null)}
         />
       )}
@@ -1175,7 +1195,8 @@ function ProgressLine({ t, pr, now, onEdit }: {
 }
 
 function Detail({
-  item, tickets, payments, extras, products, productOf, options, trainers, staffNames, branchName, can, members, onClose,
+  item, tickets, payments, extras, products, productOf, options, trainers, staffNames,
+  branchName, can, members, lessons, joins, transfers, onClose,
 }: {
   item: Member;
   tickets: Ticket[];
@@ -1190,6 +1211,9 @@ function Detail({
   can: { create: boolean; update: boolean; remove: boolean };
   /** 양도할 때 받을 사람을 고르려면 명단이 있어야 한다 */
   members: Member[];
+  lessons: LessonRow[];
+  joins: JoinRow[];
+  transfers: TransferRow[];
   onClose: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -1348,6 +1372,19 @@ function Detail({
                   {unpaid > 0 && <span className="pill warn">미수금</span>}
                 </div>
 
+                {/*
+                  제일 자주 누르는 두 개를 이름 바로 아래에 둔다. 위쪽 탭 줄에만
+                  있으면 상담 중에 눈이 한 번 더 올라갔다 내려와야 한다.
+                */}
+                {can.update && (
+                  <div className="who-acts">
+                    <button className="btn-dark" onClick={() => setAdding(true)}>
+                      <Icon name="plus" size={14} strokeWidth={2} /> 상품 추가
+                    </button>
+                    <button className="btn-ghost" onClick={() => setEditing(true)}>고치기</button>
+                  </div>
+                )}
+
                 <dl className="kv tight">
                   <Kv k="연락처" v={showPhone(item.전화번호)} />
                   <Kv k="성별 · 나이" v={[item.성별, item.나이대].filter(Boolean).join(" · ")} />
@@ -1390,65 +1427,24 @@ function Detail({
                 </div>
 
                 {view === "요약" && (
-                  <>
-                    <div className="mini-stats">
-                      <div className="mini-stat">
-                        <span className="lb">이용 중</span>
-                        <b className="num">{live.count}</b>
-                      </div>
-                      <div className="mini-stat">
-                        <span className="lb">부가 · 서비스</span>
-                        {/* 얹어준 서비스는 이용권이 아니라 이용권서비스 탭에 있다.
-                            그걸 빼먹으면 아래 목록과 숫자가 안 맞는다 */}
-                        <b className="num">{live.extra + live.service + extras.length}</b>
-                      </div>
-                      <div className="mini-stat">
-                        <span className="lb">총 결제</span>
-                        <b className="num">{money(totalPaid)}</b>
-                      </div>
-                      <div className="mini-stat">
-                        <span className="lb">미수금</span>
-                        <b className={`num${unpaid > 0 ? " warn-text" : ""}`}>{money(unpaid)}</b>
-                      </div>
-                    </div>
-
-                    <h4 className="mini-title">지금 쓰는 회원권 · PT</h4>
-                    {live.rows.length === 0 ? (
-                      <p className="dim" style={{ fontSize: 13 }}>
-                        지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
-                      </p>
-                    ) : (
-                      <div className="line-list">
-                        {live.rows.map((t) => (
-                          <ProgressLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
-                                        onEdit={can.update ? () => setEditTicket(t) : undefined} />
-                        ))}
-                      </div>
-                    )}
-
-                    {live.extraRows.length > 0 && (
-                      <>
-                        <h4 className="mini-title">부가 상품 ({live.extraRows.length})</h4>
-                        <div className="line-list">
-                          {live.extraRows.map((t) => (
-                            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
-                                        onEdit={can.update ? () => setEditTicket(t) : undefined} />
-                          ))}
-                        </div>
-                      </>
-                    )}
-
-                    <ServiceList rows={live.serviceRows} extras={extras} productOf={productOf}
-                                 ticketOf={ticketOf} now={now}
-                                 onEdit={can.update ? setEditTicket : undefined} />
-
-                    {item.메모 && (
-                      <>
-                        <h4 className="mini-title">특이사항</h4>
-                        <div className="quote">{item.메모}</div>
-                      </>
-                    )}
-                  </>
+                  <Board
+                    item={item}
+                    live={live}
+                    tickets={tickets}
+                    payments={paid}
+                    totalPaid={totalPaid}
+                    unpaid={unpaid}
+                    lessons={lessons}
+                    joins={joins}
+                    transfers={transfers}
+                    staffNames={staffNames}
+                    productOf={productOf}
+                    now={now}
+                    can={can}
+                    onGo={setView}
+                    onTicket={setEditTicket}
+                    onMemo={() => setEditing(true)}
+                  />
                 )}
 
                 {view === "이용권" && (
@@ -1589,6 +1585,252 @@ function ServiceList({ rows, extras, productOf, ticketOf, now, onEdit }: {
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * 회원 대시보드
+ *
+ * 한 줄로 흐르는 요약은 눈이 한 번에 못 잡는다. "이용권은 여기, 결제는 여기"가
+ * 자리로 기억되도록 덩어리로 자른다. 카드마다 지금 중요한 것 몇 줄만 보이고,
+ * 더 봐야 하면 그 탭으로 넘어간다 — 요약이 목록을 대신하려 들면 둘 다 못 한다.
+ */
+function Board({
+  item, live, tickets, payments, totalPaid, unpaid,
+  lessons, joins, transfers, staffNames, productOf, now, can,
+  onGo, onTicket, onMemo,
+}: {
+  item: Member;
+  live: { count: number; rows: Ticket[]; extraRows: Ticket[] };
+  tickets: Ticket[];
+  payments: Payment[];
+  totalPaid: number;
+  unpaid: number;
+  lessons: LessonRow[];
+  joins: JoinRow[];
+  transfers: TransferRow[];
+  staffNames: Record<string, string>;
+  productOf: (code: string) => ProductMeta | undefined;
+  now: string;
+  can: { create: boolean; update: boolean; remove: boolean };
+  onGo: (v: any) => void;
+  onTicket: (t: Ticket) => void;
+  onMemo: () => void;
+}) {
+  const main = tickets.filter((t) => groupOf(productOf(t.상품코드)) === "이용권");
+  const 만료 = main.filter((t) => !isAlive(t, now)).length;
+
+  /** 이번 주 (월~일) — 오늘이 낀 주를 잡는다 */
+  const week = useMemo(() => {
+    const w = weekdayIndex(now);
+    const mon = addDays(now, w === 0 ? -6 : 1 - w);
+    return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+  }, [now]);
+
+  const lessonOf = useMemo(() => new Map(lessons.map((l) => [l.id, l])), [lessons]);
+
+  /** 이 회원이 낀 수업을 날짜별로 */
+  const byDay = useMemo(() => {
+    const m = new Map<string, { l: LessonRow; j: JoinRow }[]>();
+    joins.forEach((j) => {
+      const l = lessonOf.get(j.수업번호);
+      if (!l) return;
+      (m.get(l.날짜) ?? m.set(l.날짜, []).get(l.날짜)!).push({ l, j });
+    });
+    m.forEach((v) => v.sort((a, b) => a.l.시작시각.localeCompare(b.l.시작시각)));
+    return m;
+  }, [joins, lessonOf]);
+
+  const 이번주 = week.reduce((n, d) => n + (byDay.get(d)?.length ?? 0), 0);
+  const 이달참석 = joins.filter((j) => {
+    const l = lessonOf.get(j.수업번호);
+    return l && l.날짜.startsWith(now.slice(0, 7)) && j.진행상태 === "완료";
+  }).length;
+
+  const 정지중 = tickets.filter((t) => (t.정지시작일 ?? "").trim());
+  const 정지누적 = tickets.reduce((n, t) => n + (Number(t.정지일수) || 0), 0);
+
+  const 최근결제 = payments
+    .slice()
+    .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
+    .slice(0, 3);
+
+  const head = (title: string, sub: string, go?: string) => (
+    <div className="mcard-head">
+      <b>{title}</b>
+      {sub && <span className="sub">{sub}</span>}
+      {go && <button className="more" onClick={() => onGo(go)}>더보기 ›</button>}
+    </div>
+  );
+
+  return (
+    <div className="mgrid">
+      {/* 이용권 — 이 화면에서 가장 먼저 봐야 하는 것 */}
+      <div className="mcard wide">
+        {head("이용권", `유효 ${live.rows.length} · 만료 ${만료}`, "이용권")}
+        {live.rows.length === 0 ? (
+          <p className="empty">
+            지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
+          </p>
+        ) : (
+          live.rows.map((t) => (
+            <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                       onClick={can.update ? () => onTicket(t) : undefined} />
+          ))
+        )}
+        {live.extraRows.length > 0 && (
+          <p className="stat-note" style={{ marginBottom: 0 }}>
+            부가 상품 {live.extraRows.length}개 —{" "}
+            {live.extraRows.map((t) => productOf(t.상품코드)?.name ?? t.상품코드).join(" · ")}
+          </p>
+        )}
+      </div>
+
+      {/* 이번 주 수업 */}
+      <div className="mcard">
+        {head("이번 주 수업", 이번주 > 0 ? `${이번주}건` : "", "이용권")}
+        {이번주 === 0 ? (
+          <p className="empty">이번 주에 잡힌 수업이 없습니다.</p>
+        ) : (
+          week.map((d) => {
+            const rows = byDay.get(d) ?? [];
+            if (rows.length === 0) return null;
+            return (
+              <div className="mrow" key={d}>
+                <div className="t">
+                  <b>{korDate(d)}</b>
+                  <span className="dim">{rows.length}건</span>
+                </div>
+                {rows.map(({ l, j }) => (
+                  <span className="sub" key={j.id}>
+                    {l.시작시각} · {l.수업구분}
+                    {staffNames[l.트레이너사번] && ` · ${staffNames[l.트레이너사번]}`}
+                    {j.진행상태 && j.진행상태 !== "예정" && ` · ${j.진행상태}`}
+                  </span>
+                ))}
+              </div>
+            );
+          })
+        )}
+        {이달참석 > 0 && (
+          <p className="stat-note" style={{ marginBottom: 0 }}>
+            이 달 수업 <b>{이달참석}회</b> 받았습니다.
+          </p>
+        )}
+      </div>
+
+      {/* 결제 */}
+      <div className="mcard">
+        {head("결제", unpaid > 0 ? `미수 ${money(unpaid)}원` : `${payments.length}건`, "결제")}
+        {payments.length === 0 ? (
+          <p className="empty">결제 기록이 없습니다.</p>
+        ) : (
+          <>
+            {최근결제.map((x) => (
+              <div className="mrow" key={x.id}>
+                <div className="t">
+                  <b className="num">{money(Number(x.결제금액) || 0)}원</b>
+                  <span className="dim">{(x.결제일시 ?? "").slice(0, 10)}</span>
+                </div>
+                <span className="sub">
+                  {x.결제수단 || "-"}
+                  {Number(x.미수금액) > 0 && ` · 미수 ${money(Number(x.미수금액))}원`}
+                  {x.환불여부?.toUpperCase() === "Y" && " · 환불"}
+                </span>
+              </div>
+            ))}
+            <p className="stat-note" style={{ marginBottom: 0 }}>
+              지금까지 <b className="num">{money(totalPaid)}원</b>
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* 정지 · 양도 */}
+      <div className="mcard">
+        {head("정지 · 양도", "", "이용권")}
+        {정지중.length === 0 && transfers.length === 0 && 정지누적 === 0 ? (
+          <p className="empty">정지하거나 넘긴 이력이 없습니다.</p>
+        ) : (
+          <>
+            {정지중.map((t) => (
+              <div className="mrow" key={t.id}>
+                <div className="t">
+                  <b>{productOf(t.상품코드)?.name ?? t.상품코드}</b>
+                  <span className="dim">정지 중</span>
+                </div>
+                <span className="sub">
+                  {t.정지시작일}부터
+                  {t.정지종료예정일 ? ` ${t.정지종료예정일}까지` : " 재개할 때까지"}
+                </span>
+              </div>
+            ))}
+            {transfers.map((x) => (
+              <div className="mrow" key={x.id}>
+                <div className="t">
+                  <b>{x.받은회원번호 === item.id ? "받음" : "넘김"}</b>
+                  <span className="dim">{x.양도일}</span>
+                </div>
+                <span className="sub">
+                  {x.받은회원번호 === item.id ? `${x.준회원번호} 에게서` : `${x.받은회원번호} 에게`}
+                  {Number(x.수수료) > 0 && ` · 수수료 ${money(Number(x.수수료))}원`}
+                </span>
+              </div>
+            ))}
+            {정지누적 > 0 && (
+              <p className="stat-note" style={{ marginBottom: 0 }}>
+                지금까지 정지 <b>{정지누적}일</b>
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* 특이사항 */}
+      <div className="mcard wide">
+        {head("특이사항 · 메모", "", "")}
+        {item.메모 ? (
+          <div className="quote" style={{ margin: 0 }}>{item.메모}</div>
+        ) : (
+          <p className="empty">
+            적어 둔 특이사항이 없습니다.
+            {can.update && (
+              <> <button className="linkish" onClick={onMemo}>메모 적기</button></>
+            )}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 남은 기간을 막대로 — 「197일 남음」만 있으면 많은 건지 적은 건지 감이 안 온다 */
+function TicketBar({ t, pr, now, onClick }: {
+  t: Ticket; pr?: ProductMeta; now: string; onClick?: () => void;
+}) {
+  const left = t.종료일 ? daysLeft(t.종료일, now) : null;
+  const total = t.시작일 && t.종료일 ? Math.max(1, daysBetween(t.시작일, t.종료일)) : 0;
+  const pct = left === null || total === 0 ? 100 : Math.max(0, Math.min(100, (left / total) * 100));
+  const tone = left === null ? "" : left < 0 ? "bad" : left <= SOON ? "warn" : "";
+  const 정지 = Boolean((t.정지시작일 ?? "").trim());
+  const cnt = Number(t.총횟수) > 0;
+
+  return (
+    <div className="mrow" onClick={onClick} style={onClick ? { cursor: "pointer" } : undefined}>
+      <div className="t">
+        <b>{pr?.name ?? t.상품코드}</b>
+        <span className="dim">
+          {정지 ? "정지 중" : left === null ? "기간 없음" : left < 0 ? `${-left}일 지남` : `${left}일 남음`}
+        </span>
+      </div>
+      <span className="sub">
+        {t.시작일?.slice(2)}{t.종료일 && ` ~ ${t.종료일.slice(2)}`}
+        {cnt && ` · ${t.잔여횟수 || t.총횟수}/${t.총횟수}회`}
+      </span>
+      <div className={`tbar ${정지 ? "warn" : tone}`}>
+        <i style={{ width: `${정지 ? 100 : pct}%` }} />
+      </div>
+    </div>
   );
 }
 
