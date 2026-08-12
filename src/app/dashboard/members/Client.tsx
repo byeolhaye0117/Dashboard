@@ -1517,52 +1517,6 @@ function Detail({
  * 두 군데에서 온다. 회원권을 팔 때 얹어준 것은 이용권서비스 탭에,
  * 따로 등록한 서비스 상품은 이용권 탭에 들어 있다.
  */
-function ServiceList({ rows, extras, productOf, ticketOf, now, onEdit }: {
-  rows: Ticket[];
-  extras: Extra[];
-  productOf: (code: string) => ProductMeta | undefined;
-  /** 이 서비스가 어느 이용권에 얹혔는지 — 기간은 그 이용권을 따라간다 */
-  ticketOf: (id: string) => Ticket | undefined;
-  now: string;
-  onEdit?: (t: Ticket) => void;
-}) {
-  const total = rows.length + extras.length;
-  if (total === 0) return null;
-
-  return (
-    <>
-      <h4 className="mini-title">받은 서비스 · 옵션 ({total})</h4>
-      <div className="line-list">
-        {extras.map((s) => {
-          const pr = productOf(s.상품코드);
-          const add = Number(s.추가금액) || 0;
-          const host = ticketOf(s.이용권번호);
-          const left = host?.종료일 ? daysLeft(host.종료일, now) : null;
-          return (
-            <div className="line-item" key={s.id}>
-              <div className="line-head">
-                <b>{pr?.name ?? s.상품코드}</b>
-                <span className="dim">
-                  {host?.시작일?.slice(2)}
-                  {host?.종료일 && ` ~ ${host.종료일.slice(2)}`}
-                  {(pr?.count ?? 0) > 0 && ` · ${pr!.count}회`}
-                  {left !== null && ` · ${left < 0 ? `${-left}일 지남` : `${left}일 남음`}`}
-                </span>
-                <span className={`pill ${add > 0 ? "warn" : ""}`}>
-                  {add > 0 ? `+${money(add)}원` : "무료"}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-        {rows.map((t) => (
-          <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} tag="무료"
-                      onEdit={onEdit && (() => onEdit(t))} />
-        ))}
-      </div>
-    </>
-  );
-}
 
 /**
  * 회원 대시보드
@@ -1829,20 +1783,25 @@ function TicketGroups({
   const services = tickets.filter((t) => grp(t) === "서비스");
 
   /*
-    사용 중과 끝난 것을 나눠 본다
+    활성과 만료를 나눠 본다
 
     한 회원이 몇 해를 다니면 끝난 회원권이 열 줄씩 쌓인다. 한 목록에 두면
     지금 쓸 수 있는 것을 찾느라 매번 눈으로 훑어야 한다. 부가 상품과 옵션도
     같이 나눈다 — 작년 사물함이 「부가 상품」에 그대로 남아 있으면 안 된다.
+
+    줄 모양은 요약 화면과 같은 것을 쓴다. 같은 것을 두 군데서 다르게 그리면
+    같은 것인 줄 모른다.
   */
   const [side, setSide] = useState<"live" | "past">("live");
   const liveExtra = extra.filter((t) => isAlive(t, now));
   const pastExtra = extra.filter((t) => !isAlive(t, now));
   const liveOpts = opts.filter((t) => isAlive(t, now));
   const pastOpts = opts.filter((t) => !isAlive(t, now));
+  const liveSvc = services.filter((t) => isAlive(t, now));
+  const pastSvc = services.filter((t) => !isAlive(t, now));
 
-  const liveN = live.length + liveExtra.length + liveOpts.length;
-  const pastN = past.length + pastExtra.length + pastOpts.length;
+  const liveN = live.length + liveExtra.length + liveOpts.length + liveSvc.length + extras.length;
+  const pastN = past.length + pastExtra.length + pastOpts.length + pastSvc.length;
 
   if (tickets.length === 0) {
     return (
@@ -1853,62 +1812,87 @@ function TicketGroups({
     );
   }
 
-  const section = (title: string, rows: Ticket[], tag?: string) =>
+  const section = (title: string, rows: Ticket[], free?: boolean) =>
     rows.length > 0 && (
       <>
-        <h4 className="mini-title">{title} ({rows.length})</h4>
-        <div className="line-list">
-          {rows.slice().sort(byEnd).map((t) => (
-            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now} tag={tag}
-                        onEdit={onEdit && (() => onEdit(t))} />
-          ))}
-        </div>
+        <p className="csec">{title} <span>{rows.length}</span></p>
+        {rows.slice().sort(byEnd).map((t) => (
+          <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free={free}
+                     onClick={onEdit && (() => onEdit(t))} />
+        ))}
       </>
     );
 
   return (
-    <>
+    <div className="mcard" style={{ padding: "4px 0 0", border: 0, background: "none" }}>
       <div className="pick-row" style={{ margin: "4px 0 12px" }}>
         <button className={`mini-tab${side === "live" ? " on" : ""}`} onClick={() => setSide("live")}>
-          사용 중{liveN > 0 && <span className="dot">{liveN}</span>}
+          활성{liveN > 0 && <span className="dot">{liveN}</span>}
         </button>
         <button className={`mini-tab${side === "past" ? " on" : ""}`} onClick={() => setSide("past")}>
-          끝난 것{pastN > 0 && ` (${pastN})`}
+          만료{pastN > 0 && ` (${pastN})`}
         </button>
       </div>
 
       {side === "live" ? (
         <>
-          <h4 className="mini-title">회원권 · PT {live.length > 0 && `(${live.length})`}</h4>
+          <p className="csec">회원권 · PT <span>{live.length}</span></p>
           {live.length === 0 ? (
-            <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>
+            <p className="empty">
               지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
             </p>
           ) : (
-            <div className="line-list">
-              {live.slice().sort(byEnd).map((t) => (
-                <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
-                            onEdit={onEdit && (() => onEdit(t))} />
-              ))}
-            </div>
+            live.slice().sort(byEnd).map((t) => (
+              <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                         onClick={onEdit && (() => onEdit(t))} />
+            ))
           )}
+
           {section("부가 상품", liveExtra)}
           {section("붙은 옵션", liveOpts)}
-          <ServiceList rows={services} extras={extras} productOf={productOf} ticketOf={ticketOf}
-                       now={now} onEdit={onEdit} />
+
+          {(liveSvc.length > 0 || extras.length > 0) && (
+            <>
+              <p className="csec">받은 서비스 · 옵션 <span>{liveSvc.length + extras.length}</span></p>
+              {liveSvc.slice().sort(byEnd).map((t) => (
+                <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free
+                           onClick={onEdit && (() => onEdit(t))} />
+              ))}
+              {/* 얹어준 것은 제 기간이 없다 — 붙은 회원권의 기간을 빌려 쓴다 */}
+              {extras.map((x) => {
+                const host = ticketOf(x.이용권번호);
+                const 값 = Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "무료";
+                if (!host) {
+                  return (
+                    <div className="mrow" key={x.id}>
+                      <div className="t">
+                        <b>{productOf(x.상품코드)?.name ?? x.상품코드}</b>
+                        <span className="dim">{값}</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <TicketBar key={x.id} t={{ ...host, 상품코드: x.상품코드 }}
+                             pr={productOf(x.상품코드)} now={now}
+                             free={Number(x.추가금액) <= 0} note={`회원권에 얹음 · ${값}`}
+                             onClick={onEdit && (() => onEdit(host))} />
+                );
+              })}
+            </>
+          )}
         </>
       ) : pastN === 0 ? (
-        <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>
-          아직 끝난 이용권이 없습니다.
-        </p>
+        <p className="empty">아직 만료된 이용권이 없습니다.</p>
       ) : (
         <>
-          {section("끝난 회원권 · PT", past)}
-          {section("끝난 부가 상품", pastExtra)}
-          {section("끝난 옵션", pastOpts)}
+          {section("회원권 · PT", past)}
+          {section("부가 상품", pastExtra)}
+          {section("붙은 옵션", pastOpts)}
+          {section("받은 서비스 · 옵션", pastSvc, true)}
         </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -1925,39 +1909,6 @@ const usesCount = (pr?: ProductMeta, t?: Ticket) =>
   // 분류 이름에 "회" 하나만 보고 판단하면 "회원권"까지 횟수제로 잡힌다
   (pr?.count ?? 0) > 0 || /PT|수업/.test(pr?.kind ?? "") || Number(t?.총횟수) > 0;
 
-function TicketLine({ t, pr, now, tag, onEdit }: {
-  t: Ticket; pr?: ProductMeta; now: string; tag?: string; onEdit?: () => void;
-}) {
-  const left = t.종료일 ? daysLeft(t.종료일, now) : null;
-  const refunded = t.상태 === "환불";
-  const usedUp = Number(t.총횟수) > 0 && Number(t.잔여횟수 || t.총횟수) <= 0;
-
-  return (
-    <div className={`line-item${onEdit ? " clickable" : ""}`} onClick={onEdit}>
-      <div className="line-head">
-        <b>{pr?.name ?? t.상품코드}</b>
-        <span className="dim">
-          {t.시작일?.slice(2)}
-          {t.종료일 && ` ~ ${t.종료일.slice(2)}`}
-          {hasCount(t) && ` · ${t.잔여횟수 || t.총횟수}/${t.총횟수}회`}
-        </span>
-        {tag ? (
-          <span className="pill">{tag}</span>
-        ) : refunded ? (
-          <span className="pill bad">환불</span>
-        ) : usedUp ? (
-          <span className="pill bad">횟수 소진</span>
-        ) : left === null ? (
-          <span className="pill">기간 없음</span>
-        ) : (
-          <span className={`pill ${left < 0 ? "bad" : left <= SOON ? "warn" : "good"}`}>
-            {left < 0 ? `${-left}일 지남` : `${left}일 남음`}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /**
  * 결제 — 달별로 본다
