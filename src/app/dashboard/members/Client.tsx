@@ -81,11 +81,6 @@ type Extra = {
 type Waiting = { id: string; 이름: string; 전화번호: string; 지점코드: string };
 type Named = { code: string; name: string };
 
-type LessonRow = {
-  id: string; 수업구분: string; 트레이너사번: string;
-  날짜: string; 시작시각: string; 종료시각: string; 진행상태: string;
-};
-type JoinRow = { id: string; 수업번호: string; 회원번호: string; 진행상태: string };
 type TransferRow = {
   id: string; 이용권번호: string; 준회원번호: string; 받은회원번호: string;
   양도일: string; 수수료: string;
@@ -98,9 +93,6 @@ type Props = {
   extras: Extra[];
   products: ProductMeta[];
   waiting: Waiting[];
-  /** 이 회원들이 낀 수업 — 이번 주 예약 카드에 쓴다 */
-  lessons: LessonRow[];
-  joins: JoinRow[];
   /** 이용권이 오간 기록 */
   transfers: TransferRow[];
   options: Record<string, string[]>;
@@ -377,8 +369,6 @@ export default function Client(p: Props) {
           branchName={branchName(detail.지점코드)}
           can={p.can}
           members={p.items}
-          lessons={p.lessons}
-          joins={p.joins.filter((j) => j.회원번호 === detail.id)}
           transfers={p.transfers.filter(
             (x) => x.준회원번호 === detail.id || x.받은회원번호 === detail.id
           )}
@@ -1196,7 +1186,7 @@ function ProgressLine({ t, pr, now, onEdit }: {
 
 function Detail({
   item, tickets, payments, extras, products, productOf, options, trainers, staffNames,
-  branchName, can, members, lessons, joins, transfers, onClose,
+  branchName, can, members, transfers, onClose,
 }: {
   item: Member;
   tickets: Ticket[];
@@ -1211,8 +1201,6 @@ function Detail({
   can: { create: boolean; update: boolean; remove: boolean };
   /** 양도할 때 받을 사람을 고르려면 명단이 있어야 한다 */
   members: Member[];
-  lessons: LessonRow[];
-  joins: JoinRow[];
   transfers: TransferRow[];
   onClose: () => void;
 }) {
@@ -1434,10 +1422,8 @@ function Detail({
                     payments={paid}
                     totalPaid={totalPaid}
                     unpaid={unpaid}
-                    lessons={lessons}
-                    joins={joins}
+                    extras={extras}
                     transfers={transfers}
-                    staffNames={staffNames}
                     productOf={productOf}
                     now={now}
                     can={can}
@@ -1596,20 +1582,18 @@ function ServiceList({ rows, extras, productOf, ticketOf, now, onEdit }: {
  * 더 봐야 하면 그 탭으로 넘어간다 — 요약이 목록을 대신하려 들면 둘 다 못 한다.
  */
 function Board({
-  item, live, tickets, payments, totalPaid, unpaid,
-  lessons, joins, transfers, staffNames, productOf, now, can,
+  item, live, tickets, extras, payments, totalPaid, unpaid,
+  transfers, productOf, now, can,
   onGo, onTicket, onMemo,
 }: {
   item: Member;
-  live: { count: number; rows: Ticket[]; extraRows: Ticket[] };
+  live: { count: number; rows: Ticket[]; extraRows: Ticket[]; serviceRows: Ticket[] };
   tickets: Ticket[];
   payments: Payment[];
   totalPaid: number;
   unpaid: number;
-  lessons: LessonRow[];
-  joins: JoinRow[];
+  extras: Extra[];
   transfers: TransferRow[];
-  staffNames: Record<string, string>;
   productOf: (code: string) => ProductMeta | undefined;
   now: string;
   can: { create: boolean; update: boolean; remove: boolean };
@@ -1619,33 +1603,6 @@ function Board({
 }) {
   const main = tickets.filter((t) => groupOf(productOf(t.상품코드)) === "이용권");
   const 만료 = main.filter((t) => !isAlive(t, now)).length;
-
-  /** 이번 주 (월~일) — 오늘이 낀 주를 잡는다 */
-  const week = useMemo(() => {
-    const w = weekdayIndex(now);
-    const mon = addDays(now, w === 0 ? -6 : 1 - w);
-    return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
-  }, [now]);
-
-  const lessonOf = useMemo(() => new Map(lessons.map((l) => [l.id, l])), [lessons]);
-
-  /** 이 회원이 낀 수업을 날짜별로 */
-  const byDay = useMemo(() => {
-    const m = new Map<string, { l: LessonRow; j: JoinRow }[]>();
-    joins.forEach((j) => {
-      const l = lessonOf.get(j.수업번호);
-      if (!l) return;
-      (m.get(l.날짜) ?? m.set(l.날짜, []).get(l.날짜)!).push({ l, j });
-    });
-    m.forEach((v) => v.sort((a, b) => a.l.시작시각.localeCompare(b.l.시작시각)));
-    return m;
-  }, [joins, lessonOf]);
-
-  const 이번주 = week.reduce((n, d) => n + (byDay.get(d)?.length ?? 0), 0);
-  const 이달참석 = joins.filter((j) => {
-    const l = lessonOf.get(j.수업번호);
-    return l && l.날짜.startsWith(now.slice(0, 7)) && j.진행상태 === "완료";
-  }).length;
 
   const 정지중 = tickets.filter((t) => (t.정지시작일 ?? "").trim());
   const 정지누적 = tickets.reduce((n, t) => n + (Number(t.정지일수) || 0), 0);
@@ -1665,9 +1622,16 @@ function Board({
 
   return (
     <div className="mgrid">
-      {/* 이용권 — 이 화면에서 가장 먼저 봐야 하는 것 */}
+      {/*
+        이용권 — 이 화면에서 가장 먼저 봐야 하는 것
+
+        회원권 · 부가 상품 · 받은 서비스를 한 카드 안에 갈래로 나눠 다 보여준다.
+        "사물함은 언제까지지"를 보려고 탭을 옮겨 다니게 할 이유가 없다.
+      */}
       <div className="mcard wide">
         {head("이용권", `유효 ${live.rows.length} · 만료 ${만료}`, "이용권")}
+
+        <p className="csec">회원권 · PT <span>{live.rows.length}</span></p>
         {live.rows.length === 0 ? (
           <p className="empty">
             지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
@@ -1678,44 +1642,38 @@ function Board({
                        onClick={can.update ? () => onTicket(t) : undefined} />
           ))
         )}
-        {live.extraRows.length > 0 && (
-          <p className="stat-note" style={{ marginBottom: 0 }}>
-            부가 상품 {live.extraRows.length}개 —{" "}
-            {live.extraRows.map((t) => productOf(t.상품코드)?.name ?? t.상품코드).join(" · ")}
-          </p>
-        )}
-      </div>
 
-      {/* 이번 주 수업 */}
-      <div className="mcard">
-        {head("이번 주 수업", 이번주 > 0 ? `${이번주}건` : "", "이용권")}
-        {이번주 === 0 ? (
-          <p className="empty">이번 주에 잡힌 수업이 없습니다.</p>
-        ) : (
-          week.map((d) => {
-            const rows = byDay.get(d) ?? [];
-            if (rows.length === 0) return null;
-            return (
-              <div className="mrow" key={d}>
-                <div className="t">
-                  <b>{korDate(d)}</b>
-                  <span className="dim">{rows.length}건</span>
-                </div>
-                {rows.map(({ l, j }) => (
-                  <span className="sub" key={j.id}>
-                    {l.시작시각} · {l.수업구분}
-                    {staffNames[l.트레이너사번] && ` · ${staffNames[l.트레이너사번]}`}
-                    {j.진행상태 && j.진행상태 !== "예정" && ` · ${j.진행상태}`}
-                  </span>
-                ))}
-              </div>
-            );
-          })
+        {live.extraRows.length > 0 && (
+          <>
+            <p className="csec">부가 상품 · 옵션 <span>{live.extraRows.length}</span></p>
+            {live.extraRows.map((t) => (
+              <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                         onClick={can.update ? () => onTicket(t) : undefined} />
+            ))}
+          </>
         )}
-        {이달참석 > 0 && (
-          <p className="stat-note" style={{ marginBottom: 0 }}>
-            이 달 수업 <b>{이달참석}회</b> 받았습니다.
-          </p>
+
+        {(live.serviceRows.length > 0 || extras.length > 0) && (
+          <>
+            <p className="csec">
+              받은 서비스 · 옵션 <span>{live.serviceRows.length + extras.length}</span>
+            </p>
+            {live.serviceRows.map((t) => (
+              <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free
+                         onClick={can.update ? () => onTicket(t) : undefined} />
+            ))}
+            {/* 회원권을 팔 때 얹어준 것 — 기간이 따로 없고 "무엇을 줬는지"만 남는다 */}
+            {extras.map((x) => (
+              <div className="mrow" key={x.id}>
+                <div className="t">
+                  <b>{productOf(x.상품코드)?.name ?? x.상품코드}</b>
+                  <span className="dim">
+                    {Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "무료"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </div>
 
@@ -1805,8 +1763,8 @@ function Board({
 }
 
 /** 남은 기간을 막대로 — 「197일 남음」만 있으면 많은 건지 적은 건지 감이 안 온다 */
-function TicketBar({ t, pr, now, onClick }: {
-  t: Ticket; pr?: ProductMeta; now: string; onClick?: () => void;
+function TicketBar({ t, pr, now, free, onClick }: {
+  t: Ticket; pr?: ProductMeta; now: string; free?: boolean; onClick?: () => void;
 }) {
   const left = t.종료일 ? daysLeft(t.종료일, now) : null;
   const total = t.시작일 && t.종료일 ? Math.max(1, daysBetween(t.시작일, t.종료일)) : 0;
@@ -1819,6 +1777,7 @@ function TicketBar({ t, pr, now, onClick }: {
     <div className="mrow" onClick={onClick} style={onClick ? { cursor: "pointer" } : undefined}>
       <div className="t">
         <b>{pr?.name ?? t.상품코드}</b>
+        {free && <span className="pill">무료</span>}
         <span className="dim">
           {정지 ? "정지 중" : left === null ? "기간 없음" : left < 0 ? `${-left}일 지남` : `${left}일 남음`}
         </span>
