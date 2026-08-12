@@ -6,9 +6,12 @@
  *
  * 시트 칸 이름이 조금 달라도 되도록 columns.ts 로 이어준다.
  */
-import { readSheet, appendRow, appendRows, updateRow, updateRows, type Row } from "./sheets";
+import {
+  readSheet, appendRow, appendRows, updateRow, updateRows,
+  addColumns, createSheet, listSheetNames, type Row,
+} from "./sheets";
 import { resolve, toSheetRow, get, type ColumnMap, type ColumnSpec } from "./columns";
-import { now, today } from "./time";
+import { now, today, addDays, daysBetween } from "./time";
 import { formatPhone } from "./phone";
 import { patchConsultation } from "./consultations";
 import { addMonths } from "./dateCalc";
@@ -43,6 +46,34 @@ const M_COLS: ColumnSpec = {
   삭제여부: { names: [] },
 };
 
+/**
+ * 정지와 양도에 쓰는 칸들 — 뒤늦게 생긴 것이라 없으면 만든다
+ *
+ * 정지일수만 있으면 "며칠 밀렸나"는 알아도 "지금 멈춰 있나"를 알 수 없다.
+ */
+const HOLD_COLUMNS = ["정지시작일", "정지종료예정일"];
+
+/** 이용권이 누구에게서 누구에게 넘어갔는지 — 돈이 걸린 일이라 기록을 남긴다 */
+export const SHEET_TR = "이용권양도";
+export const TR_HEADERS = [
+  "양도번호", "이용권번호", "준회원번호", "받은회원번호", "양도일",
+  "수수료", "결제번호", "메모", "등록일시", "등록자", "삭제여부",
+];
+
+const TR_COLS: ColumnSpec = {
+  양도번호: { names: ["양도 번호"], required: true },
+  이용권번호: { names: [], required: true },
+  준회원번호: { names: ["양도인", "보낸회원번호"], required: true },
+  받은회원번호: { names: ["양수인"], required: true },
+  양도일: { names: [] },
+  수수료: { names: ["양도수수료"] },
+  결제번호: { names: [] },
+  메모: { names: ["비고"] },
+  등록일시: { names: [] },
+  등록자: { names: [] },
+  삭제여부: { names: [] },
+};
+
 const V_COLS: ColumnSpec = {
   이용권번호: { names: ["이용권 번호", "이용권ID"], required: true },
   회원번호: { names: ["회원 번호"], required: true },
@@ -53,6 +84,8 @@ const V_COLS: ColumnSpec = {
   총횟수: { names: ["총 횟수", "전체횟수"] },
   잔여횟수: { names: ["남은횟수", "잔여 횟수"] },
   정지일수: { names: ["홀딩일수"] },
+  정지시작일: { names: ["홀딩시작일"] },
+  정지종료예정일: { names: ["홀딩종료예정일", "정지예정일"] },
   금액: { names: ["결제금액", "판매금액", "가격"] },
   담당트레이너사번: { names: ["담당트레이너", "담당직원사번", "담당직원"] },
   등록직원사번: { names: ["등록처리직원", "등록직원", "처리직원사번"] },
@@ -140,6 +173,10 @@ export type Ticket = {
   총횟수: string;
   잔여횟수: string;
   정지일수: string;
+  /** 비어 있지 않으면 지금 멈춰 있다 */
+  정지시작일: string;
+  /** 미리 정해 둔 정지 끝나는 날. 비어 있으면 "재개할 때까지" */
+  정지종료예정일: string;
   담당트레이너사번: string;
   상태: string;
   결제번호: string;
@@ -222,6 +259,8 @@ export async function listTickets(): Promise<Ticket[]> {
       총횟수: get(r, cols, "총횟수"),
       잔여횟수: get(r, cols, "잔여횟수"),
       정지일수: get(r, cols, "정지일수"),
+      정지시작일: get(r, cols, "정지시작일"),
+      정지종료예정일: get(r, cols, "정지종료예정일"),
       금액: get(r, cols, "금액"),
       담당트레이너사번: get(r, cols, "담당트레이너사번"),
       상태: get(r, cols, "상태") || "진행중",
@@ -469,6 +508,8 @@ async function writePurchase(
             총횟수: t.총횟수 ?? "",
             잔여횟수: t.총횟수 ?? "",
             정지일수: "0",
+            정지시작일: "",
+            정지종료예정일: "",
             금액: String(won(t.금액)),
             담당트레이너사번: t.담당트레이너사번 ?? input.담당직원사번 ?? "",
             등록직원사번: staffId,
@@ -686,6 +727,239 @@ export async function bumpTicketCounts(
     });
   });
   await updateRows(SHEET_V, headers, items);
+}
+
+/* ── 정지 · 재개 ──────────────────────────── */
+
+/** 정지 칸이 없으면 만든다 — 예전에 만든 시트에는 없다 */
+async function ensureHoldColumns(headers: string[]): Promise<boolean> {
+  const missing = HOLD_COLUMNS.filter((c) => !headers.includes(c));
+  if (missing.length === 0) return false;
+  await addColumns(SHEET_V, missing);
+  return true;
+}
+
+/**
+ * 이용권을 멈춘다
+ *
+ * 멈추는 동안은 종료일을 건드리지 않는다. 며칠 쉬었는지는 다시 켤 때
+ * 확정되기 때문이다 — 미리 밀어 두면 일찍 돌아왔을 때 되돌려야 하고,
+ * 되돌리다 틀리면 회원에게 하루를 더 주거나 덜 주게 된다.
+ *
+ * 끝나는 날을 미리 알면 적어 둔다. 그날이 지나면 화면이 「재개하세요」라고 알린다.
+ */
+export async function holdTicket(
+  id: string,
+   시작일: string,
+   종료예정일: string,
+  staffId: string
+): Promise<void> {
+  let v = await readSheet(SHEET_V);
+  if (await ensureHoldColumns(v.headers)) v = await readSheet(SHEET_V);
+  const cols = resolve(SHEET_V, v.headers, V_COLS);
+  const i = v.rows.findIndex((r) => get(r, cols, "이용권번호") === id);
+  if (i < 0) throw new Error("해당 이용권을 찾지 못했습니다.");
+
+  const from = (시작일 || today()).slice(0, 10);
+  const until = (종료예정일 ?? "").slice(0, 10);
+  if (until && until < from) throw new Error("정지 끝나는 날이 시작하는 날보다 빠릅니다.");
+  if (get(v.rows[i], cols, "정지시작일")) throw new Error("이미 정지 중인 이용권입니다.");
+
+  await updateRow(SHEET_V, v.rowNumbers[i], v.headers, {
+    ...v.rows[i],
+    ...toSheetRow(
+      { 상태: "정지", 정지시작일: from, 정지종료예정일: until, 수정일시: now(), 수정자: staffId },
+      cols
+    ),
+  });
+}
+
+/**
+ * 다시 쓰게 한다
+ *
+ * 멈춰 있던 날수만큼 종료일을 뒤로 민다. 끝나는 날을 미리 정해 뒀다면
+ * 그날까지만 쳐 준다 — 재개 버튼을 늦게 눌렀다고 공짜 날이 붙어서는 안 된다.
+ */
+export async function resumeTicket(
+  id: string,
+  staffId: string
+): Promise<{ 늘어난일수: number; 새종료일: string }> {
+  let v = await readSheet(SHEET_V);
+  if (await ensureHoldColumns(v.headers)) v = await readSheet(SHEET_V);
+  const cols = resolve(SHEET_V, v.headers, V_COLS);
+  const i = v.rows.findIndex((r) => get(r, cols, "이용권번호") === id);
+  if (i < 0) throw new Error("해당 이용권을 찾지 못했습니다.");
+
+  const row = v.rows[i];
+  const from = get(row, cols, "정지시작일").slice(0, 10);
+  if (!from) throw new Error("정지 중인 이용권이 아닙니다.");
+
+  const until = get(row, cols, "정지종료예정일").slice(0, 10);
+  const nowDay = today();
+  const to = until && until < nowDay ? until : nowDay;
+
+  const days = Math.max(0, daysBetween(from, to));
+  const end = get(row, cols, "종료일").slice(0, 10);
+  const 새종료일 = end ? addDays(end, days) : end;
+  const 누적 = (Number(get(row, cols, "정지일수")) || 0) + days;
+
+  await updateRow(SHEET_V, v.rowNumbers[i], v.headers, {
+    ...row,
+    ...toSheetRow(
+      {
+        상태: "진행중",
+        정지시작일: "",
+        정지종료예정일: "",
+        정지일수: String(누적),
+        ...(새종료일 ? { 종료일: 새종료일 } : {}),
+        수정일시: now(),
+        수정자: staffId,
+      },
+      cols
+    ),
+  });
+
+  return { 늘어난일수: days, 새종료일 };
+}
+
+/* ── 양도 ─────────────────────────────────── */
+
+/**
+ * 이용권을 다른 회원에게 넘긴다
+ *
+ * 이용권 줄의 주인을 바꾸고, 누가 누구에게 언제 넘겼는지를 따로 남긴다.
+ * 주인만 바꿔 놓으면 나중에 "이게 왜 여기 있나"를 아무도 설명하지 못한다.
+ *
+ * 수수료를 받으면 받은 사람 앞으로 결제 한 줄을 만든다 — 매출에 잡혀야 한다.
+ */
+export async function transferTicket(
+  input: {
+    이용권번호: string;
+    받는회원번호: string;
+    양도일: string;
+    수수료: string;
+    결제수단: string;
+    메모: string;
+  },
+  staffId: string
+): Promise<{ 양도번호: string; 결제번호: string }> {
+  const v = await readSheet(SHEET_V);
+  const vCols = resolve(SHEET_V, v.headers, V_COLS);
+  const i = v.rows.findIndex((r) => get(r, vCols, "이용권번호") === input.이용권번호);
+  if (i < 0) throw new Error("해당 이용권을 찾지 못했습니다.");
+
+  const 준회원번호 = get(v.rows[i], vCols, "회원번호");
+  if (준회원번호 === input.받는회원번호) {
+    throw new Error("같은 회원에게는 넘길 수 없습니다.");
+  }
+
+  const { items } = await listMembers();
+  const 받는이 = items.find((m) => m.id === input.받는회원번호);
+  if (!받는이) throw new Error("받을 회원을 찾지 못했습니다.");
+
+  const stamp = now();
+  const 양도일 = (input.양도일 || today()).slice(0, 10);
+  const fee = won(input.수수료);
+
+  // 1) 수수료 — 받은 사람 앞으로 결제 한 줄
+  let payId = "";
+  if (fee > 0) {
+    const pSheet = await readSheet(SHEET_P);
+    const pCols = resolve(SHEET_P, pSheet.headers, P_COLS);
+    payId = nextId(pSheet.rows.map((r) => get(r, pCols, "결제번호")), "PAY", 5);
+    const { card, cash, bank } = splitAmount(
+      { 이용권: [], 결제수단: input.결제수단, 결제금액: String(fee) },
+      fee
+    );
+    await appendRow(SHEET_P, pSheet.headers, toSheetRow({
+      결제번호: payId,
+      회원번호: 받는이.id,
+      이용권번호: input.이용권번호,
+      지점코드: 받는이.지점코드,
+      결제일시: stamp,
+      결제금액: String(fee),
+      결제수단: input.결제수단,
+      현금액: String(cash),
+      카드액: String(card),
+      계좌액: String(bank),
+      매출유형: "양도수수료",
+      미수금액: "0",
+      담당직원사번: staffId,
+      메모: input.메모 || `${준회원번호} → ${받는이.id} 양도 수수료`,
+      등록일시: stamp,
+      등록자: staffId,
+      수정일시: stamp,
+      수정자: staffId,
+      삭제여부: "",
+    }, pCols));
+  }
+
+  // 2) 양도 기록
+  await createSheet(SHEET_TR, TR_HEADERS);
+  const tr = await readSheet(SHEET_TR);
+  const trCols = resolve(SHEET_TR, tr.headers, TR_COLS);
+  const 양도번호 = nextId(tr.rows.map((r) => get(r, trCols, "양도번호")), "TF", 5);
+  await appendRow(SHEET_TR, tr.headers, toSheetRow({
+    양도번호,
+    이용권번호: input.이용권번호,
+    준회원번호,
+    받은회원번호: 받는이.id,
+    양도일,
+    수수료: String(fee),
+    결제번호: payId,
+    메모: input.메모 ?? "",
+    등록일시: stamp,
+    등록자: staffId,
+    삭제여부: "",
+  }, trCols));
+
+  // 3) 주인 바꾸기 — 지점도 받는 사람 쪽으로 따라간다
+  await updateRow(SHEET_V, v.rowNumbers[i], v.headers, {
+    ...v.rows[i],
+    ...toSheetRow(
+      {
+        회원번호: 받는이.id,
+        지점코드: 받는이.지점코드,
+        수정일시: stamp,
+        수정자: staffId,
+      },
+      vCols
+    ),
+  });
+
+  return { 양도번호, 결제번호: payId };
+}
+
+/** 이 이용권이 지금까지 누구를 거쳐 왔나 */
+export type Transfer = {
+  id: string;
+  이용권번호: string;
+  준회원번호: string;
+  받은회원번호: string;
+  양도일: string;
+  수수료: string;
+};
+
+export async function listTransfers(): Promise<Transfer[]> {
+  const names = await listSheetNames();
+  if (!names.includes(SHEET_TR)) return [];
+  const tr = await readSheet(SHEET_TR);
+  const cols = resolve(SHEET_TR, tr.headers, TR_COLS);
+  const out: Transfer[] = [];
+  tr.rows.forEach((r) => {
+    if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+    const id = get(r, cols, "양도번호");
+    if (!id) return;
+    out.push({
+      id,
+      이용권번호: get(r, cols, "이용권번호"),
+      준회원번호: get(r, cols, "준회원번호"),
+      받은회원번호: get(r, cols, "받은회원번호"),
+      양도일: get(r, cols, "양도일").slice(0, 10),
+      수수료: get(r, cols, "수수료"),
+    });
+  });
+  return out;
 }
 
 /** 이용권 지우기 — 잘못 넣은 줄을 되돌릴 때 */
