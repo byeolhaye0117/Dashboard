@@ -126,11 +126,15 @@ const money = (n: number) => n.toLocaleString("ko-KR");
  */
 export type Grp = "이용권" | "부가" | "옵션" | "서비스";
 
+/** 상품 화면에서 부가 상품으로 정한 이름들. 「기타」는 예전에 쓰던 이름이다 */
+const EXTRA_KINDS = ["부가상품권", "부가상품", "부가", "기타", "용품"];
+
 const groupOf = (pr?: ProductMeta): Grp => {
   if (!pr) return "이용권";
-  if (pr.isService || pr.kind === "서비스") return "서비스";
-  if (pr.isOption || pr.kind === "옵션") return "옵션";
-  if (pr.kind === "기타") return "부가";
+  const k = (pr.kind ?? "").replace(/\s/g, "");
+  if (pr.isService || k === "서비스") return "서비스";
+  if (pr.isOption || k === "옵션") return "옵션";
+  if (EXTRA_KINDS.includes(k)) return "부가";
   return "이용권";
 };
 
