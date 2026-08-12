@@ -1365,18 +1365,22 @@ function TaskAdd(props: {
           */}
           <div className="bulk-sec" style={{ marginTop: 0, marginBottom: 10 }}>
             <div className="pick-row" style={{ flexWrap: "wrap" }}>
-              <select className="select" style={{ maxWidth: 240 }} value={planId}
-                      onChange={(e) => { setPlanId(e.target.value); setPlanMsg(""); setKillPlan(false); }}>
-                <option value="">저장해 둔 목록 고르기</option>
-                {plans.map((x) => <option key={x.id} value={x.id}>{x.목록명}</option>)}
-              </select>
-              <button type="button" className="btn-dark" disabled={!planId || planBusy}
-                      onClick={() => {
-                        const hit = plans.find((x) => x.id === planId);
-                        if (hit) { setText(hit.내용); setErr(""); setPlanMsg(""); }
-                      }}>
-                불러오기
-              </button>
+              {plans.length > 0 && (
+                <>
+                  <select className="select" style={{ maxWidth: 240 }} value={planId}
+                          onChange={(e) => { setPlanId(e.target.value); setPlanMsg(""); setKillPlan(false); }}>
+                    <option value="">저장해 둔 목록 고르기</option>
+                    {plans.map((x) => <option key={x.id} value={x.id}>{x.목록명}</option>)}
+                  </select>
+                  <button type="button" className="btn-dark" disabled={!planId || planBusy}
+                          onClick={() => {
+                            const hit = plans.find((x) => x.id === planId);
+                            if (hit) { setText(hit.내용); setErr(""); setPlanMsg(""); }
+                          }}>
+                    불러오기
+                  </button>
+                </>
+              )}
               {planId && (
                 <button type="button" className="btn-ghost" style={{ marginTop: 0 }}
                         disabled={planBusy} onClick={() => openPanel("rename")}>
@@ -1450,18 +1454,34 @@ function TaskAdd(props: {
               </div>
             )}
 
-            {/* 아직 하나도 없을 때만 — 처음 한 번 깔아 주는 자리다 */}
+            {/*
+              아직 하나도 없을 때 — 처음 한 번 깔아 주는 자리다
+
+              글만 채워 놓고 「저장은 알아서 하세요」라고 두면, 저장을 안 한 채
+              쓰다가 "왜 이름이 안 바뀌냐"가 된다. 꺼내는 순간 이름 짓는 칸까지
+              같이 열어 준다 — 단추 한 번이면 대표님 목록이 되도록.
+            */}
             {plans.length === 0 && !panel && PRESETS.length > 0 && (
-              <p className="stat-note" style={{ margin: "8px 0 0" }}>
-                저장해 둔 목록이 없습니다.{" "}
-                <button className="linkish" disabled={planBusy}
-                        onClick={() => { setText(PRESETS[0].text); setErr(""); }}>
-                  {PRESETS[0].name} 불러오기
-                </button>
-                {" "}— 불러온 뒤 고쳐서 <b>지금 내용 저장</b>을 누르면 대표님 목록이 됩니다.
-                <br />
-                <span className="dim">{PRESETS[0].note}</span>
-              </p>
+              <div style={{ marginTop: 10 }}>
+                <p className="stat-note" style={{ margin: "0 0 8px" }}>
+                  <b>저장해 둔 목록이 아직 없습니다.</b> 아래를 누르면 기본 견본을 꺼내고
+                  이름 짓는 칸이 같이 열립니다. 한 번 저장해 두면 그때부터
+                  <b> 이름 바꾸기 · 내용 고치기 · 지우기</b>가 모두 됩니다.
+                </p>
+                <div className="pick-row" style={{ flexWrap: "wrap" }}>
+                  <button type="button" className="btn-dark" disabled={planBusy}
+                          onClick={() => {
+                            setText(PRESETS[0].text);
+                            setErr("");
+                            setPlanName(PRESETS[0].name);
+                            setPlanMsg("");
+                            setPanel("save");
+                          }}>
+                    {PRESETS[0].name} 가져오기
+                  </button>
+                  <span className="dim" style={{ fontSize: 11.5 }}>{PRESETS[0].note}</span>
+                </div>
+              </div>
             )}
 
             {planMsg && <p className="stat-note" style={{ margin: "8px 0 0" }}>{planMsg}</p>}
