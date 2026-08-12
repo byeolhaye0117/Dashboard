@@ -1095,7 +1095,8 @@ function TaskAdd(props: {
   */
   const [plans, setPlans] = useState<Plan[]>(props.plans);
   const [planId, setPlanId] = useState("");
-  const [naming, setNaming] = useState(false);
+  /** 아래에 열리는 작은 칸 — 이름만 바꾸기 / 내용까지 저장 */
+  const [panel, setPanel] = useState<"" | "rename" | "save">("");
   const [planName, setPlanName] = useState("");
   const [planBusy, setPlanBusy] = useState(false);
   const [killPlan, setKillPlan] = useState(false);
@@ -1161,21 +1162,52 @@ function TaskAdd(props: {
     }
   }
 
-  /** 지금 적혀 있는 글을 목록으로 저장한다. id를 주면 그 목록을 덮어쓴다 */
-  async function keepPlan(id: string) {
-    const name = (id ? plans.find((x) => x.id === id)?.목록명 : planName) ?? "";
-    const data = await planPost({ action: "plan-save", id, 목록명: name.trim(), 내용: text });
+  /**
+   * 목록을 저장한다
+   *
+   * 이름은 언제나 위 칸에 적힌 것을 쓴다 — 덮어쓰기를 하면서 이름을 바꾸는 일이
+   * 흔한데, 예전 이름을 몰래 되살려 놓으면 바꾼 줄 알았던 사람이 속는다.
+   * withText 가 거짓이면 이름만 바꾼다. 63줄을 다시 불러올 이유가 없다.
+   */
+  async function keepPlan(id: string, withText: boolean) {
+    const name = planName.trim();
+    if (!name) return setPlanMsg("목록 이름을 적어주세요.");
+
+    const data = await planPost({
+      action: "plan-save",
+      id,
+      목록명: name,
+      ...(withText ? { 내용: text } : {}),
+    });
     if (!data) return;
-    const saved = { id: data.id as string, 목록명: name.trim(), 내용: text };
+
+    const before = plans.find((x) => x.id === data.id);
+    const saved: Plan = {
+      id: data.id as string,
+      목록명: name,
+      내용: withText ? text : before?.내용 ?? "",
+    };
     setPlans((cur) =>
-      cur.some((x) => x.id === saved.id)
+      (cur.some((x) => x.id === saved.id)
         ? cur.map((x) => (x.id === saved.id ? saved : x))
-        : [...cur, saved].sort((a, b) => a.목록명.localeCompare(b.목록명, "ko"))
+        : [...cur, saved]
+      ).sort((a, b) => a.목록명.localeCompare(b.목록명, "ko"))
     );
     setPlanId(saved.id);
-    setNaming(false);
-    setPlanName("");
-    setPlanMsg(`「${saved.목록명}」 저장했습니다.`);
+    setPanel("");
+    setPlanMsg(
+      withText
+        ? `「${saved.목록명}」 저장했습니다.`
+        : `이름을 「${saved.목록명}」 으로 바꿨습니다.`
+    );
+  }
+
+  /** 아래 칸을 연다. 이름은 지금 고른 목록 것으로 채워 둔다 */
+  function openPanel(which: "rename" | "save") {
+    setPlanName(plans.find((x) => x.id === planId)?.목록명 ?? "");
+    setPlanMsg("");
+    setKillPlan(false);
+    setPanel(which);
   }
 
   async function dropPlan() {
@@ -1345,10 +1377,16 @@ function TaskAdd(props: {
                       }}>
                 불러오기
               </button>
+              {planId && (
+                <button type="button" className="btn-ghost" style={{ marginTop: 0 }}
+                        disabled={planBusy} onClick={() => openPanel("rename")}>
+                  이름 바꾸기
+                </button>
+              )}
               <span className="spacer" />
               <button type="button" className="btn-ghost" style={{ marginTop: 0 }}
                       disabled={planBusy || !text.trim()}
-                      onClick={() => { setNaming(true); setPlanName(""); setPlanMsg(""); }}>
+                      onClick={() => openPanel("save")}>
                 지금 내용 저장
               </button>
               {planId && (
@@ -1367,34 +1405,53 @@ function TaskAdd(props: {
               )}
             </div>
 
-            {naming && (
+            {panel && (
               <div style={{ marginTop: 10 }}>
                 <div className="field" style={{ marginBottom: 8 }}>
-                  <label htmlFor="pn">새 목록 이름</label>
+                  <label htmlFor="pn">목록 이름</label>
                   <input id="pn" className="input" value={planName} autoFocus
-                         placeholder="예: 4·5층 일일 점검"
+                         placeholder="예: 쌍용점 일일 점검"
                          onChange={(e) => setPlanName(e.target.value)} />
                 </div>
                 <div className="pick-row" style={{ flexWrap: "wrap" }}>
-                  <button type="button" className="btn-dark"
-                          disabled={planBusy || !planName.trim()}
-                          onClick={() => keepPlan("")}>
-                    새 목록으로 저장
-                  </button>
-                  {planId && (
-                    <button type="button" className="btn-ghost" style={{ marginTop: 0 }}
-                            disabled={planBusy} onClick={() => keepPlan(planId)}>
-                      「{plans.find((x) => x.id === planId)?.목록명}」 덮어쓰기
+                  {panel === "rename" ? (
+                    <button type="button" className="btn-dark"
+                            disabled={planBusy || !planName.trim()}
+                            onClick={() => keepPlan(planId, false)}>
+                      이름 바꾸기
                     </button>
+                  ) : (
+                    <>
+                      {planId && (
+                        <button type="button" className="btn-dark"
+                                disabled={planBusy || !planName.trim()}
+                                onClick={() => keepPlan(planId, true)}>
+                          이 목록에 덮어쓰기
+                        </button>
+                      )}
+                      <button type="button"
+                              className={planId ? "btn-ghost" : "btn-dark"}
+                              style={planId ? { marginTop: 0 } : undefined}
+                              disabled={planBusy || !planName.trim()}
+                              onClick={() => keepPlan("", true)}>
+                        새 목록으로 저장
+                      </button>
+                    </>
                   )}
                   <button type="button" className="btn-ghost" style={{ marginTop: 0 }}
-                          onClick={() => setNaming(false)}>취소</button>
+                          onClick={() => setPanel("")}>취소</button>
                 </div>
+                {panel === "save" && planId && (
+                  <p className="stat-note" style={{ margin: "8px 0 0" }}>
+                    <b>덮어쓰기</b>는 고른 목록의 이름과 내용을 지금 것으로 바꿉니다.
+                    이름만 바꾸려면 취소하고 <b>이름 바꾸기</b>를 쓰세요.
+                  </p>
+                )}
               </div>
             )}
 
             {/* 아직 하나도 없을 때만 — 처음 한 번 깔아 주는 자리다 */}
-            {plans.length === 0 && !naming && PRESETS.length > 0 && (
+            {plans.length === 0 && !panel && PRESETS.length > 0 && (
               <p className="stat-note" style={{ margin: "8px 0 0" }}>
                 저장해 둔 목록이 없습니다.{" "}
                 <button className="linkish" disabled={planBusy}

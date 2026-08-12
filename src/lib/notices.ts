@@ -345,16 +345,22 @@ export async function listPlans(): Promise<Plan[]> {
   return out;
 }
 
-/** 번호를 주면 그 목록을 고치고, 안 주면 새로 만든다 */
+/**
+ * 번호를 주면 그 목록을 고치고, 안 주면 새로 만든다
+ *
+ * 내용에 null 을 주면 이름만 바꾼다. 이름만 고치려고 63줄을 다시 불러와
+ * 다시 넣게 할 이유가 없다.
+ */
 export async function savePlan(
   id: string,
   목록명: string,
-  내용: string,
+  내용: string | null,
   byId: string
 ): Promise<string> {
   const name = (목록명 ?? "").trim();
   if (!name) throw new Error("목록 이름을 적어주세요.");
-  if (!(내용 ?? "").trim()) throw new Error("저장할 내용이 없습니다.");
+  if (내용 === null && !id) throw new Error("저장할 내용이 없습니다.");
+  if (내용 !== null && !내용.trim()) throw new Error("저장할 내용이 없습니다.");
 
   // 탭이 없으면 여기서 만든다 — 저장하려는 순간이 곧 필요해진 순간이다
   await createSheet(SHEET_PLAN, PLAN_HEADERS);
@@ -366,16 +372,18 @@ export async function savePlan(
   if (id) {
     const i = p.rows.findIndex((r) => get(r, pc, "목록번호") === id);
     if (i < 0) throw new Error("해당 목록을 찾지 못했습니다.");
+    const patch: Record<string, string> = { 목록명: name, 수정일시: stamp, 수정자: byId };
+    if (내용 !== null) patch.내용 = 내용;
     await updateRow(SHEET_PLAN, p.rowNumbers[i], p.headers, {
       ...p.rows[i],
-      ...toSheetRow({ 목록명: name, 내용, 수정일시: stamp, 수정자: byId }, pc),
+      ...toSheetRow(patch, pc),
     });
     return id;
   }
 
   const newId = nextId("PL", 5, p.rows.map((r) => get(r, pc, "목록번호")));
   await appendRow(SHEET_PLAN, p.headers, toSheetRow({
-    목록번호: newId, 목록명: name, 내용,
+    목록번호: newId, 목록명: name, 내용: 내용 ?? "",
     등록일시: stamp, 등록자: byId, 수정일시: stamp, 수정자: byId, 삭제여부: "",
   }, pc));
   return newId;
