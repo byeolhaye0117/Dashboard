@@ -232,6 +232,31 @@ export async function getStaffNames(): Promise<Record<string, string>> {
 
 export type Product = Row & { code: string; name: string };
 
+/**
+ * 상품 → 그 상품을 파는 지점들
+ *
+ * 지점마다 파는 상품이 다르다. 회원에게 팔 때 다른 지점 상품까지 보이면
+ * 없는 것을 팔게 된다.
+ *
+ * 탭이 없거나 비어 있으면 빈 손으로 돌아온다 — 그때는 거르지 않는 것이 맞다.
+ * 아직 지점을 안 걸어 뒀을 뿐인데 목록이 통째로 비면 아무것도 못 판다.
+ */
+export async function getProductBranches(): Promise<Record<string, string[]>> {
+  try {
+    const { rows } = await readSheet(SHEET.상품판매지점);
+    const out: Record<string, string[]> = {};
+    alive(rows).forEach((r) => {
+      const code = (r["상품코드"] ?? "").trim();
+      const br = (r["지점코드"] ?? "").trim();
+      if (!code || !br) return;
+      (out[code] ??= []).push(br);
+    });
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 export async function getProducts(branchCode?: string): Promise<Product[]> {
   const [{ rows }, sell] = await Promise.all([
     readSheet(SHEET.상품),

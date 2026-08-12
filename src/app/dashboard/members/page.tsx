@@ -7,7 +7,9 @@
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
-import { getBranches, getAllOptions, getStaffNames, getStaffAll, getProducts } from "@/lib/data";
+import {
+  getBranches, getAllOptions, getStaffNames, getStaffAll, getProducts, getProductBranches,
+} from "@/lib/data";
 import { listMembers, listTickets, listPayments, listTicketServices } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
 import { listConsultations } from "@/lib/consultations";
@@ -30,14 +32,16 @@ async function body() {
   const mine = ab.get("회원");
   if (!mine?.view) redirect("/dashboard");
 
-  const [menus, branches, options, staffNames, staff, products] = await Promise.all([
-    visibleMenus(session),
-    getBranches(),
-    getAllOptions(),
-    getStaffNames(),
-    getStaffAll(),
-    getProducts(),
-  ]);
+  const [menus, branches, options, staffNames, staff, products, productBranches] =
+    await Promise.all([
+      visibleMenus(session),
+      getBranches(),
+      getAllOptions(),
+      getStaffNames(),
+      getStaffAll(),
+      getProducts(),
+      getProductBranches(),
+    ]);
 
   const myBranches =
     session.scope === "전체" ? branches : branches.filter((b) => session.branches.includes(b.code));
@@ -110,6 +114,7 @@ async function body() {
         payments={payments}
         extras={extras}
         products={products.map(readProduct)}
+        productBranches={productBranches}
         waiting={waiting}
         transfers={transfers}
         options={options}
