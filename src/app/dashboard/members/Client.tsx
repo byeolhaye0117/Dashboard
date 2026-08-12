@@ -132,6 +132,36 @@ const groupOf = (pr?: ProductMeta): Grp => {
   return "이용권";
 };
 
+/**
+ * 이용권을 네 갈래로 나눈다
+ *
+ * 상품 시트의 「상품분류」를 그대로 본다. 분류에 「케어권」이라고 적어 두면
+ * 그대로 케어권으로 들어간다 — 여기 코드를 고칠 필요가 없다.
+ * 예전에 쓰던 이름(1:1PT · 그룹수업 · 기타…)도 알아듣게 해 두었다.
+ *
+ * 무료로 얹어준 서비스는 이 갈래에 넣지 않는다. "무엇을 파는가"가 아니라
+ * "돈을 받았는가"의 문제라 축이 다르다.
+ */
+const CATS = [
+  { key: "회원권", names: ["회원권", "헬스", "이용권", "정기권"] },
+  { key: "수강권", names: ["수강권", "1:1PT", "PT", "개인레슨", "그룹수업", "수업", "레슨"] },
+  { key: "케어권", names: ["케어권", "케어", "통증케어", "재활", "관리"] },
+  { key: "부가상품권", names: ["부가상품권", "부가상품", "부가", "기타", "옵션", "용품"] },
+] as const;
+
+const ticketCat = (pr?: ProductMeta): string => {
+  const g = groupOf(pr);
+  // 부가 상품과 붙는 옵션은 분류 이름과 상관없이 부가상품권이다
+  if (g === "부가" || g === "옵션") return "부가상품권";
+  const k = (pr?.kind ?? "").replace(/\s/g, "");
+  if (!k) return "회원권";
+  const exact = CATS.find((c) => c.names.some((n) => n === k));
+  if (exact) return exact.key;
+  const loose = CATS.find((c) => c.names.some((n) => k.includes(n)));
+  // 못 알아들은 것은 회원권으로 둔다 — 돈 받고 판 것이 부가로 밀리면 안 된다
+  return loose ? loose.key : "회원권";
+};
+
 /** 지금 쓸 수 있는 이용권인가 — 기간과 횟수를 같이 본다 */
 const isAlive = (t: Ticket, now: string): boolean => {
   if (t.상태 === "환불") return false;
@@ -1575,26 +1605,26 @@ function Board({
       <div className="mcard">
         {head("이용권", `유효 ${live.rows.length} · 만료 ${만료}`, "이용권")}
 
-        <p className="csec">회원권 · PT <span>{live.rows.length}</span></p>
-        {live.rows.length === 0 ? (
+        {live.rows.length === 0 && live.extraRows.length === 0 ? (
           <p className="empty">
-            지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
+            지금 쓸 수 있는 회원권 · 수강권이 없습니다. <b>재등록 대상</b>입니다.
           </p>
         ) : (
-          live.rows.map((t) => (
-            <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
-                       onClick={can.update ? () => onTicket(t) : undefined} />
-          ))
-        )}
-
-        {live.extraRows.length > 0 && (
-          <>
-            <p className="csec">부가 상품 · 옵션 <span>{live.extraRows.length}</span></p>
-            {live.extraRows.map((t) => (
-              <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
-                         onClick={can.update ? () => onTicket(t) : undefined} />
-            ))}
-          </>
+          CATS.map((c) => {
+            const rows = [...live.rows, ...live.extraRows].filter(
+              (t) => ticketCat(productOf(t.상품코드)) === c.key
+            );
+            if (rows.length === 0) return null;
+            return (
+              <div key={c.key}>
+                <p className="csec">{c.key} <span>{rows.length}</span></p>
+                {rows.map((t) => (
+                  <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                             onClick={can.update ? () => onTicket(t) : undefined} />
+                ))}
+              </div>
+            );
+          })
         )}
 
         {(live.serviceRows.length > 0 || extras.length > 0) && (
@@ -1814,13 +1844,13 @@ function TicketGroups({
 
   const section = (title: string, rows: Ticket[], free?: boolean) =>
     rows.length > 0 && (
-      <>
+      <div key={title}>
         <p className="csec">{title} <span>{rows.length}</span></p>
         {rows.slice().sort(byEnd).map((t) => (
           <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free={free}
                      onClick={onEdit && (() => onEdit(t))} />
         ))}
-      </>
+      </div>
     );
 
   return (
@@ -1836,20 +1866,17 @@ function TicketGroups({
 
       {side === "live" ? (
         <>
-          <p className="csec">회원권 · PT <span>{live.length}</span></p>
-          {live.length === 0 ? (
+          {live.length + liveExtra.length + liveOpts.length === 0 ? (
             <p className="empty">
-              지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
+              지금 쓸 수 있는 회원권 · 수강권이 없습니다. <b>재등록 대상</b>입니다.
             </p>
           ) : (
-            live.slice().sort(byEnd).map((t) => (
-              <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
-                         onClick={onEdit && (() => onEdit(t))} />
-            ))
+            CATS.map((c) =>
+              section(c.key, [...live, ...liveExtra, ...liveOpts].filter(
+                (t) => ticketCat(productOf(t.상품코드)) === c.key
+              ))
+            )
           )}
-
-          {section("부가 상품", liveExtra)}
-          {section("붙은 옵션", liveOpts)}
 
           {(liveSvc.length > 0 || extras.length > 0) && (
             <>
@@ -1886,9 +1913,11 @@ function TicketGroups({
         <p className="empty">아직 만료된 이용권이 없습니다.</p>
       ) : (
         <>
-          {section("회원권 · PT", past)}
-          {section("부가 상품", pastExtra)}
-          {section("붙은 옵션", pastOpts)}
+          {CATS.map((c) =>
+            section(c.key, [...past, ...pastExtra, ...pastOpts].filter(
+              (t) => ticketCat(productOf(t.상품코드)) === c.key
+            ))
+          )}
           {section("받은 서비스 · 옵션", pastSvc, true)}
         </>
       )}
