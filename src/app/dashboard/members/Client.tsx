@@ -111,7 +111,7 @@ const SOON = 30;
 const money = (n: number) => n.toLocaleString("ko-KR");
 
 /**
- * 상품을 네 갈래로 나눈다
+ * 상품을 카테고리로 나눈다
  *
  * 이용권: 회원권 · 1:1PT · 그룹수업. 이게 끊기면 회원이 아니다
  * 부가  : 운동복 · 사물함 · 프로틴 · 일일권 같은 것. 돈은 냈지만 이게
@@ -133,13 +133,13 @@ const groupOf = (pr?: ProductMeta): Grp => {
 };
 
 /**
- * 이용권을 네 갈래로 나눈다
+ * 이용권을 카테고리로 나눈다
  *
  * 상품 시트의 「상품분류」를 그대로 본다. 분류에 「케어권」이라고 적어 두면
  * 그대로 케어권으로 들어간다 — 여기 코드를 고칠 필요가 없다.
  * 예전에 쓰던 이름(1:1PT · 그룹수업 · 기타…)도 알아듣게 해 두었다.
  *
- * 무료로 얹어준 서비스는 이 갈래에 넣지 않는다. "무엇을 파는가"가 아니라
+ * 무료로 얹어준 서비스도 제 카테고리에 들어간다. "무엇을 파는가"가 아니라
  * "돈을 받았는가"의 문제라 축이 다르다.
  */
 const CATS = [
@@ -147,16 +147,19 @@ const CATS = [
   { key: "수강권", names: ["수강권", "1:1PT", "PT", "개인레슨", "그룹수업", "수업", "레슨"] },
   { key: "케어권", names: ["케어권", "케어", "통증케어", "재활", "관리"] },
   { key: "부가상품권", names: ["부가상품권", "부가상품", "부가", "기타", "옵션", "용품"] },
+  { key: "서비스", names: ["서비스", "무료", "사은품"] },
 ] as const;
 
 const ticketCat = (pr?: ProductMeta): string => {
-  const g = groupOf(pr);
-  // 부가 상품과 붙는 옵션은 분류 이름과 상관없이 부가상품권이다
-  if (g === "부가" || g === "옵션") return "부가상품권";
   const k = (pr?.kind ?? "").replace(/\s/g, "");
+  // 상품 화면에서 카테고리를 정해 놨으면 그 말이 먼저다
+  const named = CATS.find((c) => c.names.some((n) => n === k));
+  if (named) return named.key;
+
+  const g = groupOf(pr);
+  // 부가 상품과 붙는 옵션은 이름과 상관없이 부가상품권이다
+  if (g === "부가" || g === "옵션") return "부가상품권";
   if (!k) return "회원권";
-  const exact = CATS.find((c) => c.names.some((n) => n === k));
-  if (exact) return exact.key;
   const loose = CATS.find((c) => c.names.some((n) => k.includes(n)));
   // 못 알아들은 것은 회원권으로 둔다 — 돈 받고 판 것이 부가로 밀리면 안 된다
   return loose ? loose.key : "회원권";
@@ -1600,7 +1603,7 @@ function Board({
       {/*
         이용권 — 이 화면에서 가장 먼저 봐야 하는 것
 
-        회원권 · 부가 상품 · 받은 서비스를 한 카드 안에 갈래로 나눠 다 보여준다.
+        회원권 · 부가 상품 · 받은 서비스를 한 카드 안에 카테고리로 나눠 다 보여준다.
         "사물함은 언제까지지"를 보려고 탭을 옮겨 다니게 할 이유가 없다.
       */}
       <div className="mcard">
@@ -1608,7 +1611,7 @@ function Board({
 
         {(() => {
           /*
-            무료로 받은 것도 같은 갈래에 넣는다
+            무료로 받은 것도 제 카테고리에 넣는다
 
             「완초자 PT 20회 서비스」는 돈을 안 냈을 뿐 수강권이다. 따로 빼두면
             수강권이 몇 개인지 볼 때마다 두 군데를 더해야 한다.
@@ -1855,7 +1858,7 @@ function TicketGroups({
     );
   }
 
-  /** 무료로 받은 것도 같은 갈래에 넣는다. 공짜라는 사실은 「무료」 딱지로 말한다 */
+  /** 무료로 받은 것도 제 카테고리에 넣는다. 공짜라는 사실은 「무료」 딱지로 말한다 */
   const board = (paid: Ticket[], svc: Ticket[], withExtras: boolean) => {
     type Line = { cat: string; el: any };
     const lines: Line[] = [];
@@ -2115,7 +2118,7 @@ function TicketEdit({
   /** 개월로 파는 회원권에는 횟수 칸을 보여주지 않는다 */
   const byCount = usesCount(pr, t);
 
-  /** 지금 갈래 — 고르면 상품 원장이 바뀐다 */
+  /** 지금 카테고리 — 고르면 상품 원장이 바뀐다 */
   const [cat, setCat] = useState(ticketCat(pr));
   async function moveCat(next: string) {
     if (next === cat) return;
@@ -2131,7 +2134,7 @@ function TicketEdit({
     if (!res.ok) {
       setBusy(false);
       setCat(ticketCat(pr));
-      return setMsg(data.error ?? "갈래를 바꾸지 못했습니다.");
+      return setMsg(data.error ?? "카테고리를 바꾸지 못했습니다.");
     }
     location.reload();
   }
@@ -2216,13 +2219,13 @@ function TicketEdit({
         </div>
 
         {/*
-          갈래 고치기
+          카테고리 고치기
 
           "왜 케어권으로 안 나오지"를 알아채는 자리가 여기다. 시트를 열게 하면
           두 화면을 오가야 한다. 다만 고쳐지는 것은 이 줄이 아니라 상품 원장이라
           같은 상품으로 판 이용권이 전부 따라 움직인다 — 그 말을 옆에 적어 둔다.
         */}
-        <h4 className="mini-title">갈래</h4>
+        <h4 className="mini-title">카테고리</h4>
         <div className="pick-row" style={{ flexWrap: "wrap" }}>
           <select className="select" style={{ maxWidth: 200 }} value={cat} disabled={busy}
                   onChange={(e) => moveCat(e.target.value)}>

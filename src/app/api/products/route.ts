@@ -3,7 +3,7 @@ import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import {
   createProduct, patchProduct, setBranches, softDeleteProduct,
-  batchProducts, setBranchesMany, KINDS,
+  batchProducts, setBranchesMany, reorderProducts, KINDS,
 } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       }
       const kind = String(body.상품분류 ?? "");
       if (!KINDS.includes(kind as any)) {
-        return NextResponse.json({ error: "쓸 수 없는 갈래입니다." }, { status: 400 });
+        return NextResponse.json({ error: "쓸 수 없는 카테고리입니다." }, { status: 400 });
       }
       const code = await createProduct(
         {
@@ -64,7 +64,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, code });
     }
 
-    /* 여러 개 한 번에 — 갈래 · 판매 상태 · 파는 지점 */
+    /* 끌어 옮긴 차례 저장 */
+    if (action === "order") {
+      if (!mine.update) {
+        return NextResponse.json({ error: "상품을 고칠 권한이 없습니다." }, { status: 403 });
+      }
+      const codes: string[] = Array.isArray(body.codes) ? body.codes.map(String) : [];
+      const n = await reorderProducts(codes, session.staffId);
+      return NextResponse.json({ ok: true, count: n });
+    }
+
+    /* 여러 개 한 번에 — 카테고리 · 판매 상태 · 파는 지점 */
     if (action === "batch") {
       if (!mine.update) {
         return NextResponse.json({ error: "상품을 고칠 권한이 없습니다." }, { status: 403 });
@@ -76,7 +86,7 @@ export async function POST(req: Request) {
       if ("상품분류" in want) {
         const k = String(want.상품분류 ?? "");
         if (!KINDS.includes(k as any)) {
-          return NextResponse.json({ error: "쓸 수 없는 갈래입니다." }, { status: 400 });
+          return NextResponse.json({ error: "쓸 수 없는 카테고리입니다." }, { status: 400 });
         }
         changes.상품분류 = k;
       }
@@ -112,7 +122,7 @@ export async function POST(req: Request) {
       }
       const c = body.changes ?? {};
       if ("상품분류" in c && !KINDS.includes(String(c.상품분류) as any)) {
-        return NextResponse.json({ error: "쓸 수 없는 갈래입니다." }, { status: 400 });
+        return NextResponse.json({ error: "쓸 수 없는 카테고리입니다." }, { status: 400 });
       }
       await patchProduct(code, c, session.staffId);
       if (Array.isArray(body.지점들)) await setBranches(code, 지점들, session.staffId);
@@ -130,11 +140,11 @@ export async function POST(req: Request) {
     /* 회원 화면의 이용권 창에서 갈래만 바꿀 때 */
     if (action === "kind" || body.상품분류) {
       if (!ab.get("회원")?.update) {
-        return NextResponse.json({ error: "갈래를 바꿀 권한이 없습니다." }, { status: 403 });
+        return NextResponse.json({ error: "카테고리를 바꿀 권한이 없습니다." }, { status: 403 });
       }
       const kind = String(body.상품분류 ?? "");
       if (!KINDS.includes(kind as any)) {
-        return NextResponse.json({ error: "쓸 수 없는 갈래입니다." }, { status: 400 });
+        return NextResponse.json({ error: "쓸 수 없는 카테고리입니다." }, { status: 400 });
       }
       await patchProduct(code, { 상품분류: kind }, session.staffId);
       return NextResponse.json({ ok: true });

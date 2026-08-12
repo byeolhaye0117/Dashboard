@@ -1644,6 +1644,16 @@ table.cal td.cell .twice {
 .cbox .csec { margin-top: 10px; }
 .cbox .mrow:last-child { padding-bottom: 2px; }
 
+/* 끌어 옮기는 손잡이 — 줄 전체를 끌게 하면 눌러서 여는 것과 부딪힌다 */
+.grip {
+  flex: 0 0 auto; cursor: grab; user-select: none;
+  padding: 0 2px; margin-top: -1px;
+  font-size: 15px; line-height: 1; color: var(--muted); opacity: .55;
+}
+.grip:active { cursor: grabbing; }
+.prow-wrap:hover .grip { opacity: 1; }
+.mrow.is-dragging { opacity: .45; }
+
 /* 상품 목록 줄 — 왼쪽에 고르는 칸, 나머지는 눌러서 여는 자리 */
 .prow-wrap { display: flex; align-items: flex-start; gap: 10px; }
 .prow-wrap > .pick-box { margin-top: 3px; flex: 0 0 16px; }
