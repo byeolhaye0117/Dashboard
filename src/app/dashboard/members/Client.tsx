@@ -5,7 +5,7 @@
  */
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
-import { korDate, today } from "@/lib/time";
+import { korDate, today, daysBetween } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
 import type { ProductMeta } from "@/lib/productMeta";
@@ -40,6 +40,8 @@ type Ticket = {
   총횟수: string;
   잔여횟수: string;
   정지일수: string;
+  정지시작일: string;
+  정지종료예정일: string;
   담당트레이너사번: string;
   상태: string;
   결제번호: string;
@@ -359,6 +361,7 @@ export default function Client(p: Props) {
           staffNames={p.staffNames}
           branchName={branchName(detail.지점코드)}
           can={p.can}
+          members={p.items}
           onClose={() => setDetail(null)}
         />
       )}
@@ -1172,7 +1175,7 @@ function ProgressLine({ t, pr, now, onEdit }: {
 }
 
 function Detail({
-  item, tickets, payments, extras, products, productOf, options, trainers, staffNames, branchName, can, onClose,
+  item, tickets, payments, extras, products, productOf, options, trainers, staffNames, branchName, can, members, onClose,
 }: {
   item: Member;
   tickets: Ticket[];
@@ -1185,6 +1188,8 @@ function Detail({
   staffNames: Record<string, string>;
   branchName: string;
   can: { create: boolean; update: boolean; remove: boolean };
+  /** 양도할 때 받을 사람을 고르려면 명단이 있어야 한다 */
+  members: Member[];
   onClose: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -1452,32 +1457,8 @@ function Detail({
                 )}
 
                 {view === "결제" && (
-                  <>
-                    {paid.length === 0 ? (
-                      <p className="dim" style={{ fontSize: 13, margin: "8px 0 12px" }}>
-                        결제 기록이 없습니다.
-                      </p>
-                    ) : (
-                      <>
-                        <div className="line-list">
-                          {paid
-                            .slice()
-                            .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
-                            .map((x) => (
-                              <PaymentLine key={x.id} x={x}
-                                           onEdit={can.update ? () => setEditPay(x) : undefined} />
-                            ))}
-                        </div>
-                        <p className="stat-note">
-                          지금까지 결제 <b>{paid.length}건</b> · 합계{" "}
-                          <b className="num">{money(totalPaid)}원</b>
-                          {unpaid > 0 && (
-                            <> · 아직 못 받은 돈 <b className="warn-text num">{money(unpaid)}원</b></>
-                          )}
-                        </p>
-                      </>
-                    )}
-                  </>
+                  <PayTab paid={paid} totalPaid={totalPaid} unpaid={unpaid}
+                          onEdit={can.update ? setEditPay : undefined} />
                 )}
 
                 {view === "기록" && (
@@ -1503,6 +1484,7 @@ function Detail({
                 t={editTicket}
                 pr={productOf(editTicket.상품코드)}
                 trainers={trainers}
+                members={members}
                 canRemove={can.remove}
                 onClose={() => setEditTicket(null)}
               />
@@ -1630,6 +1612,22 @@ function TicketGroups({
   const opts = tickets.filter((t) => grp(t) === "옵션");
   const services = tickets.filter((t) => grp(t) === "서비스");
 
+  /*
+    사용 중과 끝난 것을 나눠 본다
+
+    한 회원이 몇 해를 다니면 끝난 회원권이 열 줄씩 쌓인다. 한 목록에 두면
+    지금 쓸 수 있는 것을 찾느라 매번 눈으로 훑어야 한다. 부가 상품과 옵션도
+    같이 나눈다 — 작년 사물함이 「부가 상품」에 그대로 남아 있으면 안 된다.
+  */
+  const [side, setSide] = useState<"live" | "past">("live");
+  const liveExtra = extra.filter((t) => isAlive(t, now));
+  const pastExtra = extra.filter((t) => !isAlive(t, now));
+  const liveOpts = opts.filter((t) => isAlive(t, now));
+  const pastOpts = opts.filter((t) => !isAlive(t, now));
+
+  const liveN = live.length + liveExtra.length + liveOpts.length;
+  const pastN = past.length + pastExtra.length + pastOpts.length;
+
   if (tickets.length === 0) {
     return (
       <>
@@ -1654,25 +1652,46 @@ function TicketGroups({
 
   return (
     <>
-      <h4 className="mini-title">이용 중 {live.length > 0 && `(${live.length})`}</h4>
-      {live.length === 0 ? (
+      <div className="pick-row" style={{ margin: "4px 0 12px" }}>
+        <button className={`mini-tab${side === "live" ? " on" : ""}`} onClick={() => setSide("live")}>
+          사용 중{liveN > 0 && <span className="dot">{liveN}</span>}
+        </button>
+        <button className={`mini-tab${side === "past" ? " on" : ""}`} onClick={() => setSide("past")}>
+          끝난 것{pastN > 0 && ` (${pastN})`}
+        </button>
+      </div>
+
+      {side === "live" ? (
+        <>
+          <h4 className="mini-title">회원권 · PT {live.length > 0 && `(${live.length})`}</h4>
+          {live.length === 0 ? (
+            <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>
+              지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
+            </p>
+          ) : (
+            <div className="line-list">
+              {live.slice().sort(byEnd).map((t) => (
+                <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+                            onEdit={onEdit && (() => onEdit(t))} />
+              ))}
+            </div>
+          )}
+          {section("부가 상품", liveExtra)}
+          {section("붙은 옵션", liveOpts)}
+          <ServiceList rows={services} extras={extras} productOf={productOf} ticketOf={ticketOf}
+                       now={now} onEdit={onEdit} />
+        </>
+      ) : pastN === 0 ? (
         <p className="dim" style={{ fontSize: 13, margin: "0 0 12px" }}>
-          지금 쓸 수 있는 회원권 · PT가 없습니다. <b>재등록 대상</b>입니다.
+          아직 끝난 이용권이 없습니다.
         </p>
       ) : (
-        <div className="line-list">
-          {live.slice().sort(byEnd).map((t) => (
-            <TicketLine key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
-                        onEdit={onEdit && (() => onEdit(t))} />
-          ))}
-        </div>
+        <>
+          {section("끝난 회원권 · PT", past)}
+          {section("끝난 부가 상품", pastExtra)}
+          {section("끝난 옵션", pastOpts)}
+        </>
       )}
-
-      {section("지난 이용권", past)}
-      {section("부가 상품", extra)}
-      {section("붙은 옵션", opts)}
-      <ServiceList rows={services} extras={extras} productOf={productOf} ticketOf={ticketOf}
-                   now={now} onEdit={onEdit} />
     </>
   );
 }
@@ -1724,6 +1743,112 @@ function TicketLine({ t, pr, now, tag, onEdit }: {
   );
 }
 
+/**
+ * 결제 — 달별로 본다
+ *
+ * 몇 해 다닌 회원은 결제가 스무 줄이 넘는다. 한 줄로 쭉 뿌리면 "작년 3월에
+ * 얼마 냈나"를 찾느라 훑게 된다. 달을 고르면 그 달만, 「전체」면 달마다
+ * 머리글을 달아 묶어서 보여준다.
+ */
+function PayTab({ paid, totalPaid, unpaid, onEdit }: {
+  paid: Payment[];
+  totalPaid: number;
+  unpaid: number;
+  onEdit?: (x: Payment) => void;
+}) {
+  const [month, setMonth] = useState("");
+
+  const sorted = useMemo(
+    () => paid.slice().sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? "")),
+    [paid]
+  );
+
+  /** 결제가 있는 달만 고르게 한다 — 빈 달을 고를 수 있으면 고장으로 보인다 */
+  const months = useMemo(() => {
+    const set = new Set<string>();
+    sorted.forEach((x) => {
+      const m = (x.결제일시 ?? "").slice(0, 7);
+      if (m) set.add(m);
+    });
+    return [...set].sort().reverse();
+  }, [sorted]);
+
+  const shown = month ? sorted.filter((x) => (x.결제일시 ?? "").startsWith(month)) : sorted;
+  const sum = shown.reduce((n, x) => n + (Number(x.결제금액) || 0), 0);
+  const owe = shown.reduce((n, x) => n + (Number(x.미수금액) || 0), 0);
+
+  if (paid.length === 0) {
+    return (
+      <p className="dim" style={{ fontSize: 13, margin: "8px 0 12px" }}>결제 기록이 없습니다.</p>
+    );
+  }
+
+  /** 「전체」일 때만 달마다 머리글을 단다 */
+  const rows: { head?: string; x?: Payment }[] = [];
+  let last = "";
+  shown.forEach((x) => {
+    const m = (x.결제일시 ?? "").slice(0, 7);
+    if (!month && m && m !== last) {
+      last = m;
+      rows.push({ head: m });
+    }
+    rows.push({ x });
+  });
+
+  return (
+    <>
+      {months.length > 1 && (
+        <div className="pick-row" style={{ margin: "4px 0 12px", flexWrap: "wrap" }}>
+          <select className="select" style={{ maxWidth: 180 }} value={month}
+                  onChange={(e) => setMonth(e.target.value)}>
+            <option value="">전체 ({paid.length}건)</option>
+            {months.map((m) => (
+              <option key={m} value={m}>
+                {m.slice(0, 4)}년 {Number(m.slice(5, 7))}월
+                {" "}({sorted.filter((x) => (x.결제일시 ?? "").startsWith(m)).length}건)
+              </option>
+            ))}
+          </select>
+          {month && (
+            <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setMonth("")}>
+              전체 보기
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="line-list">
+        {rows.map((r, i) =>
+          r.head ? (
+            <h4 className="mini-title" key={`h${r.head}`} style={{ margin: "12px 0 4px" }}>
+              {r.head.slice(0, 4)}년 {Number(r.head.slice(5, 7))}월
+            </h4>
+          ) : (
+            <PaymentLine key={r.x!.id} x={r.x!} onEdit={onEdit && (() => onEdit(r.x!))} />
+          )
+        )}
+      </div>
+
+      <p className="stat-note">
+        {month ? (
+          <>
+            {month.slice(0, 4)}년 {Number(month.slice(5, 7))}월 결제 <b>{shown.length}건</b> · 합계{" "}
+            <b className="num">{money(sum)}원</b>
+            {owe > 0 && <> · 못 받은 돈 <b className="warn-text num">{money(owe)}원</b></>}
+          </>
+        ) : (
+          <>
+            지금까지 결제 <b>{paid.length}건</b> · 합계 <b className="num">{money(totalPaid)}원</b>
+            {unpaid > 0 && (
+              <> · 아직 못 받은 돈 <b className="warn-text num">{money(unpaid)}원</b></>
+            )}
+          </>
+        )}
+      </p>
+    </>
+  );
+}
+
 function PaymentLine({ x, onEdit }: { x: Payment; onEdit?: () => void }) {
   const refunded = x.환불여부?.toUpperCase() === "Y";
   const owe = Number(x.미수금액) || 0;
@@ -1750,11 +1875,12 @@ function PaymentLine({ x, onEdit }: { x: Payment; onEdit?: () => void }) {
 
 /* ── 이용권 고치기 ─────────────────────────── */
 function TicketEdit({
-  t, pr, trainers, canRemove, onClose,
+  t, pr, trainers, members, canRemove, onClose,
 }: {
   t: Ticket;
   pr?: ProductMeta;
   trainers: { id: string; name: string }[];
+  members: Member[];
   canRemove: boolean;
   onClose: () => void;
 }) {
@@ -1767,23 +1893,25 @@ function TicketEdit({
     담당트레이너사번: t.담당트레이너사번 ?? "",
     상태: t.상태 || "진행중",
   });
-  const [hold, setHold] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  /** 아래에 열리는 칸 — 정지하기 / 양도하기 */
+  const [panel, setPanel] = useState<"" | "hold" | "move">("");
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
 
   /** 개월로 파는 회원권에는 횟수 칸을 보여주지 않는다 */
   const byCount = usesCount(pr, t);
 
-  /** 홀딩한 날수만큼 종료일을 미룬다 */
-  function applyHold() {
-    const days = Number(hold) || 0;
-    if (!days || !f.종료일) return;
-    set("종료일", addDays(f.종료일, days));
-    set("정지일수", String((Number(f.정지일수) || 0) + days));
-    setHold("");
-  }
+  const nowDay = today();
+  const 멈춤 = (t.정지시작일 ?? "").slice(0, 10);
+  const 예정 = (t.정지종료예정일 ?? "").slice(0, 10);
+  /** 미리 정한 날이 지났는데 아직 재개를 안 눌렀다 */
+  const 정지끝남 = Boolean(멈춤 && 예정 && 예정 < nowDay);
+  /** 재개하면 며칠이 붙는지 미리 보여준다 — 눌러 보고 알게 하면 안 된다 */
+  const 붙을날수 = 멈춤
+    ? Math.max(0, daysBetween(멈춤, 예정 && 예정 < nowDay ? 예정 : nowDay))
+    : 0;
 
   async function send(body: any) {
     setBusy(true);
@@ -1795,6 +1923,21 @@ function TicketEdit({
     const data = await res.json();
     setBusy(false);
     if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
+    location.reload();
+  }
+
+  /** 정지 · 재개 · 양도는 계산이 붙는 일이라 서버가 맡는다 */
+  async function op(body: any) {
+    setBusy(true);
+    setMsg("");
+    const res = await fetch("/api/members/ticket-op", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, 이용권번호: t.id }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) return setMsg(data.error ?? "처리하지 못했습니다.");
     location.reload();
   }
 
@@ -1839,15 +1982,47 @@ function TicketEdit({
           </L>
         </div>
 
-        <h4 className="mini-title">홀딩 (기간 미루기)</h4>
-        <div className="inline-form">
-          <input className="input" inputMode="numeric" placeholder="미룰 날수"
-                 style={{ maxWidth: 120 }} value={hold} onChange={(e) => setHold(e.target.value)} />
-          <button className="btn-ghost" onClick={applyHold} disabled={!hold || !f.종료일}>
-            종료일 미루기
-          </button>
-        </div>
-        <p className="stat-note">지금까지 미룬 날수 <b>{Number(f.정지일수) || 0}일</b></p>
+        <h4 className="mini-title">정지 · 양도</h4>
+
+        {멈춤 ? (
+          <div className={`setup${정지끝남 ? "" : ""}`}>
+            <div>
+              <b>
+                {정지끝남 ? "정지 기간이 끝났습니다" : "지금 정지 중입니다"}
+              </b>
+              <p>
+                {멈춤}부터{예정 ? ` ${예정}까지로 정해 뒀습니다.` : " 멈춰 있습니다."}
+                {" "}재개를 누르면 <b>{붙을날수}일</b>만큼 종료일이 뒤로 밀립니다
+                {f.종료일 && <> — {f.종료일} → <b>{addDays(f.종료일, 붙을날수)}</b></>}.
+                {정지끝남 && " 늦게 누르셔도 정해 둔 날까지만 쳐 드립니다."}
+              </p>
+            </div>
+            <button className="btn-dark" disabled={busy} onClick={() => op({ op: "resume" })}>
+              {busy ? "처리 중…" : "다시 쓰기"}
+            </button>
+          </div>
+        ) : (
+          <div className="pick-row" style={{ flexWrap: "wrap" }}>
+            <button className="btn-ghost" style={{ marginTop: 0 }}
+                    onClick={() => setPanel(panel === "hold" ? "" : "hold")}>
+              정지하기
+            </button>
+            <button className="btn-ghost" style={{ marginTop: 0 }}
+                    onClick={() => setPanel(panel === "move" ? "" : "move")}>
+              양도하기
+            </button>
+            {Number(f.정지일수) > 0 && (
+              <span className="dim" style={{ fontSize: 11.5 }}>
+                지금까지 정지 {Number(f.정지일수)}일
+              </span>
+            )}
+          </div>
+        )}
+
+        {panel === "hold" && <HoldBox 종료일={f.종료일} busy={busy} onRun={op} />}
+        {panel === "move" && (
+          <MoveBox me={t.회원번호} members={members} busy={busy} onRun={op} />
+        )}
 
         {msg && <div className="alert-bad">{msg}</div>}
 
@@ -1877,6 +2052,185 @@ function TicketEdit({
             </button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 정지 칸
+ *
+ * 끝나는 날은 안 적어도 된다. 부상처럼 언제 돌아올지 모르는 경우가 흔해서,
+ * 적으라고 강제하면 아무 날이나 적어 넣게 된다.
+ */
+function HoldBox({ 종료일, busy, onRun }: {
+  종료일: string;
+  busy: boolean;
+  onRun: (b: any) => void;
+}) {
+  const [from, setFrom] = useState(today());
+  const [until, setUntil] = useState("");
+  const days = until ? Math.max(0, daysBetween(from, until)) : 0;
+
+  return (
+    <div className="bulk-sec">
+      <div className="form-grid">
+        <L label="정지 시작">
+          <input className="input" type="date" value={from}
+                 onChange={(e) => setFrom(e.target.value)} />
+        </L>
+        <L label="정지 끝 (몰라도 됩니다)">
+          <input className="input" type="date" value={until}
+                 onChange={(e) => setUntil(e.target.value)} />
+        </L>
+      </div>
+      <p className="stat-note">
+        {until ? (
+          <>
+            <b>{days}일</b> 멈춥니다. 그만큼 종료일이 뒤로 밀립니다
+            {종료일 && <> — {종료일} → <b>{addDays(종료일, days)}</b></>}.
+            <br />
+            끝나는 날이 지나면 화면에 <b>재개하세요</b> 라고 뜹니다. 늦게 누르셔도
+            정해 둔 날까지만 쳐 드립니다.
+          </>
+        ) : (
+          <>
+            끝나는 날을 비워 두면 <b>다시 쓰기</b>를 누를 때까지 멈춥니다.
+            종료일은 그때 밀린 날수만큼 뒤로 갑니다 — 미리 밀어 두면 일찍 돌아오셨을 때
+            되돌려야 하고, 되돌리다 틀리면 회원에게 하루를 더 주거나 덜 주게 됩니다.
+          </>
+        )}
+      </p>
+      <div className="pick-row">
+        <span className="spacer" />
+        <button className="btn-dark" disabled={busy || !from}
+                onClick={() => onRun({ op: "hold", 정지시작일: from, 정지종료예정일: until })}>
+          {busy ? "처리 중…" : "정지하기"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 양도 칸
+ *
+ * 받는 사람은 대개 가족·지인이라 아직 회원이 아닌 경우가 많다.
+ * 회원 등록부터 하고 오라고 하면 화면을 두 번 오가게 되므로 여기서 만든다.
+ */
+function MoveBox({ me, members, busy, onRun }: {
+  me: string;
+  members: Member[];
+  busy: boolean;
+  onRun: (b: any) => void;
+}) {
+  const [who, setWho] = useState<"old" | "new">("old");
+  const [to, setTo] = useState("");
+  const [q, setQ] = useState("");
+  const [이름, set이름] = useState("");
+  const [전화번호, set전화] = useState("");
+  const [양도일, set양도일] = useState(today());
+  const [수수료, set수수료] = useState("");
+  const [결제수단, set수단] = useState("카드");
+  const [메모, set메모] = useState("");
+
+  /** 자기 자신에게는 못 넘긴다. 이름으로 걸러 찾는다 */
+  const hits = useMemo(() => {
+    const key = q.trim();
+    return members
+      .filter((m) => m.id !== me)
+      .filter((m) => !key || m.이름.includes(key) || (m.전화번호 ?? "").includes(key))
+      .slice(0, 50);
+  }, [members, me, q]);
+
+  const fee = Number((수수료 ?? "").replace(/[^0-9]/g, "")) || 0;
+  const ready = who === "old" ? Boolean(to) : Boolean(이름.trim());
+
+  return (
+    <div className="bulk-sec">
+      <div className="pick-row" style={{ marginBottom: 10 }}>
+        <button className={`mini-tab${who === "old" ? " on" : ""}`} onClick={() => setWho("old")}>
+          이미 있는 회원
+        </button>
+        <button className={`mini-tab${who === "new" ? " on" : ""}`} onClick={() => setWho("new")}>
+          새로 등록하며
+        </button>
+      </div>
+
+      {who === "old" ? (
+        <>
+          <L label="받을 회원 찾기">
+            <input className="input" value={q} placeholder="이름이나 전화번호"
+                   onChange={(e) => setQ(e.target.value)} />
+          </L>
+          <L label="받을 회원">
+            <select className="input" value={to} onChange={(e) => setTo(e.target.value)}>
+              <option value="">고르기</option>
+              {hits.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.이름} · {m.전화번호 || "번호 없음"}
+                </option>
+              ))}
+            </select>
+          </L>
+        </>
+      ) : (
+        <div className="form-grid">
+          <L label="받을 분 이름">
+            <input className="input" value={이름} onChange={(e) => set이름(e.target.value)} />
+          </L>
+          <L label="전화번호">
+            <input className="input" inputMode="numeric" value={전화번호}
+                   onChange={(e) => set전화(e.target.value)} />
+          </L>
+        </div>
+      )}
+
+      <div className="form-grid" style={{ marginTop: 10 }}>
+        <L label="양도일">
+          <input className="input" type="date" value={양도일}
+                 onChange={(e) => set양도일(e.target.value)} />
+        </L>
+        <L label="수수료 (없으면 비우기)">
+          <input className="input" inputMode="numeric" value={수수료} placeholder="0"
+                 onChange={(e) => set수수료(e.target.value.replace(/[^0-9]/g, ""))} />
+        </L>
+        {fee > 0 && (
+          <L label="수수료 받은 방법">
+            <select className="input" value={결제수단} onChange={(e) => set수단(e.target.value)}>
+              {PAY_METHODS.map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </L>
+        )}
+        <L label="메모 (선택)">
+          <input className="input" value={메모} onChange={(e) => set메모(e.target.value)} />
+        </L>
+      </div>
+
+      <p className="stat-note">
+        이 이용권이 통째로 넘어갑니다. 남은 기간·횟수가 그대로 따라가고, 받는 분 지점으로 옮겨집니다.
+        {fee > 0 ? (
+          <> 수수료 <b className="num">{money(fee)}원</b>은 받는 분 앞으로 <b>결제 한 줄</b>이
+          만들어져 매출에 잡힙니다.</>
+        ) : (
+          <> 수수료를 비우면 돈은 아무것도 기록되지 않습니다.</>
+        )}
+        {" "}누가 누구에게 언제 넘겼는지는 따로 남습니다.
+      </p>
+
+      <div className="pick-row">
+        <span className="spacer" />
+        <button className="btn-dark" disabled={busy || !ready}
+                onClick={() =>
+                  onRun({
+                    op: "transfer",
+                    받는회원번호: who === "old" ? to : "",
+                    새회원: who === "new" ? { 이름, 전화번호 } : undefined,
+                    양도일, 수수료: String(fee), 결제수단, 메모,
+                  })
+                }>
+          {busy ? "넘기는 중…" : "양도하기"}
+        </button>
       </div>
     </div>
   );
