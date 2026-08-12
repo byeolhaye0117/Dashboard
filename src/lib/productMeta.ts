@@ -33,6 +33,8 @@ export type ProductMeta = {
   isService: boolean;
   /** 회원권에 붙는 추가 요금인가 */
   isOption: boolean;
+  /** 상품 관리에서 끌어 정한 차례. 작을수록 위, 0이면 안 정한 것 */
+  order: number;
 };
 
 export function readProduct(r: Row): ProductMeta {
@@ -56,5 +58,6 @@ export function readProduct(r: Row): ProductMeta {
     card: num(val(r, ["카드가", "카드"])),
     isService: yes(val(r, ["서비스상품", "무료서비스상품여부", "서비스"])),
     isOption: yes(val(r, ["옵션상품", "옵션상품여부", "옵션"])),
+    order: num(val(r, ["정렬순서", "순서", "정렬"])),
   };
 }

@@ -637,18 +637,12 @@ function buyPayload(
 /**
  * 상품을 고르는 묶음
  *
- * 옵션(24시 · 여성전용)은 따로 두지 않고 기타에 같이 넣는다.
- * 두 개뿐인데 칩을 하나 더 만들면 찾으러 가는 손만 늘어난다.
- * 저장될 때는 그대로 "회원권에 얹는 항목"으로 들어간다.
+ * 상품 관리 화면과 똑같은 카테고리·차례를 쓴다. 파는 자리와 정하는 자리가
+ * 다르게 보이면, 대표님이 정해 둔 순서가 정작 파는 순간에는 소용이 없다.
  */
-const CAT_ORDER = ["회원권", "1:1PT", "그룹수업", "기타", "서비스"];
+const CAT_ORDER: string[] = CATS.map((c) => c.key);
 
-const catOf = (pr: ProductMeta) => {
-  const g = groupOf(pr);
-  if (g === "서비스") return "서비스";
-  if (g === "옵션") return "기타";
-  return pr.kind || "기타";
-};
+const catOf = (pr: ProductMeta) => ticketCat(pr);
 
 /**
  * 상품 고르기 + 결제
@@ -692,8 +686,18 @@ function PurchaseFields({
   /** 지금 펼쳐서 고치고 있는 줄 */
   const [openLine, setOpenLine] = useState<number | null>(null);
 
+  /*
+    상품 관리에서 끌어 정해 둔 차례 그대로 보여준다.
+    차례를 안 정한 것은 정한 것들 뒤로 — 0 을 그대로 쓰면 손대지 않은 상품이
+    전부 맨 위로 올라온다.
+  */
   const shown = products
     .filter((x) => (q ? x.name.toLowerCase().includes(q.toLowerCase()) : catOf(x) === cat))
+    .slice()
+    .sort(
+      (a, b) =>
+        ((a.order || 1e9) - (b.order || 1e9)) || a.name.localeCompare(b.name, "ko")
+    )
     .slice(0, 60);
 
   function addLine(code: string) {
