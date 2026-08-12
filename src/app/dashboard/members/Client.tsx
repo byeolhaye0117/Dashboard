@@ -92,6 +92,8 @@ type Props = {
   payments: Payment[];
   extras: Extra[];
   products: ProductMeta[];
+  /** 상품 → 그 상품을 파는 지점들 */
+  productBranches: Record<string, string[]>;
   waiting: Waiting[];
   /** 이용권이 오간 기록 */
   transfers: TransferRow[];
@@ -376,6 +378,7 @@ export default function Client(p: Props) {
       {openNew && (
         <NewForm
           products={p.products}
+          productBranches={p.productBranches}
           waiting={p.waiting}
           options={p.options}
           branches={p.branches}
@@ -395,6 +398,7 @@ export default function Client(p: Props) {
             return p.extras.filter((s) => mine.has(s.이용권번호));
           })()}
           products={p.products}
+          productBranches={p.productBranches}
           productOf={productOf}
           options={p.options}
           trainers={p.trainers}
@@ -1009,20 +1013,36 @@ function PurchaseFields({
 
 /* ── 이미 있는 회원에게 상품 더하기 ────────── */
 function AddPurchase({
-  member, tickets, products, options, onClose,
+  member, tickets, products, productBranches, options, onClose,
 }: {
   member: Member;
   tickets: Ticket[];
   products: ProductMeta[];
+  productBranches: Record<string, string[]>;
   options: Record<string, string[]>;
   onClose: () => void;
 }) {
+  /*
+    이 회원 지점에서 파는 것만 보여준다
+
+    지점마다 파는 상품이 다르다. 다른 지점 상품까지 보이면 없는 것을 팔게 된다.
+    아직 아무 상품에도 지점을 안 걸어 뒀다면 거르지 않는다 —
+    걸어 두지 않았을 뿐인데 목록이 통째로 비면 아무것도 못 판다.
+  */
+  const sellable = useMemo(() => {
+    const any = Object.keys(productBranches).length > 0;
+    if (!any || !member.지점코드) return products;
+    return products.filter((x) => (productBranches[x.code] ?? []).includes(member.지점코드));
+  }, [products, productBranches, member.지점코드]);
+
+  const hidden = products.length - sellable.length;
+
   const [b, setB] = useState<Buy>(emptyBuy());
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function save() {
-    const payload = buyPayload(b, products, tickets, today(), options["매출유형"]);
+    const payload = buyPayload(b, sellable, tickets, today(), options["매출유형"]);
     if (payload.이용권.length === 0 && payload.부가서비스.length === 0) {
       return setMsg("더할 상품을 하나 이상 골라주세요.");
     }
@@ -1046,8 +1066,13 @@ function AddPurchase({
     <div className="modal-back top" onClick={onClose}>
       <div className="modal xl" onClick={(e) => e.stopPropagation()}>
         <h3>{member.이름}님 상품 추가</h3>
+        {hidden > 0 && (
+          <p className="modal-lead">
+            이 회원 지점에서 파는 상품만 보입니다 — 다른 지점 것 {hidden}개는 가렸습니다
+          </p>
+        )}
 
-        <PurchaseFields products={products} options={options} tickets={tickets}
+        <PurchaseFields products={sellable} options={options} tickets={tickets}
                         baseDate={today()} b={b} setB={setB} />
 
         {msg && <div className="alert-bad">{msg}</div>}
@@ -1064,9 +1089,10 @@ function AddPurchase({
 }
 
 function NewForm({
-  products, waiting, options, branches, trainers, defaultBranch, onClose,
+  products, productBranches, waiting, options, branches, trainers, defaultBranch, onClose,
 }: {
   products: ProductMeta[];
+  productBranches: Record<string, string[]>;
   waiting: Waiting[];
   options: Record<string, string[]>;
   branches: Named[];
@@ -1080,6 +1106,14 @@ function NewForm({
   });
   const [b, setB] = useState<Buy>(emptyBuy());
   const [fromId, setFromId] = useState("");
+  /* 고른 지점에서 파는 것만 — 상품 추가 창과 같은 규칙 */
+  const sellable = useMemo(() => {
+    const any = Object.keys(productBranches).length > 0;
+    const br = f["지점코드"];
+    if (!any || !br) return products;
+    return products.filter((x) => (productBranches[x.code] ?? []).includes(br));
+  }, [products, productBranches, f]);
+  const hidden = products.length - sellable.length;
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
@@ -1095,7 +1129,7 @@ function NewForm({
     if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
     if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
 
-    const payload = buyPayload(b, products, [], today(), options["매출유형"]);
+    const payload = buyPayload(b, sellable, [], today(), options["매출유형"]);
     if (payload.이용권.length === 0) {
       return setMsg("회원권이나 PT를 하나 이상 골라주세요.");
     }
@@ -1160,7 +1194,13 @@ function NewForm({
           </L>
         </div>
 
-        <PurchaseFields products={products} options={options} tickets={[]}
+        {hidden > 0 && (
+          <p className="stat-note">
+            {branches.find((x) => x.code === f["지점코드"])?.name ?? "이 지점"}에서 파는 상품만
+            보입니다 — 다른 지점 것 {hidden}개는 가렸습니다
+          </p>
+        )}
+        <PurchaseFields products={sellable} options={options} tickets={[]}
                         baseDate={f["가입일"] ?? today()} b={b} setB={setB} />
 
         <div className="form-grid" style={{ marginTop: 10 }}>
@@ -1222,7 +1262,7 @@ function ProgressLine({ t, pr, now, onEdit }: {
 }
 
 function Detail({
-  item, tickets, payments, extras, products, productOf, options, trainers, staffNames,
+  item, tickets, payments, extras, products, productBranches, productOf, options, trainers, staffNames,
   branchName, can, members, transfers, onClose,
 }: {
   item: Member;
@@ -1230,6 +1270,7 @@ function Detail({
   payments: Payment[];
   extras: Extra[];
   products: ProductMeta[];
+  productBranches: Record<string, string[]>;
   productOf: (code: string) => ProductMeta | undefined;
   options: Record<string, string[]>;
   trainers: { id: string; name: string }[];
@@ -1528,7 +1569,8 @@ function Detail({
               <PaymentEdit x={editPay} options={options} onClose={() => setEditPay(null)} />
             )}
             {adding && (
-              <AddPurchase member={item} tickets={tickets} products={products} options={options}
+              <AddPurchase member={item} tickets={tickets} products={products}
+                           productBranches={productBranches} options={options}
                            onClose={() => setAdding(false)} />
             )}
 
