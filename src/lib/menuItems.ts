@@ -29,6 +29,7 @@ export const MENUS: MenuItem[] = [
   { key: "근태", label: "근태", short: "근태", href: "/dashboard/attendance", icon: "clock", group: "운영" },
   { key: "공지", label: "공지·업무", short: "업무", href: "/dashboard/notices", icon: "clipboard", group: "운영" },
   { key: "시설·재고", label: "시설·재고", short: "재고", href: "/dashboard/facility", icon: "box", group: "운영" },
+  { key: "상품", label: "상품 관리", short: "상품", href: "/dashboard/products", icon: "tag", group: "관리" },
   { key: "직원관리", label: "직원 관리", short: "직원", href: "/dashboard/staff", icon: "badge", group: "관리" },
   { key: "권한설정", label: "권한 설정", short: "권한", href: "/dashboard/permissions", icon: "lock", group: "관리" },
 ];
