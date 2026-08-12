@@ -1367,7 +1367,7 @@ function Detail({
                 {can.update && (
                   <div className="who-acts">
                     <button className="btn-dark" onClick={() => setAdding(true)}>
-                      <Icon name="plus" size={14} strokeWidth={2} /> 상품 추가
+                      상품 추가
                     </button>
                     <button className="btn-ghost" onClick={() => setEditing(true)}>고치기</button>
                   </div>
@@ -1402,16 +1402,6 @@ function Detail({
                       {t === "결제" && paid.length > 0 && <span className="cnt num">{paid.length}</span>}
                     </button>
                   ))}
-                </div>
-
-                <div className="tab-bar">
-                  <span className="tab-lead" />
-                  {can.update && (view === "요약" || view === "이용권") && (
-                    <button className="btn-dark" onClick={() => setAdding(true)}>
-                      <Icon name="plus" size={15} strokeWidth={2} />
-                      상품 추가
-                    </button>
-                  )}
                 </div>
 
                 {view === "요약" && (
@@ -1621,14 +1611,14 @@ function Board({
   );
 
   return (
-    <div className="mgrid">
+    <div className="mstack">
       {/*
         이용권 — 이 화면에서 가장 먼저 봐야 하는 것
 
         회원권 · 부가 상품 · 받은 서비스를 한 카드 안에 갈래로 나눠 다 보여준다.
         "사물함은 언제까지지"를 보려고 탭을 옮겨 다니게 할 이유가 없다.
       */}
-      <div className="mcard wide">
+      <div className="mcard">
         {head("이용권", `유효 ${live.rows.length} · 만료 ${만료}`, "이용권")}
 
         <p className="csec">회원권 · PT <span>{live.rows.length}</span></p>
@@ -1662,21 +1652,39 @@ function Board({
               <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free
                          onClick={can.update ? () => onTicket(t) : undefined} />
             ))}
-            {/* 회원권을 팔 때 얹어준 것 — 기간이 따로 없고 "무엇을 줬는지"만 남는다 */}
-            {extras.map((x) => (
-              <div className="mrow" key={x.id}>
-                <div className="t">
-                  <b>{productOf(x.상품코드)?.name ?? x.상품코드}</b>
-                  <span className="dim">
-                    {Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "무료"}
-                  </span>
-                </div>
-              </div>
-            ))}
+            {/*
+              회원권을 팔 때 얹어준 것
+
+              제 기간이 따로 없다. 붙어 있는 회원권이 살아 있는 동안만 쓰는
+              것이므로 그 회원권의 기간을 그대로 빌려 막대로 보여준다.
+              붙은 회원권을 못 찾으면 막대 없이 이름만 적는다.
+            */}
+            {extras.map((x) => {
+              const host = tickets.find((t) => t.id === x.이용권번호);
+              const 값 = Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "무료";
+              if (!host) {
+                return (
+                  <div className="mrow" key={x.id}>
+                    <div className="t">
+                      <b>{productOf(x.상품코드)?.name ?? x.상품코드}</b>
+                      <span className="dim">{값}</span>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <TicketBar key={x.id} t={{ ...host, 상품코드: x.상품코드 }}
+                           pr={productOf(x.상품코드)} now={now}
+                           free={Number(x.추가금액) <= 0} note={`회원권에 얹음 · ${값}`}
+                           onClick={can.update ? () => onTicket(host) : undefined} />
+              );
+            })}
           </>
         )}
       </div>
 
+      <div className="mcols">
+        <div className="mcol">
       {/* 결제 */}
       <div className="mcard">
         {head("결제", unpaid > 0 ? `미수 ${money(unpaid)}원` : `${payments.length}건`, "결제")}
@@ -1704,6 +1712,9 @@ function Board({
         )}
       </div>
 
+        </div>
+
+        <div className="mcol">
       {/* 정지 · 양도 */}
       <div className="mcard">
         {head("정지 · 양도", "", "이용권")}
@@ -1744,8 +1755,8 @@ function Board({
         )}
       </div>
 
-      {/* 특이사항 */}
-      <div className="mcard wide">
+      {/* 특이사항 — 정지·양도 바로 아래에 붙여 빈 자리를 없앤다 */}
+      <div className="mcard">
         {head("특이사항 · 메모", "", "")}
         {item.메모 ? (
           <div className="quote" style={{ margin: 0 }}>{item.메모}</div>
@@ -1758,13 +1769,16 @@ function Board({
           </p>
         )}
       </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 /** 남은 기간을 막대로 — 「197일 남음」만 있으면 많은 건지 적은 건지 감이 안 온다 */
-function TicketBar({ t, pr, now, free, onClick }: {
-  t: Ticket; pr?: ProductMeta; now: string; free?: boolean; onClick?: () => void;
+function TicketBar({ t, pr, now, free, note, onClick }: {
+  t: Ticket; pr?: ProductMeta; now: string;
+  free?: boolean; note?: string; onClick?: () => void;
 }) {
   const left = t.종료일 ? daysLeft(t.종료일, now) : null;
   const total = t.시작일 && t.종료일 ? Math.max(1, daysBetween(t.시작일, t.종료일)) : 0;
@@ -1785,6 +1799,7 @@ function TicketBar({ t, pr, now, free, onClick }: {
       <span className="sub">
         {t.시작일?.slice(2)}{t.종료일 && ` ~ ${t.종료일.slice(2)}`}
         {cnt && ` · ${t.잔여횟수 || t.총횟수}/${t.총횟수}회`}
+        {note && ` · ${note}`}
       </span>
       <div className={`tbar ${정지 ? "warn" : tone}`}>
         <i style={{ width: `${정지 ? 100 : pct}%` }} />
