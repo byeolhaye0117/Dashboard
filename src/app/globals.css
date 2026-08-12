@@ -1572,16 +1572,16 @@ table.cal td.cell .twice {
   한 줄로 흐르는 요약은 눈이 한 번에 못 잡는다. 덩어리로 잘라 두면
   "이용권은 여기, 결제는 여기"가 자리로 기억된다.
 */
-.mgrid {
-  display: grid; gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
-  align-items: start;
-}
-.mgrid .wide { grid-column: span 2; }
-@media (max-width: 620px) {
-  .mgrid { grid-template-columns: 1fr; }
-  .mgrid .wide { grid-column: auto; }
-}
+/*
+  격자가 아니라 기둥 두 개로 쌓는다
+
+  칸마다 높이가 달라서 격자로 두면 짧은 카드 아래가 빈 채로 남는다.
+  기둥 안에서 위로 붙여 쌓으면 빈 자리가 안 생긴다.
+*/
+.mstack { display: flex; flex-direction: column; gap: 12px; }
+.mcols { display: flex; gap: 12px; align-items: flex-start; }
+.mcol { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 620px) { .mcols { flex-direction: column; } }
 
 .mcard {
   background: var(--surface); border: 1px solid var(--line);
@@ -1623,8 +1623,8 @@ table.cal td.cell .twice {
 .who-acts { display: flex; gap: 6px; margin: 10px 0 4px; }
 .who-acts > button {
   flex: 1 1 0; min-width: 0; width: auto; margin-top: 0;
-  height: 34px; padding: 0 8px; gap: 4px;
-  font-size: 12px; white-space: nowrap;
+  height: 34px; padding: 0 6px; gap: 0;
+  font-size: 12px; white-space: nowrap; overflow: visible;
 }
 
 /* 카드 안에서 다시 갈래를 나눌 때 */
