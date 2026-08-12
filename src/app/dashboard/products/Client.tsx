@@ -61,6 +61,9 @@ export default function Client(p: Props) {
   const [edit, setEdit] = useState<Product | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  /** 골라 둔 상품들 — 한 번에 바꿀 대상 */
+  const [picked, setPicked] = useState<string[]>([]);
+  const [box, setBox] = useState<"" | "kind" | "sell" | "branch" | "del">("");
 
   const nameOf = useMemo(
     () => new Map(p.branches.map((b) => [b.code, b.name])),
@@ -165,6 +168,44 @@ export default function Client(p: Props) {
         </span>
       </div>
 
+      {/*
+        고른 것이 있을 때만 나온다. 늘 떠 있으면 목록을 가리고,
+        아무것도 안 고른 채 눌리면 무엇에 대한 동작인지 알 수 없다.
+      */}
+      {p.can.update && (
+        <div className="pick-row" style={{ marginBottom: 10, flexWrap: "wrap" }}>
+          {picked.length === 0 ? (
+            list.length > 0 && (
+              <button className="linkish" style={{ marginLeft: 0 }}
+                      onClick={() => setPicked(list.map((x) => x.code))}>
+                보이는 것 {list.length}개 다 고르기
+              </button>
+            )
+          ) : (
+            <>
+              <span className="dim" style={{ fontSize: 12.5, fontWeight: 700 }}>
+                {picked.length}개 골랐습니다
+              </span>
+              <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setBox("kind")}>
+                갈래 바꾸기
+              </button>
+              <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setBox("sell")}>
+                판매 상태
+              </button>
+              <button className="btn-ghost" style={{ marginTop: 0 }} onClick={() => setBox("branch")}>
+                파는 지점
+              </button>
+              {p.can.remove && (
+                <button className="btn-danger" style={{ marginTop: 0 }} onClick={() => setBox("del")}>
+                  지우기
+                </button>
+              )}
+              <button className="linkish" onClick={() => setPicked([])}>선택 해제</button>
+            </>
+          )}
+        </div>
+      )}
+
       {list.length === 0 ? (
         <div className="setup">
           <div>
@@ -191,34 +232,59 @@ export default function Client(p: Props) {
               {/* 한 갈래만 보고 있으면 위 칸이 이미 말해 준다 */}
               {!cat && <p className="csec">{k} <span>{rows.length}</span></p>}
               {rows.map((x) => (
-                <button className="mrow prow" key={x.code}
-                        onClick={() => p.can.update && setEdit(x)}
-                        disabled={!p.can.update}>
-                  <div className="t">
-                    <b>{x.name}</b>
-                    {!x.판매중 && <span className="pill">판매중지</span>}
-                    {x.서비스상품 && <span className="pill">무료</span>}
-                    {x.옵션상품 && <span className="pill">옵션</span>}
-                    <span className="dim">
-                      {money(num(x.카드가)) ? `카드 ${money(num(x.카드가))}원` : ""}
-                      {money(num(x.현금가)) ? ` · 현금 ${money(num(x.현금가))}원` : ""}
+                <div className={`mrow prow-wrap${picked.includes(x.code) ? " is-picked" : ""}`}
+                     key={x.code}>
+                  {p.can.update && (
+                    <input type="checkbox" className="pick-box" checked={picked.includes(x.code)}
+                           aria-label={`${x.name} 고르기`}
+                           onChange={() =>
+                             setPicked((cur) =>
+                               cur.includes(x.code)
+                                 ? cur.filter((c) => c !== x.code)
+                                 : [...cur, x.code]
+                             )
+                           } />
+                  )}
+                  <button className="prow-body"
+                          onClick={() => p.can.update && setEdit(x)}
+                          disabled={!p.can.update}>
+                    <div className="t">
+                      <b>{x.name}</b>
+                      {!x.판매중 && <span className="pill">판매중지</span>}
+                      {x.서비스상품 && <span className="pill">무료</span>}
+                      {x.옵션상품 && <span className="pill">옵션</span>}
+                      <span className="dim">
+                        {money(num(x.카드가)) ? `카드 ${money(num(x.카드가))}원` : ""}
+                        {money(num(x.현금가)) ? ` · 현금 ${money(num(x.현금가))}원` : ""}
+                      </span>
+                    </div>
+                    <span className="sub">
+                      {x.code}
+                      {spec(x) && ` · ${spec(x)}`}
+                      {" · "}
+                      {x.지점들.length === 0
+                        ? "파는 지점 없음"
+                        : x.지점들.length === p.branches.length
+                          ? "전 지점"
+                          : x.지점들.map((b) => nameOf.get(b) ?? b).join(" · ")}
                     </span>
-                  </div>
-                  <span className="sub">
-                    {x.code}
-                    {spec(x) && ` · ${spec(x)}`}
-                    {" · "}
-                    {x.지점들.length === 0
-                      ? "파는 지점 없음"
-                      : x.지점들.length === p.branches.length
-                        ? "전 지점"
-                        : x.지점들.map((b) => nameOf.get(b) ?? b).join(" · ")}
-                  </span>
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
           );
         })
+      )}
+
+      {box && (
+        <BatchBox
+          op={box}
+          count={picked.length}
+          branches={p.branches}
+          busy={busy}
+          onClose={() => setBox("")}
+          onRun={(payload) => send({ ...payload, action: "batch", codes: picked })}
+        />
       )}
 
       {edit && (
@@ -232,6 +298,137 @@ export default function Client(p: Props) {
         />
       )}
     </>
+  );
+}
+
+/**
+ * 여러 개를 한꺼번에 바꾸는 창
+ *
+ * 무엇을, 몇 개에 하는지를 먼저 크게 적는다. 쉰 개를 골라 놓고 무심코
+ * 갈래를 옮기면 회원 화면이 통째로 달라진다.
+ */
+function BatchBox({ op, count, branches, busy, onClose, onRun }: {
+  op: "kind" | "sell" | "branch" | "del";
+  count: number;
+  branches: Named[];
+  busy: boolean;
+  onClose: () => void;
+  onRun: (payload: any) => void;
+}) {
+  const [kind, setKind] = useState(KINDS[0]);
+  const [sell, setSell] = useState("판매중");
+  const [지점들, set지점] = useState<string[]>(branches.map((b) => b.code));
+  const [sure, setSure] = useState(false);
+  const [err, setErr] = useState("");
+
+  const TITLES: Record<string, string> = {
+    kind: "갈래 바꾸기", sell: "판매 상태 바꾸기",
+    branch: "파는 지점 바꾸기", del: "상품 지우기",
+  };
+
+  function run() {
+    if (op === "kind") return onRun({ changes: { 상품분류: kind } });
+    if (op === "sell") return onRun({ changes: { 판매상태: sell } });
+    if (op === "branch") {
+      if (지점들.length === 0) return setErr("어느 지점에서 팔지 골라주세요.");
+      return onRun({ 지점들 });
+    }
+    onRun({ changes: { 삭제여부: "Y" } });
+  }
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{TITLES[op]}</h3>
+        <p className="stat-note" style={{ marginTop: 0 }}>
+          고른 상품 <b>{count}개</b>에 적용합니다.
+        </p>
+
+        {op === "kind" && (
+          <>
+            <div className="field">
+              <label htmlFor="bk">어느 갈래로</label>
+              <select id="bk" className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
+                {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </div>
+            <p className="stat-note">
+              이 상품들로 판 <b>이용권 전부</b>가 같이 옮겨갑니다. 회원 화면의 묶음이
+              바로 달라집니다.
+            </p>
+          </>
+        )}
+
+        {op === "sell" && (
+          <>
+            <div className="field">
+              <label htmlFor="bs">어떻게</label>
+              <select id="bs" className="select" value={sell} onChange={(e) => setSell(e.target.value)}>
+                <option value="판매중">판매중</option>
+                <option value="판매중지">판매중지</option>
+              </select>
+            </div>
+            <p className="stat-note">
+              판매중지로 두면 새로 팔 때 목록에 안 나옵니다. 이미 판 이용권은 그대로입니다.
+            </p>
+          </>
+        )}
+
+        {op === "branch" && (
+          <>
+            <div className="field">
+              <label>어느 지점에서</label>
+              <div className="pickbox">
+                {branches.map((b) => (
+                  <button key={b.code} type="button"
+                          className={`pickone${지점들.includes(b.code) ? " on" : ""}`}
+                          onClick={() => {
+                            setErr("");
+                            set지점((cur) =>
+                              cur.includes(b.code) ? cur.filter((c) => c !== b.code) : [...cur, b.code]
+                            );
+                          }}>
+                    <span className="nm">{b.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="stat-note">
+              고른 상품들의 판매 지점이 <b>여기 고른 대로 맞춰집니다.</b> 지금 걸려 있던
+              지점 중 여기서 안 고른 곳은 빠집니다.
+            </p>
+          </>
+        )}
+
+        {op === "del" && (
+          <p className="stat-note">
+            목록에서 사라지고 앞으로 팔 수 없게 됩니다. 이미 판 이용권과 결제 기록은
+            그대로 남습니다. 잠시 안 파는 것이라면 <b>판매중지</b>가 낫습니다.
+          </p>
+        )}
+
+        {err && <div className="alert-bad" style={{ marginTop: 12 }}>{err}</div>}
+
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onClose}>취소</button>
+          {op === "del" ? (
+            sure ? (
+              <button className="btn-danger" style={{ marginTop: 0 }} disabled={busy} onClick={run}>
+                {busy ? "지우는 중…" : "정말 지웁니다"}
+              </button>
+            ) : (
+              <button className="btn-danger" style={{ marginTop: 0 }} onClick={() => setSure(true)}>
+                지우기
+              </button>
+            )
+          ) : (
+            <button className="btn-primary" style={{ marginTop: 0 }} disabled={busy} onClick={run}>
+              {busy ? "바꾸는 중…" : `${count}개 바꾸기`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -1644,15 +1644,16 @@ table.cal td.cell .twice {
 .cbox .csec { margin-top: 10px; }
 .cbox .mrow:last-child { padding-bottom: 2px; }
 
-/* 상품 목록 줄 — 눌러서 여는 것이라 단추지만, 줄처럼 보여야 한다 */
-button.prow {
-  display: block; width: 100%; text-align: left;
-  border: 0; background: none; font: inherit; cursor: pointer;
-  border-bottom: 1px solid var(--line-soft);
+/* 상품 목록 줄 — 왼쪽에 고르는 칸, 나머지는 눌러서 여는 자리 */
+.prow-wrap { display: flex; align-items: flex-start; gap: 10px; }
+.prow-wrap > .pick-box { margin-top: 3px; flex: 0 0 16px; }
+.prow-body {
+  flex: 1; min-width: 0; display: block; text-align: left;
+  border: 0; background: none; padding: 0; font: inherit; cursor: pointer;
 }
-button.prow:last-child { border-bottom: 0; }
-button.prow:hover:not(:disabled) { background: var(--surface-2); }
-button.prow:disabled { cursor: default; }
+.prow-body:disabled { cursor: default; }
+.mrow.prow-wrap:hover { background: var(--surface-2); }
+.mrow.is-picked { background: color-mix(in srgb, var(--s1) 7%, transparent); }
 
 /* 창을 닫는 X — 아래 단추 줄이 없어졌으니 나가는 길이 보여야 한다 */
 .modal-x {
