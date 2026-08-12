@@ -55,6 +55,8 @@ function spec(p: Product): string {
 
 export default function Client(p: Props) {
   const [q, setQ] = useState("");
+  /** 지금 보고 있는 갈래 — 빈 값이면 전체 */
+  const [cat, setCat] = useState("");
   const [showOff, setShowOff] = useState(false);
   const [edit, setEdit] = useState<Product | "new" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -73,6 +75,11 @@ export default function Client(p: Props) {
   }, [p.items, q, showOff]);
 
   const off = p.items.filter((x) => !x.판매중).length;
+
+  /** 갈래 이름이 넷 밖이면 회원권으로 본다 — 화면과 셈이 어긋나면 안 된다 */
+  const kindOf = (x: Product) => (KINDS.includes(x.kind) ? x.kind : "회원권");
+  const countIn = (k: string) => shown.filter((x) => kindOf(x) === k).length;
+  const list = cat ? shown.filter((x) => kindOf(x) === cat) : shown;
 
   async function send(payload: any) {
     setBusy(true);
@@ -122,6 +129,28 @@ export default function Client(p: Props) {
 
       {msg && <div className="alert-bad" style={{ marginBottom: 14 }}>{msg}</div>}
 
+      {/*
+        갈래 골라 보기
+
+        상품이 스무 개를 넘어가면 한 화면에 다 뿌려도 찾기 어렵다.
+        숫자는 지금 걸린 조건(찾기 · 판매중지 보기)을 거친 뒤의 개수다 —
+        칸에 적힌 수와 아래 목록이 다르면 둘 다 못 믿게 된다.
+      */}
+      <div className="pick-row" style={{ marginBottom: 12, flexWrap: "wrap" }}>
+        <button className={`mini-tab${cat === "" ? " on" : ""}`} onClick={() => setCat("")}>
+          전체{shown.length > 0 && <span className="dot">{shown.length}</span>}
+        </button>
+        {KINDS.map((k) => {
+          const n = countIn(k);
+          return (
+            <button key={k} className={`mini-tab${cat === k ? " on" : ""}`}
+                    onClick={() => setCat(cat === k ? "" : k)}>
+              {k}{n > 0 && <span className="dot">{n}</span>}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="pick-row" style={{ marginBottom: 14, flexWrap: "wrap" }}>
         <input className="input" style={{ maxWidth: 240 }} value={q} placeholder="상품 이름 찾기"
                onChange={(e) => setQ(e.target.value)} />
@@ -131,13 +160,19 @@ export default function Client(p: Props) {
           </button>
         )}
         <span className="spacer" />
-        <span className="dim" style={{ fontSize: 11.5 }}>모두 {shown.length}개</span>
+        <span className="dim" style={{ fontSize: 11.5 }}>
+          {cat ? `${cat} ${list.length}개` : `모두 ${shown.length}개`}
+        </span>
       </div>
 
-      {shown.length === 0 ? (
+      {list.length === 0 ? (
         <div className="setup">
           <div>
-            <b>{q ? "찾는 상품이 없습니다" : "아직 만든 상품이 없습니다"}</b>
+            <b>
+              {q ? "찾는 상품이 없습니다"
+                : cat ? `${cat} 상품이 없습니다`
+                : "아직 만든 상품이 없습니다"}
+            </b>
             <p>
               상품을 만들어 두면 회원에게 팔 때 목록에서 고르기만 하면 됩니다.
               기간과 가격이 자동으로 채워집니다.
@@ -148,12 +183,13 @@ export default function Client(p: Props) {
           )}
         </div>
       ) : (
-        KINDS.map((k) => {
-          const rows = shown.filter((x) => (KINDS.includes(x.kind) ? x.kind : "회원권") === k);
+        (cat ? [cat] : KINDS).map((k) => {
+          const rows = list.filter((x) => kindOf(x) === k);
           if (rows.length === 0) return null;
           return (
             <div className="cbox" key={k} style={{ marginBottom: 12 }}>
-              <p className="csec">{k} <span>{rows.length}</span></p>
+              {/* 한 갈래만 보고 있으면 위 칸이 이미 말해 준다 */}
+              {!cat && <p className="csec">{k} <span>{rows.length}</span></p>}
               {rows.map((x) => (
                 <button className="mrow prow" key={x.code}
                         onClick={() => p.can.update && setEdit(x)}
