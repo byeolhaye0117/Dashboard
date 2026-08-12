@@ -544,7 +544,7 @@ export default function Client(p: Props) {
               </p>
             ) : !place ? (
               <p className="stat-note">
-                {branchName} 의 플레이스 주소를 위 칸에 넣고 저장해주세요. 지점마다 따로 저장됩니다.
+                {branchName}의 플레이스 주소를 위 칸에 넣고 저장해주세요. 지점마다 따로 저장됩니다.
               </p>
             ) : open === null ? (
               <p className="stat-note">
