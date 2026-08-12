@@ -2125,7 +2125,7 @@ function TicketEdit({
     const res = await fetch("/api/products", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 상품코드: t.상품코드, 상품분류: next }),
+      body: JSON.stringify({ action: "kind", 상품코드: t.상품코드, 상품분류: next }),
     });
     const data = await res.json();
     if (!res.ok) {
