@@ -22,6 +22,8 @@ export const SHEET_V = "이용권";
 /** 이용권에 얹어준 서비스·옵션 (회원권을 팔 때 같이 준 것) */
 export const SHEET_VS = "이용권서비스";
 export const SHEET_P = "결제";
+/** 상품 원장 — 갈래(상품분류)가 여기 있다 */
+export const SHEET_PROD = "상품";
 
 
 /* ── 칸 이름 후보 ──────────────────────────── */
@@ -727,6 +729,46 @@ export async function bumpTicketCounts(
     });
   });
   await updateRows(SHEET_V, headers, items);
+}
+
+/* ── 상품 갈래 고치기 ─────────────────────── */
+
+/**
+ * 상품의 「상품분류」를 바꾼다
+ *
+ * 갈래(회원권 · 수강권 · 케어권 · 부가상품권)는 이 칸 하나로 정해진다.
+ * 시트를 열어 고치게 하면 "왜 케어권으로 안 나오지"를 알아챈 자리에서
+ * 두 화면을 오가야 한다. 알아챈 자리에서 바로 고치는 편이 맞다.
+ *
+ * 이 상품으로 판 이용권 전부가 같이 옮겨간다 — 상품 한 줄의 성격이 바뀌는 것이지
+ * 이용권 한 줄이 바뀌는 것이 아니기 때문이다.
+ */
+export async function setProductKind(
+  상품코드: string,
+  상품분류: string,
+  staffId: string
+): Promise<void> {
+  const code = (상품코드 ?? "").trim();
+  const kind = (상품분류 ?? "").trim();
+  if (!code) throw new Error("상품을 찾지 못했습니다.");
+  if (!kind) throw new Error("갈래를 골라주세요.");
+
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_PROD);
+  // 시트마다 칸 이름이 조금씩 달라 후보를 본다
+  const codeKey = headers.find((h) => h.replace(/\s/g, "") === "상품코드");
+  const kindKey =
+    headers.find((h) => h.replace(/\s/g, "") === "상품분류") ??
+    headers.find((h) => ["분류", "구분"].includes(h.replace(/\s/g, "")));
+  if (!codeKey) throw new Error("상품 탭에 「상품코드」 칸이 없습니다.");
+  if (!kindKey) throw new Error("상품 탭에 「상품분류」 칸이 없습니다.");
+
+  const i = rows.findIndex((r) => (r[codeKey] ?? "").trim() === code);
+  if (i < 0) throw new Error("해당 상품을 찾지 못했습니다.");
+
+  const patch: Row = { ...rows[i], [kindKey]: kind };
+  if (headers.includes("수정일시")) patch["수정일시"] = now();
+  if (headers.includes("수정자")) patch["수정자"] = staffId;
+  await updateRow(SHEET_PROD, rowNumbers[i], headers, patch);
 }
 
 /* ── 정지 · 재개 ──────────────────────────── */

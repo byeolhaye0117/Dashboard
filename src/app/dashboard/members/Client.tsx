@@ -2115,6 +2115,27 @@ function TicketEdit({
   /** 개월로 파는 회원권에는 횟수 칸을 보여주지 않는다 */
   const byCount = usesCount(pr, t);
 
+  /** 지금 갈래 — 고르면 상품 원장이 바뀐다 */
+  const [cat, setCat] = useState(ticketCat(pr));
+  async function moveCat(next: string) {
+    if (next === cat) return;
+    setCat(next);
+    setBusy(true);
+    setMsg("");
+    const res = await fetch("/api/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 상품코드: t.상품코드, 상품분류: next }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setBusy(false);
+      setCat(ticketCat(pr));
+      return setMsg(data.error ?? "갈래를 바꾸지 못했습니다.");
+    }
+    location.reload();
+  }
+
   const nowDay = today();
   const 멈춤 = (t.정지시작일 ?? "").slice(0, 10);
   const 예정 = (t.정지종료예정일 ?? "").slice(0, 10);
@@ -2193,6 +2214,28 @@ function TicketEdit({
             </select>
           </L>
         </div>
+
+        {/*
+          갈래 고치기
+
+          "왜 케어권으로 안 나오지"를 알아채는 자리가 여기다. 시트를 열게 하면
+          두 화면을 오가야 한다. 다만 고쳐지는 것은 이 줄이 아니라 상품 원장이라
+          같은 상품으로 판 이용권이 전부 따라 움직인다 — 그 말을 옆에 적어 둔다.
+        */}
+        <h4 className="mini-title">갈래</h4>
+        <div className="pick-row" style={{ flexWrap: "wrap" }}>
+          <select className="select" style={{ maxWidth: 200 }} value={cat} disabled={busy}
+                  onChange={(e) => moveCat(e.target.value)}>
+            {CATS.map((c) => <option key={c.key} value={c.key}>{c.key}</option>)}
+          </select>
+          <span className="dim" style={{ fontSize: 11.5 }}>
+            「{pr?.name ?? t.상품코드}」 상품 전체에 적용됩니다
+          </span>
+        </div>
+        <p className="stat-note">
+          이 상품으로 판 이용권이 <b>모두 같이</b> 옮겨갑니다. 한 사람만 바꾸는 것이
+          아니라 상품의 성격을 정하는 자리입니다.
+        </p>
 
         <h4 className="mini-title">정지 · 양도</h4>
 
