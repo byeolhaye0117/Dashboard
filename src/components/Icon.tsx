@@ -9,7 +9,7 @@ export type IconName =
   | "home" | "users" | "card" | "phone" | "dumbbell"
   | "clock" | "clipboard" | "box" | "badge" | "lock"
   | "sun" | "moon" | "warn" | "check" | "chevron" | "fold" | "unfold" | "grid" | "plus" | "menu"
-  | "tag";
+  | "tag" | "chat";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   home: <path d="M3.2 10.4 12 3.4l8.8 7v9.1a1 1 0 0 1-1 1h-4.6v-6.1H8.8v6.1H4.2a1 1 0 0 1-1-1z" />,
@@ -80,6 +80,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M11.6 3.4H4.6a1.2 1.2 0 0 0-1.2 1.2v7l9 9 8.2-8.2-9-9z" />
       <circle cx="8" cy="8" r="1.3" />
+    </>
+  ),
+  chat: (
+    <>
+      <path d="M20.5 12.4c0 4-3.8 7.2-8.5 7.2-1 0-2-.15-2.9-.42L4 20.8l1.7-3.5A6.9 6.9 0 0 1 3.5 12.4c0-4 3.8-7.2 8.5-7.2s8.5 3.2 8.5 7.2z" />
+      <path d="M8.6 12h.01M12 12h.01M15.4 12h.01" />
     </>
   ),
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
