@@ -1635,6 +1635,25 @@ table.cal td.cell .twice {
 .csec:first-child { margin-top: 0; }
 .csec span { font-weight: 600; }
 
+/* 갈래마다 상자 하나 — 어디까지가 회원권이고 어디부터 수강권인지 선으로 가른다 */
+.cbox {
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: 4px 13px 10px; margin-bottom: 10px; background: var(--surface);
+}
+.cbox:last-child { margin-bottom: 0; }
+.cbox .csec { margin-top: 10px; }
+.cbox .mrow:last-child { padding-bottom: 2px; }
+
+/* 창을 닫는 X — 아래 단추 줄이 없어졌으니 나가는 길이 보여야 한다 */
+.modal-x {
+  position: absolute; top: 12px; right: 14px; z-index: 2;
+  width: 32px; height: 32px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--surface);
+  font-size: 19px; line-height: 1; color: var(--muted); cursor: pointer;
+}
+.modal-x:hover { color: var(--ink); background: var(--surface-2); }
+.modal { position: relative; }
+
 /* 판 번호 — 있는 줄도 모를 만큼 작게, 찾으면 보이게 */
 .build-tag {
   display: block; margin-top: 8px; text-align: center;
