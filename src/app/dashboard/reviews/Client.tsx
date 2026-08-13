@@ -116,6 +116,8 @@ export default function Client(p: Props) {
     주제: string[]; 답글: string;
     점검?: { t: string; ok: boolean; note?: string }[];
     통과?: number; 전체?: number;
+    /** 진단 서버가 아니라 대시보드 사본으로 쓴 것인가 */
+    사본?: boolean;
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -300,6 +302,7 @@ export default function Client(p: Props) {
       setOut({
         주제: json.주제 ?? [], 답글: json.답글,
         점검: json.점검 ?? [], 통과: json.통과 ?? 0, 전체: json.전체 ?? 0,
+        사본: Boolean(json.사본),
       });
       setList((cur) => [
         {
@@ -556,7 +559,13 @@ export default function Client(p: Props) {
                 </button>
               </div>
               <p className="stat-note">
-                한 번 읽어보고 어색한 곳은 고쳐서 올려주세요. 만든 답글은 오른쪽에 쌓입니다.
+                한 번 읽어보고 어색한 곳은 고쳐서 올려주세요.
+                {out.사본 && (
+                  <>
+                    {" "}<b>진단 서버에 닿지 못해 대시보드에 둔 사본으로 썼습니다.</b>{" "}
+                    견본은 같지만, 그쪽을 고치셨다면 반영이 안 됐을 수 있습니다.
+                  </>
+                )}
               </p>
             </div>
           )}
