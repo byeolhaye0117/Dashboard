@@ -3,9 +3,11 @@ import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import { getBranches } from "@/lib/data";
 import { saveReply, softDeleteReply, countToday, listSettings, saveSetting } from "@/lib/reviews";
-import { collectPlace, writeReply } from "@/lib/place";
+import { collectPlace, writeReply, NoReplyApi } from "@/lib/place";
+import { ask } from "@/lib/ai";
+import { buildReplyPrompt, parseReply, auditReply } from "@/lib/replyCore";
 import {
-  modelWon, DAILY_LIMIT_DEFAULT, LIMIT_MIN, LIMIT_MAX,
+  modelId, modelWon, DAILY_LIMIT_DEFAULT, LIMIT_MIN, LIMIT_MAX,
 } from "@/lib/reviewMeta";
 
 export const dynamic = "force-dynamic";
@@ -162,28 +164,58 @@ export async function POST(req: Request) {
     }
 
     /*
-     * 답글은 진단 서버가 쓴다 — 여기서는 쓰지 않는다
+     * 답글은 진단 서버가 쓴다. 닿지 못하면 같은 견본으로 여기서 쓴다
      *
-     * 한때 대시보드에도 지시문을 한 벌 두고, 서버가 자고 있으면 그것으로
-     * 대신 쓰게 했다. 그러다 두 벌이 어긋났다. 서버 쪽에는 사장님이 다신
-     * 실제 답글 견본이 있는데 여기엔 내가 쓴 규칙만 있었고, 그래서 여기서
-     * 나온 답글이 눈에 띄게 못했다.
+     * 답글의 결을 정하는 자리는 진단 서버 하나다 — 거기 reply-core.js 가
+     * 사장님 말투와 답글 견본을 갖고 있다. 다만 그 서버가 자고 있거나 아직
+     * 새 코드를 못 받았다고 해서 답글을 아예 못 만들면 안 된다. 실제로
+     * 그것 때문에 하루를 못 쓰셨다.
      *
-     * 답글의 결을 정하는 자리는 하나여야 한다. 서버가 안 되면 안 된다고
-     * 말하고 멈춘다 — 못한 답글을 조용히 내놓는 것보다 낫다.
+     * 그래서 같은 견본의 사본을 여기에도 두고, 닿지 못할 때만 쓴다.
+     * 사본으로 쓴 것은 그 사실을 화면에 알린다 — 어긋났을 때 조용히
+     * 넘어가지 않으려는 것이다.
      */
-    const w = await writeReply({
-      review, star: stars, length, tone, keywords, closing: ending,
-      facts, landmarks, name: branchName, area: "천안",
-      /* 늘 싼 쪽으로 쓴다 — 고르는 칸을 없앴다 */
-      tier: "fast",
-      placeId: (setting?.플레이스ID ?? "").trim(),
-    });
-    const 답글 = w.답글;
-    const 주제 = w.주제.slice(0, 6);
-    const 점검 = w.점검;
-    const 통과 = w.통과;
-    const 전체 = w.전체;
+    let 답글 = "";
+    let 주제: string[] = [];
+    let 점검: any[] = [];
+    let 통과 = 0;
+    let 전체 = 0;
+    let 사본 = false;
+
+    try {
+      const w = await writeReply({
+        review, star: stars, length, tone, keywords, closing: ending,
+        facts, landmarks, name: branchName, area: "천안",
+        /* 늘 싼 쪽으로 쓴다 — 고르는 칸을 없앴다 */
+        tier: "fast",
+        placeId: (setting?.플레이스ID ?? "").trim(),
+      });
+      답글 = w.답글;
+      주제 = w.주제.slice(0, 6);
+      점검 = w.점검;
+      통과 = w.통과;
+      전체 = w.전체;
+    } catch (e: any) {
+      /* 열쇠가 틀렸거나 AI 가 거절한 것은 진짜 오류다 — 조용히 다른 길로 새지 않는다 */
+      if (!(e instanceof NoReplyApi)) throw e;
+
+      사본 = true;
+      const prompt = buildReplyPrompt({
+        name: branchName, area: "천안", review, star: stars,
+        length, tone, keywords, facts, landmarks, closing: ending,
+      });
+      const out = await ask({ model: modelId(), system: "", user: prompt, maxTokens: 1500, prefill: "{" });
+      const parsed = parseReply(out.text);
+      답글 = String(parsed?.답글 ?? "").trim();
+      주제 = Array.isArray(parsed?.주제)
+        ? parsed.주제.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 6)
+        : [];
+      if (답글) {
+        점검 = auditReply(답글, review, { name: branchName, keywords }, stars);
+        통과 = 점검.filter((r: any) => r.ok).length;
+        전체 = 점검.length;
+      }
+    }
 
     if (!답글) {
       return NextResponse.json({ error: "AI 가 답글을 만들지 못했습니다. 다시 눌러주세요." }, { status: 502 });
@@ -218,6 +250,7 @@ export async function POST(req: Request) {
       점검,
       통과,
       전체,
+      사본,
       등록일시: new Date().toISOString(),
     });
   } catch (e: any) {
