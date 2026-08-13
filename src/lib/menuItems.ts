@@ -19,6 +19,15 @@ export type MenuItem = {
 
 export const GROUP_ORDER: MenuGroup[] = ["기본", "운영", "관리"];
 
+/**
+ * 휴대폰 아래 막대에 올릴 메뉴 — 자주 누르는 순서
+ *
+ * 왼쪽 차례대로 앞에서 넷을 잘라 쓰다 보니, 아홉 번째인 리뷰 답글은
+ * 「전체」를 눌러야만 나왔다. 자주 쓰는 것과 목록 순서는 다르다.
+ * 여기 적힌 순서대로 올리고, 권한 때문에 빈 자리는 남은 메뉴로 채운다.
+ */
+export const PHONE_TABS = ["홈", "회원", "매출", "상담", "리뷰"];
+
 /** key 는 시트 `권한` 탭의 "메뉴" 칸 값과 반드시 일치해야 한다 */
 export const MENUS: MenuItem[] = [
   { key: "홈", label: "홈", short: "홈", href: "/dashboard", icon: "home", group: "기본" },
