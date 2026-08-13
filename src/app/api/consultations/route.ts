@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
-import { createConsultation, patchConsultation } from "@/lib/consultations";
+import { createConsultation, patchConsultation, ensureLinkColumns } from "@/lib/consultations";
 import { stageOf } from "@/lib/stage";
 import { enrollFromConsultation } from "@/lib/members";
 
@@ -36,6 +36,7 @@ export async function POST(req: Request) {
     let 회원 = null;
     if (stageOf({ 진행상태: body.진행상태 }) === "등록") {
       try {
+        await ensureLinkColumns();
         회원 = await enrollFromConsultation(
           {
             상담번호: id,

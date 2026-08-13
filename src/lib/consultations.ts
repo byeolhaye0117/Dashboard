@@ -4,7 +4,7 @@
  * 시트의 `상담` `상담활동` 탭을 다룬다.
  * 화면 코드가 칸 이름을 직접 알 필요가 없도록 여기서만 다룬다.
  */
-import { readSheet, alive, appendRow, updateRow, type Row } from "./sheets";
+import { readSheet, alive, appendRow, updateRow, addColumns, type Row } from "./sheets";
 import { now } from "./time";
 import { formatPhone } from "./phone";
 
@@ -89,6 +89,20 @@ export async function listConsultations(): Promise<{
 export async function listActivities(): Promise<Activity[]> {
   const { rows } = await readSheet(SHEET_A);
   return alive(rows).map((r) => ({ ...r, id: r["활동번호"] }));
+}
+
+/**
+ * 상담과 회원을 잇는 칸이 실제로 있는지 확인한다
+ *
+ * 시트에 없는 칸에 적으면 조용히 사라진다. 「전환회원번호」 칸이 없는 시트에서
+ * 등록으로 바꾸면, 회원은 만들어지는데 이어 둔 자국이 안 남는다. 그러면
+ * 나중에 등록을 되돌려도 어느 회원을 내려야 할지 알 수가 없다.
+ * 실제로 그렇게 됐다 — 되돌렸는데 회원이 안 사라졌다.
+ *
+ * 없으면 여기서 만든다. 사람이 시트를 열어 칸을 만들 일이 아니다.
+ */
+export async function ensureLinkColumns(): Promise<void> {
+  await addColumns(SHEET_C, ["전환회원번호", "등록여부"]);
 }
 
 /** 다음 번호를 만든다 (C00001 형태) */
