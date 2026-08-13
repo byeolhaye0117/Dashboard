@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
-import { patchPayment, listPayments, listMembers } from "@/lib/members";
+import { patchPayment, softDeletePayment, listPayments, listMembers } from "@/lib/members";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +16,12 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
 
   const ab = (await abilitiesFor(session.roleCode)).get("회원");
-  if (!ab?.update) {
+  if (!ab?.update && !ab?.remove) {
     return NextResponse.json({ error: "결제를 고칠 권한이 없습니다." }, { status: 403 });
   }
 
   try {
-    const { id, changes } = await req.json();
+    const { id, changes, action } = await req.json();
     if (!id) return NextResponse.json({ error: "대상을 찾지 못했습니다." }, { status: 400 });
 
     const [payments, { items }] = await Promise.all([listPayments(), listMembers()]);
@@ -32,6 +32,19 @@ export async function POST(req: Request) {
     const branch = owner?.지점코드 || target.지점코드;
     if (session.scope !== "전체" && !session.branches.includes(branch)) {
       return NextResponse.json({ error: "이 결제를 고칠 권한이 없습니다." }, { status: 403 });
+    }
+
+    /* 지우기는 고치기보다 무겁다 — 권한을 따로 본다 */
+    if (action === "del") {
+      if (!ab?.remove) {
+        return NextResponse.json({ error: "결제를 지울 권한이 없습니다." }, { status: 403 });
+      }
+      await softDeletePayment(target.id, session.staffId);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (!ab?.update) {
+      return NextResponse.json({ error: "결제를 고칠 권한이 없습니다." }, { status: 403 });
     }
 
     const safe: Record<string, string> = {};
