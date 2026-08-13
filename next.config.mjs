@@ -14,5 +14,25 @@ const stamp =
 const nextConfig = {
   reactStrictMode: true,
   env: { NEXT_PUBLIC_BUILD: stamp },
+
+  /*
+    화면을 브라우저가 오래 물고 있지 않게
+
+    휴대폰 브라우저는 한 번 받은 화면을 며칠씩 그대로 쓰기도 한다. 그러면
+    새로 올려도 옛 화면이 계속 보인다. 이 화면들은 늘 서버에서 새로 그리는
+    것이라 담아 둘 값어치가 없다 — 담아 두지 말라고 못 박는다.
+    (JS·CSS 파일은 이름에 지문이 붙어 있어 그대로 담아 둬도 안전하다.
+     여기서 막는 것은 화면 문서뿐이다.)
+  */
+  async headers() {
+    return [
+      {
+        source: "/((?!_next/static|_next/image|favicon.ico).*)",
+        headers: [
+          { key: "Cache-Control", value: "no-store, must-revalidate" },
+        ],
+      },
+    ];
+  },
 };
 export default nextConfig;

@@ -83,6 +83,36 @@ export default function Shell({
      로그인 화면·왼쪽 아래·휴대폰 메뉴가 같은 값을 보여야 비교가 된다. */
   const build = process.env.NEXT_PUBLIC_BUILD || "로컬";
 
+  /*
+   * 새 판이 올라왔는지 스스로 확인한다
+   *
+   * 휴대폰 브라우저는 화면을 오래 물고 있는다. 새로 배포해도 며칠 전 화면을
+   * 그대로 쓰면서, 쓰는 분은 「안 바뀌었다」고 여기게 된다. 실제로 그랬다.
+   * 화면을 열 때와 다른 앱에 갔다 돌아올 때 서버에 판 번호를 물어보고,
+   * 다르면 알려준다. 억지로 새로 고치지는 않는다 — 글을 쓰던 중일 수 있다.
+   */
+  const [stale, setStale] = useState(false);
+
+  useEffect(() => {
+    let dead = false;
+    const check = async () => {
+      try {
+        const r = await fetch("/api/version", { cache: "no-store" });
+        const j = await r.json();
+        if (!dead && j?.build && build && j.build !== build) setStale(true);
+      } catch {
+        /* 인터넷이 끊겼을 뿐일 수 있다. 조용히 넘어간다 */
+      }
+    };
+    check();
+    const onBack = () => document.visibilityState === "visible" && check();
+    document.addEventListener("visibilitychange", onBack);
+    return () => {
+      dead = true;
+      document.removeEventListener("visibilitychange", onBack);
+    };
+  }, [build]);
+
   /* 아래 막대에 올릴 다섯 — 정한 순서대로 올리고, 권한 때문에 없는 자리는
      남은 메뉴로 채운다. 칸이 비어 보이는 것보다 뭐라도 있는 편이 낫다. */
   const phoneTabs = (() => {
@@ -200,6 +230,13 @@ export default function Shell({
 
         <main className="sheet">{children}</main>
       </div>
+
+      {stale && (
+        <button type="button" className="stale-bar"
+                onClick={() => window.location.reload()}>
+          새 판이 올라왔습니다 · 눌러서 받기
+        </button>
+      )}
 
       <nav className="tabbar" aria-label="주 메뉴">
         {phoneTabs.map((m) => (

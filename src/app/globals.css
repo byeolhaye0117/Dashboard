@@ -1194,6 +1194,16 @@ table.grid tr.is-picked > td { background: color-mix(in srgb, var(--s1) 9%, tran
   .menu-btn { display: inline-flex; }
 }
 
+/* 새 판이 올라왔다는 알림 — 아래 막대 바로 위에 뜬다 */
+.stale-bar {
+  position: fixed; left: 8px; right: 8px; bottom: 76px; z-index: 45;
+  padding: 11px 14px; border: 0; border-radius: var(--r);
+  background: var(--ink); color: var(--ink-on);
+  font-size: 13px; font-weight: 700; font-family: inherit;
+  box-shadow: var(--shadow); cursor: pointer;
+}
+@media (min-width: 768px) { .stale-bar { left: auto; right: 18px; bottom: 18px; width: auto; } }
+
 /* ── 휴대폰 전체 메뉴 ─────────────────────── */
 .sheet-back {
   position: fixed; inset: 0; z-index: 50;
