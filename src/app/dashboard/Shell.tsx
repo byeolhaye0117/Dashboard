@@ -188,7 +188,11 @@ export default function Shell({
                   await fetch("/api/logout", { method: "POST" });
                   location.href = "/";
                 }}>로그아웃</button>
-                <div className="build">화면 버전 {build}</div>
+                {/* 「왜 이 메뉴가 안 보이지」를 물을 때, 어느 계정·직급으로 보고 있는지가
+                    답의 절반이다. 판 번호 옆에 직급코드와 보이는 메뉴 수를 같이 적는다. */}
+                <div className="build">
+                  화면 버전 {build} · {session.roleCode} · 메뉴 {menus.length}개
+                </div>
               </div>
             )}
           </div>
