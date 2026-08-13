@@ -296,7 +296,13 @@ export default function Client(p: Props) {
                 <button className={meToday.resting ? "btn-dark big" : "btn-rest big"}
                         onClick={() => punch(meToday.resting ? "break-out" : "break-in")}
                         disabled={Boolean(busy)}>
-                  {meToday.resting ? "휴게 끝내고 복귀" : "휴게 시작"}
+                  {busy === "break-in"
+                    ? "시작하는 중…"
+                    : busy === "break-out"
+                    ? "복귀하는 중…"
+                    : meToday.resting
+                    ? "휴게 끝내고 복귀"
+                    : "휴게 시작"}
                 </button>
               )}
               {!meToday.resting && (
