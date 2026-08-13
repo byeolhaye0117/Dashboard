@@ -15,6 +15,13 @@ export type OpenReview = { body: string; rating: number | null; date: string };
 
 export type Collected = {
   placeId: string;
+  /**
+   * 네이버에 걸려 있는 진짜 상호
+   *
+   * 우리는 「쌍용점」이라고 부르지만 손님이 검색으로 보는 이름은
+   * 「쌍용동헬스장 MTO피트니스 쌍용점」이다. 답글에 들어갈 이름은 그쪽이어야 한다.
+   */
+  name: string;
   /** 아직 답글이 안 달린 리뷰 */
   openReviews: OpenReview[];
   /** 답글에 쓸 수 있는 "확인된 사실" — 시설·프로그램 이름 */
@@ -123,6 +130,7 @@ export async function collectPlace(placeId: string): Promise<Collected> {
 
   return {
     placeId: String(json?.placeId ?? target),
+    name: String(json?.data?.name ?? json?.name ?? "").trim(),
     openReviews: open,
     /* 답글에 쓸 사실. 이름이 너무 짧은 것은 무슨 말인지 몰라 빼고,
        열 개가 넘어가면 프롬프트만 길어지고 답글은 그대로다. */

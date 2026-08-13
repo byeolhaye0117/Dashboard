@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import {
-  LENGTHS, TONES, ENDINGS, keywordsFor, suggestTone, MODEL_WON,
+  LENGTHS, ENDINGS, keywordsFor, suggestTone, MODEL_WON,
 } from "@/lib/reviewMeta";
 
 type Named = { code: string; name: string };
@@ -89,7 +89,6 @@ export default function Client(p: Props) {
   const [review, setReview] = useState("");
   const [star, setStar] = useState(5);
   const [len, setLen] = useState("중간");
-  const [tone, setTone] = useState("정중");
   const [ending, setEnding] = useState(ENDINGS[0]);
   const [picked, setPicked] = useState<string[]>([]);
   /** 화면에서 직접 더 넣은 키워드 */
@@ -207,11 +206,20 @@ export default function Client(p: Props) {
     if (picked.length < 5) setPicked([...picked, w]);
   };
 
-  /* 별점이 낮으면 말투를 먼저 「사과 중심」으로 돌려둔다 — 그대로 두면 불난 데 부채질이다 */
-  const pickStar = (n: number) => {
-    setStar(n);
-    setTone(suggestTone(n));
-  };
+  /*
+   * 말투는 별점이 정한다
+   *
+   * 예전에는 「정중·친근·담백·사과」를 손으로 골랐다. 그런데 답글 지시문을
+   * 플레이스 홈페이지 원본과 하나로 합치면서, 그쪽에는 말투 고르는 칸이
+   * 없다는 것을 알았다. 별 둘 이하면 사과문으로 통째로 갈아입고, 그 위는
+   * 사장님 말투 견본을 그대로 따라간다 — 그래서 고를 것이 없다.
+   *
+   * 아무 일도 안 하는 단추를 화면에 두는 것이 제일 나쁘다. 눌러 놓고
+   * 「바꿨는데 왜 그대로지」 하게 된다. 그래서 칸을 없애고, 기록에는
+   * 이 별점에 어떤 결로 썼는지만 남긴다.
+   */
+  const tone = suggestTone(star);
+  const pickStar = (n: number) => setStar(n);
 
   const mine = useMemo(() => list.filter((r) => r.지점코드 === branch), [list, branch]);
   const madeKeys = useMemo(() => new Set(mine.map((r) => keyOf(r.리뷰내용))), [mine]);
@@ -425,20 +433,6 @@ export default function Client(p: Props) {
                         onClick={() => setLen(x.v)}>
                   <span className="nm">{x.label}</span>
                   <span className="dim">{x.hint}</span>
-                </button>
-              ))}
-            </div>
-
-            <p className="csec">
-              말투
-              {star <= 3 && <span>별점이 낮아 「사과 중심」을 권합니다</span>}
-            </p>
-            <div className="pick-row" style={{ flexWrap: "wrap" }}>
-              {TONES.map((x) => (
-                <button key={x.v} type="button"
-                        className={`pickone${tone === x.v ? " on" : ""}`}
-                        onClick={() => setTone(x.v)}>
-                  <span className="nm">{x.label}</span>
                 </button>
               ))}
             </div>

@@ -5,7 +5,7 @@ import { getBranches } from "@/lib/data";
 import { saveReply, softDeleteReply, countToday, listSettings, saveSetting } from "@/lib/reviews";
 import { collectPlace, writeReply, NoReplyApi } from "@/lib/place";
 import { ask } from "@/lib/ai";
-import { buildReplyPrompt, parseReply, auditReply } from "@/lib/replyCore";
+import { buildReplyPrompt, parseReply, auditReply, replySafe } from "@/lib/replyCore";
 import {
   modelId, modelWon, DAILY_LIMIT_DEFAULT, LIMIT_MIN, LIMIT_MAX,
 } from "@/lib/reviewMeta";
@@ -128,7 +128,9 @@ export async function POST(req: Request) {
     }
 
     const branches = await getBranches();
-    const branchName = branches.find((b) => b.code === branch)?.name ?? branch;
+    /* 인사말에 들어갈 이름이다. 「쌍용점」보다 네이버에 걸린 진짜 상호가 낫고,
+       그건 재료를 긁어올 때 같이 온다 — 아래에서 오면 그걸로 바꾼다. */
+    let branchName = branches.find((b) => b.code === branch)?.name ?? branch;
 
     const stars = Number(body.별점) || 0;
     const length = String(body.길이 ?? "중간");
@@ -158,6 +160,7 @@ export async function POST(req: Request) {
         const got = await collectPlace(setting!.플레이스ID);
         facts.push(...got.facts);
         landmarks.push(...got.landmarks);
+        if (got.name) branchName = got.name;
       } catch {
         /* 못 가져와도 답글은 만든다. 대신 지시문이 「사실이 없다」 쪽으로 간다 */
       }
@@ -202,11 +205,13 @@ export async function POST(req: Request) {
       사본 = true;
       const prompt = buildReplyPrompt({
         name: branchName, area: "천안", review, star: stars,
-        length, tone, keywords, facts, landmarks, closing: ending,
+        length, keywords, facts, landmarks, closing: ending,
       });
-      const out = await ask({ model: modelId(), system: "", user: prompt, maxTokens: 1500, prefill: "{" });
+      /* 지시문이 「답글 하나만, 머리말 없이」라고 시킨다 — JSON 을 강요하면
+         문단 나눔과 이모지 자리가 흐트러진다. 그래서 앞글자를 박지 않는다. */
+      const out = await ask({ model: modelId(), system: "", user: prompt, maxTokens: 2000 });
       const parsed = parseReply(out.text);
-      답글 = String(parsed?.답글 ?? "").trim();
+      답글 = replySafe(String(parsed?.답글 ?? "").trim());
       주제 = Array.isArray(parsed?.주제)
         ? parsed.주제.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 6)
         : [];
