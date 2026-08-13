@@ -1349,52 +1349,61 @@ export async function unenrollFromConsultation(
 ): Promise<Unenrolled | null> {
   const m = await readSheet(SHEET_M);
   const mCols = resolve(SHEET_M, m.headers, M_COLS);
-  const alive0 = (r: Row) => (r["삭제여부"] ?? "").toUpperCase() !== "Y";
+  const live = (r: Row) => (r["삭제여부"] ?? "").toUpperCase() !== "Y";
 
   /*
    * 어느 회원을 내려야 하는지 찾는다
    *
-   * 원래는 상담에 적어 둔 전환회원번호 하나만 봤다. 그런데 시트에 그 칸이
-   * 없으면 자국이 안 남아서, 되돌려도 아무 일이 안 일어났다. 실제로 그랬다.
-   * 칸은 이제 스스로 만들지만, 이미 자국 없이 만들어진 회원이 남아 있다.
+   * 근거가 센 것부터 본다.
+   *   1) 상담에 적어 둔 전환회원번호
+   *   2) 회원 줄에 남은 상담번호
+   *   3) 전화번호
    *
-   * 그래서 세 갈래로 찾는다. 뒤로 갈수록 근거가 약해지므로 마지막 갈래는
-   * 이용권도 결제도 없는 빈 줄일 때만 쓴다 — 아래에서 한 번 더 걸러진다.
+   * 1·2 는 「이 상담이 만든 회원」이라는 자국이다. 3 은 자국이 아니라 짐작이다.
+   * 실제로 시트에 그 칸들이 아예 없던 동안 만들어진 회원이 있어서, 3 이 없으면
+   * 영영 못 찾는다. 대신 3 으로 찾은 것은 아래에서 훨씬 조심스럽게 다룬다.
    */
   const key = phoneKey(전화번호);
-  let i = 회원번호
-    ? m.rows.findIndex((r) => get(r, mCols, "회원번호") === 회원번호)
-    : -1;
-  let 근거 = "상담에 적어 둔 회원번호";
+  let i = 회원번호 ? m.rows.findIndex((r) => get(r, mCols, "회원번호") === 회원번호) : -1;
+  let 자국있음 = i >= 0;
   if (i < 0 && 상담번호) {
-    i = m.rows.findIndex((r) => alive0(r) && get(r, mCols, "상담번호") === 상담번호);
-    근거 = "회원 줄에 남은 상담번호";
+    i = m.rows.findIndex((r) => live(r) && get(r, mCols, "상담번호") === 상담번호);
+    자국있음 = i >= 0;
   }
   if (i < 0 && key) {
-    i = m.rows.findIndex(
-      (r) => alive0(r) && phoneKey(get(r, mCols, "전화번호")) === key
-    );
-    근거 = "전화번호";
+    i = m.rows.findIndex((r) => live(r) && phoneKey(get(r, mCols, "전화번호")) === key);
   }
   if (i < 0) return null;
 
   const row = m.rows[i];
   const id = get(row, mCols, "회원번호");
   const 이름 = get(row, mCols, "이름");
-  if (!alive0(row)) {
-    return { 회원번호: id, 이름, 지움: false, 이유: "이미 지워진 회원입니다." };
+  if (!live(row)) return null;
+
+  /* 다른 상담이 만든 회원이면 손대지 않는다 */
+  const 자국 = get(row, mCols, "상담번호");
+  if (자국 && 상담번호 && 자국 !== 상담번호) {
+    return 자국있음
+      ? { 회원번호: id, 이름, 지움: false,
+          이유: "다른 상담에서 만든 회원이라 회원 목록은 그대로 두었습니다." }
+      : null;
   }
 
   /*
-   * 무엇이든 지우지는 않는다
+   * 돈이 얽혀 있으면 지우지 않는다
    *
-   * 지우는 것은 되돌리기 어려운 일이라, 돈이 얽혀 있으면 그대로 둔다.
-   * 상담 화면에서 조용히 지우면 매출이 왜 줄었는지 아무도 설명하지 못한다.
+   * 지우는 것은 되돌리기 어려운 일이다. 상담 화면에서 조용히 지우면
+   * 매출이 왜 줄었는지 아무도 설명하지 못하게 된다.
+   *
+   * 자국 없이 전화번호로만 찾은 경우에는 아예 아무 말도 하지 않는다.
+   * 그건 「원래 다니시던 분이 상담을 한 번 더 남긴 것」일 뿐이라,
+   * 저장할 때마다 알림이 뜨면 그게 더 성가시다.
    */
   const [tickets, pays] = await Promise.all([listTickets(), listPayments()]);
   const 이용권수 = tickets.filter((t) => t.회원번호 === id).length;
   const 결제수 = pays.filter((p) => p.회원번호 === id).length;
   if (이용권수 > 0 || 결제수 > 0) {
+    if (!자국있음) return null;
     return {
       회원번호: id, 이름, 지움: false,
       이유:
@@ -1403,21 +1412,13 @@ export async function unenrollFromConsultation(
     };
   }
 
-  /* 이 상담에서 만든 회원이 아니면 두고 본다 — 원래 있던 분과 이어 붙였던 경우다.
-     다만 「상담번호」 칸 자체가 없어 자국이 안 남은 시트가 있어서,
-     자국이 비어 있는 것은 이어 붙였다는 근거가 되지 못한다. */
-  const 자국 = get(row, mCols, "상담번호");
-  if (자국 && 상담번호 && 자국 !== 상담번호) {
-    return {
-      회원번호: id, 이름, 지움: false,
-      이유: "원래 있던 회원과 이어 붙였던 것이라 회원 목록은 그대로 두었습니다.",
-    };
-  }
-
   await updateRow(SHEET_M, m.rowNumbers[i], m.headers, {
     ...row,
     삭제여부: "Y",
     ...(toSheetRow({ 수정일시: now(), 수정자: staffId }, mCols) as Row),
   });
-  return { 회원번호: id, 이름, 지움: true, 이유: `${근거}로 찾았습니다.` };
+  return {
+    회원번호: id, 이름, 지움: true,
+    이유: 자국있음 ? "" : "전화번호가 같고 이용권·결제가 없어 이 상담이 올린 회원으로 봤습니다.",
+  };
 }
