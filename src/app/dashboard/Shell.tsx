@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
-import { GROUP_ORDER, type MenuItem } from "@/lib/menuItems";
+import { GROUP_ORDER, PHONE_TABS, type MenuItem } from "@/lib/menuItems";
 import type { Session } from "@/lib/session";
 
 type Props = {
@@ -82,6 +82,15 @@ export default function Shell({
      판 번호는 next.config.mjs 가 만들어 넣는 NEXT_PUBLIC_BUILD 하나로 본다 —
      로그인 화면·왼쪽 아래·휴대폰 메뉴가 같은 값을 보여야 비교가 된다. */
   const build = process.env.NEXT_PUBLIC_BUILD || "로컬";
+
+  /* 아래 막대에 올릴 다섯 — 정한 순서대로 올리고, 권한 때문에 없는 자리는
+     남은 메뉴로 채운다. 칸이 비어 보이는 것보다 뭐라도 있는 편이 낫다. */
+  const phoneTabs = (() => {
+    const byKey = new Map(menus.map((m) => [m.key, m]));
+    const first = PHONE_TABS.map((k) => byKey.get(k)).filter(Boolean) as MenuItem[];
+    const rest = menus.filter((m) => !PHONE_TABS.includes(m.key));
+    return [...first, ...rest].slice(0, 5);
+  })();
 
   return (
     <div className="app">
@@ -189,7 +198,7 @@ export default function Shell({
       </div>
 
       <nav className="tabbar" aria-label="주 메뉴">
-        {menus.slice(0, 4).map((m) => (
+        {phoneTabs.map((m) => (
           <a key={m.key} href={m.href} className={active === m.key ? "on" : ""}>
             <Icon name={m.icon} size={19} />
             {m.short}
