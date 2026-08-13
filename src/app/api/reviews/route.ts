@@ -2,119 +2,15 @@ import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import { getBranches } from "@/lib/data";
-import { ask, parseJson } from "@/lib/ai";
 import { saveReply, softDeleteReply, countToday, listSettings, saveSetting } from "@/lib/reviews";
-import { collectPlace, writeReply, NoReplyApi } from "@/lib/place";
+import { collectPlace, writeReply } from "@/lib/place";
 import {
-  LENGTHS, TONES, modelId, modelWon, DAILY_LIMIT_DEFAULT, LIMIT_MIN, LIMIT_MAX,
+  modelWon, DAILY_LIMIT_DEFAULT, LIMIT_MIN, LIMIT_MAX,
 } from "@/lib/reviewMeta";
 
 export const dynamic = "force-dynamic";
 /* AI 가 답을 쓰는 데도, 네이버에서 리뷰를 긁어오는 데도 시간이 걸린다 */
 export const maxDuration = 120;
-
-/**
- * 답글을 어떻게 쓰라고 시킬지
- *
- * 리뷰 답글은 광고가 아니라 응대다. 그래서 지켜야 할 선을 프롬프트에 못 박는다.
- *  - 리뷰에 없는 사실을 지어내지 않는다 (없는 시설, 없는 이벤트)
- *  - 손님 이름·나이·성별을 추측하지 않는다
- *  - 키워드는 자연스럽게 한두 번만 — 억지로 밀어 넣으면 읽는 사람이 먼저 안다
- *  - 별점이 낮으면 반박하지 않는다
- *  - 지금 지킬 수 없게 될 약속을 하지 않는다 — 답글은 몇 년씩 남는다
- */
-function buildPrompt(p: {
-  branchName: string;
-  review: string;
-  stars: number;
-  length: string;
-  tone: string;
-  keywords: string[];
-  ending: string;
-  /** 플레이스에서 실제로 확인된 우리 가게 사실 */
-  facts: string[];
-  landmarks: string[];
-}) {
-  const len = LENGTHS.find((x) => x.v === p.length) ?? LENGTHS[1];
-  const tone = TONES.find((x) => x.v === p.tone) ?? TONES[0];
-  const bad = p.stars > 0 && p.stars <= 2;
-
-  const system = [
-    `너는 천안에 있는 헬스장 「${p.branchName}」의 사장님을 대신해 손님 리뷰에 답글을 쓰는 사람이다.`,
-    "네이버 플레이스 리뷰에 그대로 올릴 수 있는 답글을 쓴다.",
-    "",
-    /* 잘 쓴 답글은 순서가 있다. 순서를 안 정해 주면 「감사합니다 + 좋은 말」 로만
-       채워진, 어느 리뷰에 붙여도 되는 글이 나온다. 실제로 그렇게 나왔다. */
-    bad
-      ? [
-          "[이 순서로 쓴다]",
-          "1. 사과 — 무엇이 불편하셨는지 손님이 쓴 말을 그대로 짚어서.",
-          "2. 원인이나 지금 상태를 짧게. 변명하지 않는다.",
-          "3. 무엇을 어떻게 하겠다 — 구체적으로. \"확인해 보겠습니다\"로 끝내지 않는다.",
-          "4. 직접 연락할 길을 연다 (데스크·전화·남겨 주시면).",
-        ].join("\n")
-      : [
-          "[이 순서로 쓴다]",
-          `1. 인사 — 「${p.branchName}」 이름을 넣어 인사한다.`,
-          "2. 되받기 — 리뷰에서 손님이 쓴 문장 하나를 그대로 짚어서 받는다.",
-          '   예) 리뷰에 "한동안 쉬다가 다시 시작"이라 적혀 있으면 → "한동안 쉬셨다가 다시 시작하셨군요".',
-          "   이 문장이 없으면 어떤 리뷰에 붙여도 되는 답글이 된다. 반드시 넣는다.",
-          "3. 대응 — 손님이 말한 그 대목에 딱 맞는 [확인된 사실] \"하나만\" 골라 든다.",
-          "   고른 사실이 왜 이 손님에게 좋은지까지 이어서 쓴다. 사실만 적으면 자랑이 된다.",
-          "   ※ 시설을 두 개 이상 늘어놓지 않는다. \"A도 있고 B도 있고\" 는 광고문이 된다.",
-          "4. 다음 — 다음에 오시면 해보시라고 권할 것을 한 가지. [확인된 사실]에 있는 것만.",
-          "5. 마무리 — 리뷰에 적힌 그분의 목표나 상황을 받아 응원하는 한마디로 닫는다.",
-        ].join("\n"),
-    "",
-    "[반드시 지킬 것]",
-    "1. 리뷰에 적혀 있지 않은 사실을 절대 만들지 않는다. 특히 아래를 조심한다.",
-    '   - 다니신 기간·등록한 상품 (리뷰에 "6개월 회원권"이라고 없으면 쓰지 않는다)',
-    '   - 방문 빈도·오래된 관계 ("항상 이용해주셔서", "꾸준히 방문해주시는" 은 리뷰에 근거가 있을 때만)',
-    "   - 손님의 이름·나이·성별·직업",
-    "   리뷰를 다시 읽고, 거기 적힌 것만 가지고 쓴다.",
-    "2. 아래 [확인된 사실]에 없는 시설·행사·할인·직원 이름을 만들지 않는다.",
-    "3. 앞날을 약속하지 않는다. 특히 가격은 \"앞으로도 올리지 않겠다\" 같은 말을 절대 쓰지 않는다.",
-    "4. 진행 중인 이벤트·할인·특가를 인용하지 않는다. 답글은 오래 남는데 혜택은 곧 끝난다.",
-    "5. 존댓말로 쓴다. 이모지는 없거나 많아도 한 개. 느낌표도 한 개까지.",
-    '6. "최고", "1등", "무조건" 같은 단정하는 말을 쓰지 않는다.',
-    "7. 마크다운(**, #, 목록표시)을 쓰지 않는다. 네이버는 그것을 글자 그대로 보여준다.",
-    "",
-    "[누구를 위한 글인가] 답글은 리뷰를 쓴 손님보다, 그 답글을 읽을 다음 손님을 위한 것이다.",
-    "",
-    p.facts.length
-      ? `[확인된 사실] 실제로 확인된 것이다. 여기 있는 것만 쓴다.\n- ${p.facts.join("\n- ")}`
-      : "[확인된 사실] 아직 하나도 없다. 그러니 시설·프로그램·혜택을 한 마디도 말하지 말고, " +
-        "손님이 쓴 말에만 답한다. 없는 것을 지어내느니 짧게 쓰는 편이 낫다.",
-    p.landmarks.length ? `[근처] ${p.landmarks.join(", ")}` : "",
-    "",
-    `[길이] ${len.rule}로 쓴다.`,
-    `[말투] ${tone.rule}`,
-    p.keywords.length && !bad
-      ? `[키워드] 다음 말을 답글 안에 자연스럽게 넣는다: ${p.keywords.join(", ")}. ` +
-        "인사말에 업체 이름과 함께 넣으면 자연스럽다. 한 키워드를 두 번 이상 반복하지 않는다."
-      : "[키워드] 따로 넣을 말은 없다.",
-    p.ending && !bad ? `[끝인사] 마지막 문장은 다음 문장을 그대로 쓴다: ${p.ending}` : "",
-    "",
-    "[답하는 방식]",
-    "설명 없이 JSON 하나만 답한다. 형태는 이렇다.",
-    '{"주제": ["리뷰에서 읽어낸 주제 2~4개"], "답글": "답글 본문"}',
-    '주제는 "친절", "시설 청결", "조용한 분위기", "주차 불편" 처럼 짧은 말로 적는다.',
-    p.length === "짧게"
-      ? "답글은 한 문단으로 쓴다."
-      : "답글은 문단 세 개로 나눈다. 문단 사이는 빈 줄 하나로 띄운다.",
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const user = [
-    p.stars ? `손님이 준 별점: 별 ${p.stars}개` : "손님이 준 별점: 알 수 없음",
-    "",
-    "손님이 남긴 리뷰 — 여기 적힌 것만 사실이다:",
-    p.review.trim(),
-  ].join("\n");
-
-  return { system, user };
-}
 
 export async function POST(req: Request) {
   const session = await readSession();
@@ -267,52 +163,27 @@ export async function POST(req: Request) {
     }
 
     /*
-     * 답글은 진단 서버에 맡긴다
+     * 답글은 진단 서버가 쓴다 — 여기서는 쓰지 않는다
      *
-     * 지시문과 점검 규칙은 대표님이 계속 다듬으시는 것이다. 대시보드가 한 벌
-     * 더 갖고 있으면 그쪽을 고쳐도 여기는 옛날 답글을 계속 쓴다.
-     * 다만 그 창구가 아직 없는 동안에도 답글은 나와야 하므로,
-     * 없으면 여기서 직접 만든다.
+     * 한때 대시보드에도 지시문을 한 벌 두고, 서버가 자고 있으면 그것으로
+     * 대신 쓰게 했다. 그러다 두 벌이 어긋났다. 서버 쪽에는 사장님이 다신
+     * 실제 답글 견본이 있는데 여기엔 내가 쓴 규칙만 있었고, 그래서 여기서
+     * 나온 답글이 눈에 띄게 못했다.
+     *
+     * 답글의 결을 정하는 자리는 하나여야 한다. 서버가 안 되면 안 된다고
+     * 말하고 멈춘다 — 못한 답글을 조용히 내놓는 것보다 낫다.
      */
-    let 답글 = "";
-    let 주제: string[] = [];
-    let 점검: any[] = [];
-    let 통과 = 0;
-    let 전체 = 0;
-    let 만든곳 = "진단서버";
-
-    try {
-      const w = await writeReply({
-        review, star: stars, length, tone, keywords, closing: ending,
-        facts, landmarks, name: branchName, area: "천안",
-        tier: modelPick === "꼼꼼" ? "good" : "fast",
-        placeId: (setting?.플레이스ID ?? "").trim(),
-      });
-      답글 = w.답글;
-      주제 = w.주제.slice(0, 6);
-      점검 = w.점검;
-      통과 = w.통과;
-      전체 = w.전체;
-    } catch (e: any) {
-      if (!(e instanceof NoReplyApi)) throw e;
-
-      만든곳 = "대시보드";
-      const { system, user } = buildPrompt({
-        branchName, review, stars, length, tone, keywords, ending, facts, landmarks,
-      });
-      const out = await ask({
-        model: modelId(modelPick),
-        system,
-        user,
-        maxTokens: 1200,
-        prefill: "{",
-      });
-      const parsed = parseJson(out.text);
-      답글 = String(parsed?.답글 ?? "").trim();
-      주제 = Array.isArray(parsed?.주제)
-        ? parsed.주제.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 6)
-        : [];
-    }
+    const w = await writeReply({
+      review, star: stars, length, tone, keywords, closing: ending,
+      facts, landmarks, name: branchName, area: "천안",
+      tier: modelPick === "꼼꼼" ? "good" : "fast",
+      placeId: (setting?.플레이스ID ?? "").trim(),
+    });
+    const 답글 = w.답글;
+    const 주제 = w.주제.slice(0, 6);
+    const 점검 = w.점검;
+    const 통과 = w.통과;
+    const 전체 = w.전체;
 
     if (!답글) {
       return NextResponse.json({ error: "AI 가 답글을 만들지 못했습니다. 다시 눌러주세요." }, { status: 502 });
@@ -347,7 +218,6 @@ export async function POST(req: Request) {
       점검,
       통과,
       전체,
-      만든곳,
       등록일시: new Date().toISOString(),
     });
   } catch (e: any) {

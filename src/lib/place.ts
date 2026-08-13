@@ -171,7 +171,13 @@ export type Written = {
   전체: number;
 };
 
-/** 서버에 아직 「답글」 창구가 없을 때 */
+/**
+ * 서버에 「답글」 창구가 없을 때
+ *
+ * 한때는 이것을 「아직 안 올렸을 뿐」으로 보고 대시보드가 대신 썼다.
+ * 지금은 답글의 주인이 서버 하나뿐이라, 이것도 그냥 오류다.
+ * 남겨 두는 이유는 무엇이 잘못됐는지 문장에 담기 위해서다.
+ */
 export class NoReplyApi extends Error {}
 
 export async function writeReply(input: {
@@ -206,7 +212,11 @@ export async function writeReply(input: {
   }
 
   /* 창구가 아직 없으면 404 가 온다. 이건 고장이 아니라 "아직 안 올렸다"이다 */
-  if (res.status === 404) throw new NoReplyApi("아직 /api/reply 창구가 없습니다.");
+  if (res.status === 404) {
+    throw new NoReplyApi(
+      "진단 서버에 답글 창구(/api/reply)가 없습니다. naver_place 가 최신인지 확인해주세요."
+    );
+  }
 
   const json: any = await res.json().catch(() => null);
   if (!json) throw new NoReplyApi("응답을 읽지 못했습니다.");
