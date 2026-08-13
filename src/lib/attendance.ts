@@ -10,7 +10,7 @@
  * 지각·조퇴는 직원 탭의 `출근기준시각`·`퇴근기준시각`을 쓴다.
  * 비어 있으면 판정하지 않고 시각만 남긴다. 없는 규칙을 지어내지 않는다.
  */
-import { readSheet, appendRow, updateRow } from "./sheets";
+import { readSheet, appendRow, updateRow, addColumns } from "./sheets";
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now, today } from "./time";
 import { SHEET_T, toMinutes, normalizeTime, type WorkKind } from "./attendanceMeta";
@@ -282,12 +282,41 @@ export async function punchOut(
  * 시작 시각을 적어두었다가, 끝낼 때 그 차이를 휴게분에 더한다.
  * 하루에 여러 번 쉬어도 분이 쌓인다.
  */
+/**
+ * 휴게 칸이 시트에 없으면 만들어 준다
+ *
+ * 휴게 관련 칸은 「있으면 쓰고 없으면 넘어가는」 칸으로 두었다. 그래서 시트에
+ * 그 칸이 없으면 휴게 시작을 눌러도 쓸 자리가 없어 조용히 아무 일도 안 일어났다.
+ * 오류도 안 나고 화면만 그대로라, 누른 사람은 고장인지 자기가 잘못 눌렀는지 모른다.
+ * 쓰려는 순간에 칸을 만든다.
+ */
+const BREAK_COLUMNS = ["휴게시작", "휴게분", "휴게내역"];
+
+async function ensureBreakColumns(headers: string[]): Promise<boolean> {
+  const missing = BREAK_COLUMNS.filter(
+    (c) => !headers.some((h) => (h ?? "").replace(/\s/g, "") === c)
+  );
+  if (missing.length === 0) return false;
+  await addColumns(SHEET_T, missing);
+  return true;
+}
+
 export async function breakToggle(
   staffId: string,
   start: boolean
 ): Promise<{ time: string; total: number }> {
-  const { headers, rows, rowNumbers } = await readSheet(SHEET_T);
+  let sheet = await readSheet(SHEET_T);
+  if (await ensureBreakColumns(sheet.headers)) sheet = await readSheet(SHEET_T);
+  const { headers, rows, rowNumbers } = sheet;
   const cols = resolve(SHEET_T, headers, T_COLS);
+
+  /* 칸을 만들었는데도 못 찾으면, 쓴 척하고 넘어가지 않는다.
+     조용히 성공한 것처럼 구는 것이 제일 나쁘다 — 눌러도 안 되는 이유를 알 수 없다. */
+  if (!cols["휴게시작"]) {
+    throw new Error(
+      "「근태」 시트에 휴게시작 칸을 만들지 못했습니다. 시트 권한을 확인해주세요."
+    );
+  }
   const day = today();
   const mine = findDay(rows, rowNumbers, cols, staffId, day);
 
