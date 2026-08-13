@@ -92,12 +92,36 @@ function forInput(v: string): string {
  * 00:00 은 「시각 모름」으로 본다. 날짜만 있는 옛 기록을 고칠 때 시각 칸이
  * 00:00 으로 채워지는데, 자정에 들어온 문의는 실무상 없다.
  */
-function whenOf(c: Row): { date: string; time: string } {
-  const raw = (c["상담날짜"] ?? "").trim().replace("T", " ");
-  const date = raw.slice(0, 10);
-  const time = raw.length > 10 ? raw.slice(11, 16) : "";
+/**
+ * 날짜와 시각을 한 자로 잰다
+ *
+ * 시트에 적히는 모양이 한 가지가 아니다. 화면에서 넣으면 「2026-08-14T09:00」이고,
+ * 구글 시트가 날짜 칸으로 알아보면 「2026-08-14 9:00:00」으로 바꿔 적는다.
+ * 앞의 0 이 사라지는 것이 문제였다 — 글자 그대로 비교하면 「9:00」이 「20:00」보다
+ * 뒤로 간다. 실제로 9시 약속이 20시 약속 위에 붙었다.
+ *
+ * 그래서 자르지 않고 숫자로 읽는다. 시는 두 자리로 채워서 돌려준다.
+ */
+function stampOf(v: string): { date: string; time: string } {
+  const raw = String(v ?? "").trim().replace("T", " ");
+  if (!raw) return { date: "", time: "" };
+
+  const d = raw.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  const date = d
+    ? `${d[1]}-${d[2].padStart(2, "0")}-${d[3].padStart(2, "0")}`
+    : raw.slice(0, 10);
+
+  /* 날짜 뒤에 오는 시:분만 본다. 날짜 안의 숫자를 시각으로 읽으면 안 된다 */
+  const rest = d ? raw.slice((d.index ?? 0) + d[0].length) : raw.slice(10);
+  const t = rest.match(/(\d{1,2}):(\d{2})/);
+  const time = t ? `${t[1].padStart(2, "0")}:${t[2]}` : "";
+
+  /* 00:00 은 「시각 모름」으로 본다. 자정에 오기로 한 약속은 없다 */
   return { date, time: time === "00:00" ? "" : time };
 }
+
+/** 문의가 들어온 날과 시각 */
+const whenOf = (c: Row) => stampOf(c["상담날짜"] ?? "");
 
 /**
  * 표에 보여줄 날짜와 시각
@@ -109,16 +133,16 @@ function whenOf(c: Row): { date: string; time: string } {
  * 둘을 말없이 섞으면 어느 쪽 날짜인지 알 수가 없다 — 한 번 그렇게 틀렸다.
  */
 function showWhen(c: Row): { date: string; time: string; appt: boolean } {
-  const a = (c["약속일시"] ?? "").trim().replace("T", " ");
-  if (a) {
-    const t = a.length > 10 ? a.slice(11, 16) : "";
-    return { date: a.slice(0, 10), time: t === "00:00" ? "" : t, appt: true };
-  }
+  const a = stampOf(c["약속일시"] ?? "");
+  if (a.date) return { ...a, appt: true };
   return { ...whenOf(c), appt: false };
 }
 
 /** 이 건을 대시보드에 넣은 시각 — 문의 시각과는 다른 것이다 */
-const enteredAt = (c: Row) => (c["접수일시"] ?? "").trim().replace("T", " ").slice(0, 16);
+const enteredAt = (c: Row) => {
+  const s = stampOf(c["접수일시"] ?? "");
+  return s.date ? `${s.date} ${s.time || "00:00"}` : "";
+};
 
 /**
  * 줄 세우는 값
@@ -126,10 +150,12 @@ const enteredAt = (c: Row) => (c["접수일시"] ?? "").trim().replace("T", " ")
  * 표에 보이는 값 그대로 세운다. 다른 값으로 세우면 눈에 보이는 순서가
  * 뒤죽박죽으로 읽힌다. 시각을 모르는 건은 그날 안에서 넣은 순서로 세운다 —
  * 모른다고 아무 데나 두면 같은 날 건들이 매번 다른 자리에 나온다.
+ *
+ * 날짜가 아예 없는 건은 맨 뒤로 보낸다. 앞에 두면 매일 그 줄부터 보게 된다.
  */
 const whenKey = (c: Row) => {
   const w = showWhen(c);
-  return `${w.date} ${w.time || "00:00"} ${enteredAt(c)}`;
+  return `${w.date || "9999-99-99"} ${w.time || "00:00"} ${enteredAt(c)}`;
 };
 
 /**
@@ -210,7 +236,8 @@ export default function Client(p: Props) {
     /* 날짜 + 시각으로 줄 세운다. 최근 것이 위다 —
        시트에 들어간 순서(접수일시)로만 세우면 지난 건을 나중에 넣었을 때
        표에 보이는 날짜와 순서가 어긋난다. */
-    .sort((a, b) => whenKey(b).localeCompare(whenKey(a)) || b.id.localeCompare(a.id));
+    /* 빠른 것이 위다. 오늘 누구부터 오는지가 이 표를 보는 이유다 */
+    .sort((a, b) => whenKey(a).localeCompare(whenKey(b)) || a.id.localeCompare(b.id));
   }, [p.items, tab, branch, q]);
 
   const thisMonth = now.slice(0, 7);
