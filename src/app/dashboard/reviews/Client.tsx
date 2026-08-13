@@ -93,7 +93,18 @@ export default function Client(p: Props) {
   const [review, setReview] = useState("");
   const [star, setStar] = useState(5);
   const [len, setLen] = useState("중간");
-  const [ending, setEnding] = useState(ENDINGS[0]);
+  /*
+   * 끝인사는 안 쓰는 것이 기본이다
+   *
+   * 예전에는 "앞으로도 최선을 다하겠습니다. 감사합니다."가 기본으로 박혀 있었다.
+   * 그러면 답글의 마지막 자리를 그 문장이 통째로 가져간다 — 그 자리가 답글의
+   * 온도를 정하는 자리인데, 어느 리뷰에 붙여도 되는 말로 닫히고 이모지도 못 온다.
+   * 실제로 원조 답글은 "저희가 함께 응원하겠습니다 🔥"로 닫았고, 대시보드는
+   * "앞으로도 최선을 다하겠습니다. 감사합니다."로 닫았다. 그 차이였다.
+   *
+   * 플레이스 진단 화면도 이 칸은 비워 둔 채로 쓴다. 같게 맞춘다.
+   */
+  const [ending, setEnding] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   /** 화면에서 직접 더 넣은 키워드 */
   const [extra, setExtra] = useState<string[]>([]);
@@ -164,7 +175,7 @@ export default function Client(p: Props) {
     if (!branch) return;
     const s = p.settings.find((x) => x.지점코드 === branch);
     setPlace(s?.플레이스ID ?? "");
-    setEnding(s?.끝인사 ?? ENDINGS[0]);
+    setEnding(s?.끝인사 ?? "");
     const saved = s?.키워드 ?? [];
     const base = keywordsFor(branchName);
     setExtra(saved.filter((w) => !base.includes(w)));
@@ -498,8 +509,16 @@ export default function Client(p: Props) {
               <button type="button" className="btn-ghost" onClick={addKw}>넣기</button>
             </div>
 
-            <p className="csec">답글 끝인사<span>한 번 정해두면 모든 답글 끝에 붙습니다</span></p>
+            <p className="csec">
+              답글 끝인사
+              <span>안 넣는 쪽을 권합니다 — AI 가 그 리뷰에 맞게 닫습니다</span>
+            </p>
             <div className="pick-row" style={{ flexWrap: "wrap" }}>
+              <button type="button" className={`pickone${ending === "" ? " on" : ""}`}
+                      onClick={() => setEnding("")}>
+                <span className="nm">넣지 않기</span>
+                <span className="dim">권함</span>
+              </button>
               {ENDINGS.map((x) => (
                 <button key={x} type="button"
                         className={`pickone${ending === x ? " on" : ""}`}
@@ -507,10 +526,6 @@ export default function Client(p: Props) {
                   <span className="nm">{x}</span>
                 </button>
               ))}
-              <button type="button" className={`pickone${ending === "" ? " on" : ""}`}
-                      onClick={() => setEnding("")}>
-                <span className="nm">넣지 않기</span>
-              </button>
             </div>
             <input className="input" style={{ marginTop: 8 }} value={ending}
                    placeholder="끝인사를 직접 쓰셔도 됩니다"
