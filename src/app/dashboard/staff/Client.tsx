@@ -109,7 +109,7 @@ export default function Client(p: Props) {
       <div className="page-head">
         <div>
           <h1 className="page-title">직원 관리</h1>
-          <p className="page-sub">계정을 발급하고 담당 지점을 정합니다</p>
+
         </div>
         {p.can.create && (
           <button className="btn-dark" onClick={() => setOpenNew(true)}>

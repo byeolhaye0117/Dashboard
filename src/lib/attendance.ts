@@ -400,3 +400,39 @@ export async function patchAttendance(
     ),
   });
 }
+
+
+/**
+ * 그날 기록을 지운다
+ *
+ * 줄을 진짜로 없애지 않고 「삭제여부」에 표시만 남긴다. 누가 언제 지웠는지가
+ * 남아야 나중에 「그날 기록이 왜 없지」를 되짚을 수 있다. 근태는 급여로 이어지는
+ * 기록이라, 사라진 자리에 아무 흔적이 없으면 확인할 방법이 없다.
+ *
+ * 회차를 주면 그 회차만, 안 주면 그날 전부 지운다.
+ */
+export async function removeAttendance(
+  target: { 사번: string; 날짜: string; 회차?: number },
+  byStaffId: string
+): Promise<number> {
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_T);
+  const cols = resolve(SHEET_T, headers, T_COLS);
+  const day = target.날짜.slice(0, 10);
+  const mine = findDay(rows, rowNumbers, cols, target.사번, day);
+
+  const hits =
+    target.회차 === undefined
+      ? mine
+      : mine.filter((x) => (Number(get(x.r, cols, "회차")) || 1) === target.회차);
+
+  if (hits.length === 0) throw new Error("지울 기록이 없습니다.");
+
+  const stamp = now();
+  for (const h of hits) {
+    await updateRow(SHEET_T, h.n, headers, {
+      ...h.r,
+      ...toSheetRow({ 삭제여부: "Y", 수정일시: stamp, 수정자: byStaffId }, cols),
+    });
+  }
+  return hits.length;
+}

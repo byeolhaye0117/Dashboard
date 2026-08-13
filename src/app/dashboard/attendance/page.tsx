@@ -91,6 +91,7 @@ async function body() {
         people={people}
         branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
         canEdit={canEdit}
+        canRemove={Boolean(ab.get("근태")?.remove)}
         canSetup={Boolean(ab.get("직원관리")?.update)}
         ready={ready}
         problem={problem}

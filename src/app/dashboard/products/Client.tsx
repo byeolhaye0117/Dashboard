@@ -133,9 +133,6 @@ export default function Client(p: Props) {
       <div className="page-head">
         <div>
           <h1 className="page-title">상품 관리</h1>
-          <p className="page-sub">
-            여기서 정한 카테고리 · 기간 · 가격이 회원 화면과 매출에 그대로 쓰입니다
-          </p>
         </div>
         {p.can.create && (
           <button className="btn-dark" onClick={() => setEdit("new")}>

@@ -134,7 +134,7 @@ export default function Client(p: Props) {
       <div className="page-head">
         <div>
           <h1 className="page-title">권한 설정</h1>
-          <p className="page-sub">직급마다 어떤 메뉴를 쓸 수 있는지 정합니다</p>
+
         </div>
       </div>
 

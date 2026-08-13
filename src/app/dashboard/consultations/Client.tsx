@@ -142,10 +142,7 @@ export default function Client(p: Props) {
       <div className="page-head">
         <div>
           <h1 className="page-title">상담</h1>
-          <p className="page-sub">
-            문의 접수부터 등록 전환까지 관리합니다
-            {p.onlyMine && " · 내 담당 건만 보입니다"}
-          </p>
+          {p.onlyMine && <p className="page-sub">내 담당 건만 보입니다</p>}
         </div>
         {p.can.create && (
           <button className="btn-dark" onClick={() => setOpenNew(true)}>

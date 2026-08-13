@@ -200,15 +200,6 @@ async function body() {
             왼쪽 아래 <strong>밝게 / 어둡게</strong> 단추로 화면 색을 바꿀 수 있고,
             다음에 들어오셔도 그대로 유지됩니다.
           </p>
-          {canChangePassword && (
-            <p>
-              자료가 아직 적어 화면이 비어 보인다면{" "}
-              <a href="/dashboard/sample" style={{ color: "var(--point)", fontWeight: 700 }}>
-                샘플 자료 넣기
-              </a>
-              로 13개월치를 넣어보실 수 있습니다. 확인 후 한 번에 지울 수 있습니다.
-            </p>
-          )}
         </div>
       </div>
     </Shell>

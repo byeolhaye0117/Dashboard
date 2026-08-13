@@ -287,7 +287,6 @@ export default function Client(p: Props) {
       <div className="page-head">
         <div>
           <h1 className="page-title">회원</h1>
-          <p className="page-sub">등록 · 이용권 · 만료 관리</p>
         </div>
         {p.can.create && (
           <button className="btn-dark" onClick={() => setOpenNew(true)}>
