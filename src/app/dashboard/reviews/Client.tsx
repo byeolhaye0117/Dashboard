@@ -100,6 +100,9 @@ export default function Client(p: Props) {
   const [open, setOpen] = useState<OpenReview[] | null>(null);
   const [facts, setFacts] = useState<string[]>([]);
   const [near, setNear] = useState<string[]>([]);
+  /* 네이버에 걸린 진짜 상호. 답글 첫 문장이 「안녕하세요 OOO입니다.」라서
+     이 이름이 곧 인사말이 된다 — 「쌍용점」으로 인사하면 손님이 모르는 이름이다 */
+  const [realName, setRealName] = useState("");
   const [pulling, setPulling] = useState(false);
   /* 저장 결과는 누른 단추 바로 옆에 보여야 한다 — 반대편 기둥에 띄우면 못 본다 */
   const [saving, setSaving] = useState(false);
@@ -149,6 +152,7 @@ export default function Client(p: Props) {
     setPicked(saved.length ? saved : base.slice(0, 1));
     setOpen(null);
     setFacts([]);
+    setRealName("");
     setNear([]);
     setOut(null);
     setMsg("");
@@ -256,6 +260,7 @@ export default function Client(p: Props) {
       if (!res.ok) throw new Error(json.error ?? "리뷰를 가져오지 못했습니다.");
       setOpen(json.openReviews ?? []);
       setFacts(json.facts ?? []);
+      setRealName(String(json.상호 ?? ""));
       setNear(json.landmarks ?? []);
       setNote({
         bad: false,
@@ -300,6 +305,7 @@ export default function Client(p: Props) {
           말투: tone,
           키워드: picked,
           끝인사: ending,
+          상호: realName,
           사실: facts,
           근처: near,
         }),
