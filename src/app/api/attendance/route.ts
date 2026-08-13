@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import { getStaffAll, getStaffBranches } from "@/lib/data";
 import {
@@ -18,12 +19,17 @@ export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
 
+  /* 지점 범위도 권한처럼 그때그때 다시 잰다 (lib/scope.ts) */
+  const reach = await scopeOf(session);
+
   try {
     const body = await req.json();
     const action = body.action as string;
 
     if (action === "in" || action === "out" || action === "break-in" || action === "break-out") {
       const ab = await abilitiesFor(session.roleCode);
+      /* 지점 범위도 권한처럼 그때그때 다시 잰다 (lib/scope.ts) */
+      const reach = await scopeOf(session);
       if (!ab.get("근태")?.view) {
         return NextResponse.json({ error: "근태를 쓸 수 없는 계정입니다." }, { status: 403 });
       }
@@ -41,7 +47,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, ...r });
       }
 
-      const branch = session.branches[0] || me?.mainBranch || "";
+      const branch = reach.codes[0] || me?.mainBranch || "";
       const r = await punchIn(session.staffId, branch, me?.baseTime ?? "");
       return NextResponse.json({ ok: true, ...r });
     }
@@ -62,9 +68,9 @@ export async function POST(req: Request) {
       const [staff, branchMap] = await Promise.all([getStaffAll(), getStaffBranches()]);
       const target = staff.find((s) => s.id === 사번);
       if (!target) return NextResponse.json({ error: "직원을 찾지 못했습니다." }, { status: 404 });
-      if (session.scope !== "전체") {
+      if (!reach.all) {
         const where = [...(branchMap.get(사번) ?? []), target.mainBranch].filter(Boolean);
-        if (!where.some((b) => session.branches.includes(b))) {
+        if (!where.some((b) => reach.codes.includes(b))) {
           return NextResponse.json({ error: "담당 지점 직원만 지울 수 있습니다." }, { status: 403 });
         }
       }
@@ -94,7 +100,7 @@ export async function POST(req: Request) {
 
       const list = branchMap.get(사번) ?? [];
       const where = [...list, target.mainBranch].filter(Boolean);
-      if (session.scope !== "전체" && !where.some((b) => session.branches.includes(b))) {
+      if (!reach.all && !where.some((b) => reach.codes.includes(b))) {
         return NextResponse.json({ error: "담당 지점 직원만 고칠 수 있습니다." }, { status: 403 });
       }
 

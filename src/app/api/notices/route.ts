@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import {
   createNotice, patchNotice, softDeleteNotice, markRead,
@@ -24,6 +25,8 @@ export async function POST(req: Request) {
     const body = await req.json();
     const action = body.action as string;
     const ab = await abilitiesFor(session.roleCode);
+    /* 지점 범위도 권한처럼 그때그때 다시 잰다 (lib/scope.ts) */
+    const reach = await scopeOf(session);
     const mine = ab.get("공지");
     if (!mine?.view) {
       return NextResponse.json({ error: "공지·업무를 쓸 수 없는 계정입니다." }, { status: 403 });
@@ -31,7 +34,7 @@ export async function POST(req: Request) {
 
     /** 담당 지점 안인가 — 화면이 보낸 지점을 그대로 믿지 않는다 */
     const inScope = (branch: string) =>
-      !branch || session.scope === "전체" || session.branches.includes(branch);
+      !branch || reach.all || reach.codes.includes(branch);
 
     if (action === "read") {
       if (!body.공지번호) return NextResponse.json({ error: "공지번호가 필요합니다." }, { status: 400 });

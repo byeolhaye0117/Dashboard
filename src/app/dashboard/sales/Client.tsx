@@ -705,6 +705,144 @@ export default function Client(p: Props) {
         </div>
       </div>
 
+      {/*
+        일별 · 직원별 · 결제 내역
+
+        접어 두었던 자리다. 눌러야 보이니 아무도 안 눌렀고, 정작 「1만원은
+        뭐냐」를 확인하는 자리가 여기였다. 펼쳐 둔다 — 접는 데 드는 품보다
+        못 보고 지나치는 값이 크다.
+      */}
+      <h2 className="sec-title">자세히 보기</h2>
+      <p className="sec-sub">일별 · 직원별 매출 · 결제 내역</p>
+
+      <h3 className="viz-title mt">일별</h3>
+      <p className="viz-sub">막대가 없는 날은 결제가 없던 날입니다</p>
+      <div className="viz">
+        {cur.count === 0 ? (
+          <p className="dim mini-note">이 달에 등록된 결제가 없습니다.</p>
+        ) : (
+          <>
+            <div className="day-bars">
+              {byDay.list.map((d) => (
+                <div className={`day${d.sum > 0 ? " on" : ""}`} key={d.key}
+                     title={`${d.day}일 · ${money(d.sum)}원`}>
+                  <i style={{ height: d.sum > 0 ? `${Math.max(6, (d.sum / byDay.top) * 100)}%` : "2px" }} />
+                </div>
+              ))}
+            </div>
+            <div className="day-axis">
+              <span>1일</span>
+              <span>가장 높은 날 {short(byDay.top)}원</span>
+              <span>{byDay.list.length}일</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {byStaff.length > 0 && (
+        <>
+          <h3 className="viz-title mt">담당 직원별 매출</h3>
+          <div className="table-wrap t2wrap">
+            <table className="grid t2">
+              <thead>
+                <tr>
+                  <th style={{ width: 40 }}>순위</th>
+                  <th>직원</th>
+                  <th className="r">매출</th>
+                  <th>비중</th>
+                  <th className="r">건수</th>
+                  <th className="r">건당 평균</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byStaff.map((s, i) => (
+                  <tr key={s.id}>
+                    <td><i className={`rk${i === 0 ? " one" : ""}`}>{i + 1}</i></td>
+                    <td><span className="nm">{s.name}</span></td>
+                    <td className="r big num">{money(s.sum)}</td>
+                    <td>
+                      <span className="wbar">
+                        <span>
+                          <i style={{ width: `${cur.sum > 0 ? (s.sum / cur.sum) * 100 : 0}%` }} />
+                        </span>
+                        <b className="num">
+                          {cur.sum > 0 ? `${Math.round((s.sum / cur.sum) * 100)}%` : "-"}
+                        </b>
+                      </span>
+                    </td>
+                    <td className="r dim num">{s.count}</td>
+                    <td className="r dim num">{short(Math.round(s.sum / s.count))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <h3 className="viz-title mt">결제 내역 {cur.rows.length}건</h3>
+      {cur.rows.length === 0 ? (
+        <div className="empty">
+          <Icon name="card" size={26} />
+          <b>이 달에 등록된 결제가 없습니다</b>
+          <p>회원 등록이나 상품 추가로 결제가 쌓이면 여기에 나옵니다.</p>
+        </div>
+      ) : (
+        <div className="table-wrap t2wrap">
+          <table className="grid t2">
+            <thead>
+              <tr>
+                <th>결제일</th>
+                <th>회원</th>
+                <th>지점</th>
+                <th>유형</th>
+                <th>수단</th>
+                <th>담당</th>
+                {/* 「이 결제 누가 넣었지」는 시트를 열지 않고도 답할 수 있어야 한다 */}
+                <th>넣은 사람</th>
+                <th className="r">금액</th>
+                <th className="r">미수금</th>
+                {p.canWipePay && <th />}
+              </tr>
+            </thead>
+            <tbody>
+              {cur.rows
+                .slice()
+                .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
+                .map((x) => (
+                  <tr key={x.id}>
+                    <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
+                    <td>{p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"}</td>
+                    <td className="dim">{branchName(x.지점코드)}</td>
+                    <td>
+                      <span className={`pill${isRefund(x) ? " bad" : ""}`}>
+                        {isRefund(x) ? "환불" : typeOf(x.매출유형)}
+                      </span>
+                    </td>
+                    <td className="dim">{x.결제수단 || "-"}</td>
+                    <td className="dim">{p.staffNames[x.담당직원사번] ?? "-"}</td>
+                    <td className="dim" title={x.등록일시 ?? ""}>
+                      {p.staffNames[x.등록자] ?? x.등록자 ?? "-"}
+                    </td>
+                    <td className="r big num">{money(num(x.결제금액))}</td>
+                    <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
+                      {num(x.미수금액) > 0 ? money(num(x.미수금액)) : "-"}
+                    </td>
+                    {p.canWipePay && (
+                      <td className="r">
+                        <button type="button" className="linkish"
+                                onClick={() => setWipe(x)}>
+                          지우기
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* 지점별 — 규모와 목표 달성 여부를 한 줄에서 같이 본다 */}
       {p.branches.length > 1 && branch === "전체" && (
         <>
@@ -987,138 +1125,6 @@ export default function Client(p: Props) {
           )}
       </>
 
-      {/* 자주 보지 않는 것은 접어 둔다 */}
-      <details className="more">
-        <summary>자세히 보기 — 일별 · 직원별 매출 · 결제 내역</summary>
-
-        <h3 className="viz-title mt">일별</h3>
-        <p className="viz-sub">막대가 없는 날은 결제가 없던 날입니다</p>
-        <div className="viz">
-          {cur.count === 0 ? (
-            <p className="dim mini-note">이 달에 등록된 결제가 없습니다.</p>
-          ) : (
-            <>
-              <div className="day-bars">
-                {byDay.list.map((d) => (
-                  <div className={`day${d.sum > 0 ? " on" : ""}`} key={d.key}
-                       title={`${d.day}일 · ${money(d.sum)}원`}>
-                    <i style={{ height: d.sum > 0 ? `${Math.max(6, (d.sum / byDay.top) * 100)}%` : "2px" }} />
-                  </div>
-                ))}
-              </div>
-              <div className="day-axis">
-                <span>1일</span>
-                <span>가장 높은 날 {short(byDay.top)}원</span>
-                <span>{byDay.list.length}일</span>
-              </div>
-            </>
-          )}
-        </div>
-
-        {byStaff.length > 0 && (
-          <>
-            <h3 className="viz-title mt">담당 직원별 매출</h3>
-            <div className="table-wrap t2wrap">
-              <table className="grid t2">
-                <thead>
-                  <tr>
-                    <th style={{ width: 40 }}>순위</th>
-                    <th>직원</th>
-                    <th className="r">매출</th>
-                    <th>비중</th>
-                    <th className="r">건수</th>
-                    <th className="r">건당 평균</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {byStaff.map((s, i) => (
-                    <tr key={s.id}>
-                      <td><i className={`rk${i === 0 ? " one" : ""}`}>{i + 1}</i></td>
-                      <td><span className="nm">{s.name}</span></td>
-                      <td className="r big num">{money(s.sum)}</td>
-                      <td>
-                        <span className="wbar">
-                          <span>
-                            <i style={{ width: `${cur.sum > 0 ? (s.sum / cur.sum) * 100 : 0}%` }} />
-                          </span>
-                          <b className="num">
-                            {cur.sum > 0 ? `${Math.round((s.sum / cur.sum) * 100)}%` : "-"}
-                          </b>
-                        </span>
-                      </td>
-                      <td className="r dim num">{s.count}</td>
-                      <td className="r dim num">{short(Math.round(s.sum / s.count))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-
-        <h3 className="viz-title mt">결제 내역 {cur.rows.length}건</h3>
-        {cur.rows.length === 0 ? (
-          <div className="empty">
-            <Icon name="card" size={26} />
-            <b>이 달에 등록된 결제가 없습니다</b>
-            <p>회원 등록이나 상품 추가로 결제가 쌓이면 여기에 나옵니다.</p>
-          </div>
-        ) : (
-          <div className="table-wrap t2wrap">
-            <table className="grid t2">
-              <thead>
-                <tr>
-                  <th>결제일</th>
-                  <th>회원</th>
-                  <th>지점</th>
-                  <th>유형</th>
-                  <th>수단</th>
-                  <th>담당</th>
-                  {/* 「이 결제 누가 넣었지」는 시트를 열지 않고도 답할 수 있어야 한다 */}
-                  <th>넣은 사람</th>
-                  <th className="r">금액</th>
-                  <th className="r">미수금</th>
-                  {p.canWipePay && <th />}
-                </tr>
-              </thead>
-              <tbody>
-                {cur.rows
-                  .slice()
-                  .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
-                  .map((x) => (
-                    <tr key={x.id}>
-                      <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
-                      <td>{p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"}</td>
-                      <td className="dim">{branchName(x.지점코드)}</td>
-                      <td>
-                        <span className={`pill${isRefund(x) ? " bad" : ""}`}>
-                          {isRefund(x) ? "환불" : typeOf(x.매출유형)}
-                        </span>
-                      </td>
-                      <td className="dim">{x.결제수단 || "-"}</td>
-                      <td className="dim">{p.staffNames[x.담당직원사번] ?? "-"}</td>
-                      <td className="dim" title={x.등록일시 ?? ""}>
-                        {p.staffNames[x.등록자] ?? x.등록자 ?? "-"}
-                      </td>
-                      <td className="r big num">{money(num(x.결제금액))}</td>
-                      <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
-                        {num(x.미수금액) > 0 ? money(num(x.미수금액)) : "-"}
-                      </td>
-                      {p.canWipePay && (
-                        <td className="r">
-                          <button type="button" className="linkish"
-                                  onClick={() => setWipe(x)}>
-                            지우기
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </details>
 
       {wipe && (
         <div className="modal-back" onClick={() => !wiping && setWipe(null)}>

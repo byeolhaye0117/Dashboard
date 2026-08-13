@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import { createConsultation } from "@/lib/consultations";
 
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const reach = await scopeOf(session);
 
   const ab = (await abilitiesFor(session.roleCode)).get("상담");
   if (!ab?.create) {
@@ -21,7 +23,7 @@ export async function POST(req: Request) {
     if (!body.전화번호?.trim()) return NextResponse.json({ error: "연락처를 입력해주세요." }, { status: 400 });
 
     const branch = body.지점코드;
-    const allowed = session.scope === "전체" || session.branches.includes(branch);
+    const allowed = reach.all || reach.codes.includes(branch);
     if (!allowed) return NextResponse.json({ error: "이 지점에 등록할 권한이 없습니다." }, { status: 403 });
 
     const id = await createConsultation(body, session.staffId);

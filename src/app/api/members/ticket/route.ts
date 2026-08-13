@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import { patchTicket, softDeleteTicket, listTickets, listMembers } from "@/lib/members";
 
@@ -14,6 +15,7 @@ const ALLOWED = new Set([
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const reach = await scopeOf(session);
 
   const ab = (await abilitiesFor(session.roleCode)).get("회원");
   if (!ab?.update) {
@@ -31,7 +33,7 @@ export async function POST(req: Request) {
     // 이 이용권이 붙은 회원을 볼 수 있는 사람인지 확인한다
     const owner = items.find((m) => m.id === target.회원번호);
     const branch = owner?.지점코드 || target.지점코드;
-    if (session.scope !== "전체" && !session.branches.includes(branch)) {
+    if (!reach.all && !reach.codes.includes(branch)) {
       return NextResponse.json({ error: "이 이용권을 고칠 권한이 없습니다." }, { status: 403 });
     }
 

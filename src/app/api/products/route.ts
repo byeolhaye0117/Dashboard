@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import {
   createProduct, patchProduct, setBranches, softDeleteProduct,
@@ -19,6 +20,9 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
 
   const ab = await abilitiesFor(session.roleCode);
+
+  /* 지점 범위도 권한처럼 그때그때 다시 잰다 (lib/scope.ts) */
+  const reach = await scopeOf(session);
   const mine = ab.get("상품");
   if (!mine?.view) {
     return NextResponse.json({ error: "상품을 다룰 수 없는 계정입니다." }, { status: 403 });
@@ -26,7 +30,7 @@ export async function POST(req: Request) {
 
   /** 담당 지점 안인가 — 화면이 보낸 지점을 그대로 믿지 않는다 */
   const inScope = (b: string) =>
-    !b || session.scope === "전체" || session.branches.includes(b);
+    !b || reach.all || reach.codes.includes(b);
 
   try {
     const body = await req.json();

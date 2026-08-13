@@ -56,6 +56,14 @@ export default function Client(p: Props) {
   const first = p.roles.find((r) => r.code !== p.myRole) ?? p.roles[0];
   const [role, setRole] = useState(first?.code ?? "");
   const [draft, setDraft] = useState<Record<string, Cell>>({});
+  /*
+   * 이 직급이 어느 지점을 보는가
+   *
+   * 시트에만 있고 화면 어디에도 안 보이던 값이다. 그래서 누가 전 지점을
+   * 보고 있는지 아무도 몰랐다. 보기·등록·수정·삭제와 같은 질문이라
+   * 같은 자리에 둔다. null 이면 아직 안 건드린 것이다.
+   */
+  const [scope, setScope] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [done, setDone] = useState(false);
@@ -72,14 +80,18 @@ export default function Client(p: Props) {
   }, [p.perms, role]);
 
   const cellOf = (menu: string): Cell => draft[menu] ?? saved[menu] ?? NONE;
+  const savedScope = (p.roles.find((r) => r.code === role)?.scope || "담당지점").trim();
+  const nowScope = scope ?? savedScope;
   const isSelf = role === p.myRole;
   const editable = p.canEdit && !isSelf;
 
-  const changed = Object.keys(draft).some((k) => {
-    const a = draft[k];
-    const b = saved[k] ?? NONE;
-    return ACTIONS.some((x) => a[x.key] !== b[x.key]);
-  });
+  const changed =
+    nowScope !== savedScope ||
+    Object.keys(draft).some((k) => {
+      const a = draft[k];
+      const b = saved[k] ?? NONE;
+      return ACTIONS.some((x) => a[x.key] !== b[x.key]);
+    });
 
   function set(menu: string, key: keyof Cell, on: boolean) {
     const cur = cellOf(menu);
@@ -106,6 +118,15 @@ export default function Client(p: Props) {
     setDone(false);
   }
 
+  /* 직급을 바꾸면 앞 직급에 손댄 것이 따라가면 안 된다 */
+  function pickRole(code: string) {
+    setRole(code);
+    setDraft({});
+    setScope(null);
+    setDone(false);
+    setMsg("");
+  }
+
   async function save() {
     setBusy(true);
     setMsg("");
@@ -114,7 +135,7 @@ export default function Client(p: Props) {
       const res = await fetch("/api/permissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleCode: role, rows }),
+        body: JSON.stringify({ roleCode: role, rows, scope: nowScope }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "저장하지 못했습니다.");
@@ -142,7 +163,7 @@ export default function Client(p: Props) {
       <div className="bchips">
         {p.roles.map((r) => (
           <button key={r.code} className={`bchip${role === r.code ? " on" : ""}`}
-                  onClick={() => { setRole(r.code); setDraft({}); setMsg(""); setDone(false); }}>
+                  onClick={() => pickRole(r.code)}>
             <span className="nm">{r.name}</span>
             <span className="am num">{p.headcount[r.code] ?? 0}명</span>
           </button>
@@ -172,6 +193,42 @@ export default function Client(p: Props) {
             <button className="mini-tab" onClick={() => preset("read")}>보기만</button>
             <button className="mini-tab" onClick={() => preset("none")}>모두 끄기</button>
           </span>
+        )}
+      </div>
+
+      {/*
+        지점 범위
+
+        시트에만 있고 화면 어디에도 안 보이던 값이라, 누가 전 지점을 보고
+        있는지 아무도 몰랐다. 「보기」와 같은 질문이라 같은 자리에 둔다.
+        대표는 바꿀 수 없다 — 전 지점을 못 보면 지점별 숫자를 확인할 사람이 없다.
+      */}
+      <div className="scope-box">
+        <div className="scope-t">
+          <b>볼 수 있는 지점</b>
+          <em>
+            「담당 지점만」이면 회원 · 상담 · 매출 · 근태가 전부 자기 지점 것만 보입니다.
+            숨기는 것이 아니라 아예 보내지 않습니다.
+          </em>
+        </div>
+        <div className="pick-row" style={{ flexWrap: "wrap" }}>
+          {[
+            { v: "담당지점", label: "담당 지점만", hint: "자기가 근무하는 지점" },
+            { v: "전체", label: "전 지점", hint: "모든 지점을 봅니다" },
+          ].map((x) => (
+            <button key={x.v} type="button"
+                    className={`pickone${nowScope === x.v ? " on" : ""}`}
+                    disabled={!editable || role === "R1"}
+                    onClick={() => { setScope(x.v); setDone(false); }}>
+              <span className="nm">{x.label}</span>
+              <span className="dim">{x.hint}</span>
+            </button>
+          ))}
+        </div>
+        {role === "R1" && (
+          <p className="stat-note" style={{ margin: "8px 0 0" }}>
+            대표는 전 지점을 보는 직급이라 바꿀 수 없습니다.
+          </p>
         )}
       </div>
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
-import { saveRolePermissions } from "@/lib/permissions";
+import { saveRolePermissions, saveRoleScope } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { roleCode, rows } = await req.json();
+    const { roleCode, rows, scope } = await req.json();
 
     // 자기 직급의 권한을 스스로 낮추면 그 자리에서 갇힌다
     if (roleCode === session.roleCode) {
@@ -31,6 +31,11 @@ export async function POST(req: Request) {
       );
     }
 
+    /* 지점 범위는 「이 사람이 어느 지점 숫자를 보는가」다. 권한과 같은 질문이라
+       같은 자리에서 같이 저장한다. 안 보낸 경우에는 손대지 않는다 */
+    if (scope !== undefined) {
+      await saveRoleScope(String(roleCode), String(scope), session.staffId);
+    }
     await saveRolePermissions(String(roleCode), Array.isArray(rows) ? rows : [], session.staffId);
     return NextResponse.json({ ok: true });
   } catch (e: any) {
