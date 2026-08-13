@@ -38,6 +38,14 @@ async function body() {
     session.scope === "전체" ? branches : branches.filter((b) => session.branches.includes(b.code));
   const allowed = new Set(myBranches.map((b) => b.code));
 
+  /**
+   * 남의 근태는 고칠 수 있는 사람에게만 보낸다
+   *
+   * 화면에서 감추는 것만으로는 부족하다. 브라우저로 내려간 값은 개발자도구로
+   * 그대로 보인다. 직원 계정에는 자기 것만 실어 보낸다.
+   */
+  const canEdit = Boolean(ab.get("근태")?.update);
+
   /** 이 화면에서 볼 수 있는 직원 — 담당 지점 사람만 */
   const people = staff
     .filter((s) => s.active)
@@ -46,6 +54,7 @@ async function body() {
       const where = [...(branchMap.get(s.id) ?? []), s.mainBranch].filter(Boolean);
       return where.some((b) => allowed.has(b));
     })
+    .filter((s) => canEdit || s.id === session.staffId)
     .map((s) => ({
       id: s.id,
       name: s.name,
@@ -81,7 +90,7 @@ async function body() {
         rows={rows}
         people={people}
         branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
-        canEdit={Boolean(ab.get("근태")?.update)}
+        canEdit={canEdit}
         canSetup={Boolean(ab.get("직원관리")?.update)}
         ready={ready}
         problem={problem}

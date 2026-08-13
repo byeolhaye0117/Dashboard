@@ -76,6 +76,26 @@ function foldDay(list: Row[], restMin: string, vary: boolean) {
   };
 }
 
+/**
+ * 하루를 한 줄 문장으로
+ *
+ * 「출근 10:37 · 휴게 13:05~13:40 (35분) · 퇴근 19:30」
+ * 없는 것은 적지 않는다 — 빈 자리를 「-」로 채우면 읽는 눈이 거기 걸린다.
+ */
+function dayLine(f: ReturnType<typeof foldDay>): string {
+  const parts: string[] = [];
+  f.rounds.forEach((r, i) => {
+    const nth = f.rounds.length > 1 ? `${i + 1}회차 ` : "";
+    if (r.출근시각) parts.push(`${nth}출근 ${r.출근시각}`);
+    if (r.퇴근시각) parts.push(`${nth}퇴근 ${r.퇴근시각}`);
+  });
+  if (f.spans) parts.push(`휴게 ${f.spans}${f.punched > 0 ? ` (${hourText(f.punched)})` : ""}`);
+  else if (f.rest > 0) parts.push(`휴게 ${hourText(f.rest)} (자동으로 빠짐)`);
+  if (f.openRest) parts.push(`휴게 ${f.openRest}부터 쉬는 중`);
+  if (f.head?.메모) parts.push(f.head.메모);
+  return parts.length ? parts.join(" · ") : "기록만 있고 시각이 비어 있습니다";
+}
+
 type Props = {
   me: string;
   rows: Row[];
@@ -152,6 +172,26 @@ export default function Client(p: Props) {
       rest: folds.reduce((s, f) => s + f.rest, 0),
       lateMin: folds.reduce((s, f) => s + (Number(f.head?.지각분) || 0), 0),
     };
+  }, [p.rows, p.me, month, meSelf]);
+
+  /**
+   * 줄글로 볼 내 근태 — 기록이 있는 날만, 최근 날짜가 위로
+   *
+   * 격자는 여러 사람을 한눈에 볼 때 쓰는 모양이다. 자기 것만 보는 사람에게는
+   * 칸에 점 하나가 찍힌 달력보다, 그날 몇 시에 와서 얼마나 일했는지가 문장으로
+   * 적혀 있는 편이 훨씬 빨리 읽힌다.
+   */
+  const myDays = useMemo(() => {
+    const bag: Record<string, Row[]> = {};
+    p.rows
+      .filter((r) => r.사번 === p.me && r.날짜.startsWith(month))
+      .forEach((r) => (bag[r.날짜] ??= []).push(r));
+    return Object.keys(bag)
+      .sort((a, b) => b.localeCompare(a))
+      .map((d) => ({
+        날짜: d,
+        f: foldDay(bag[d], meSelf?.restMin ?? "", Boolean(meSelf?.restVary)),
+      }));
   }, [p.rows, p.me, month, meSelf]);
 
   /** 휴게를 몇 분째 하고 있는지 — 1분마다 다시 센다 */
@@ -391,6 +431,37 @@ export default function Client(p: Props) {
         </div>
       </div>
 
+      {/* 자기 것만 보는 사람에게는 줄글로 — 격자는 여러 사람을 볼 때 쓰는 모양이다 */}
+      {!p.canEdit ? (
+        <>
+          <h2 className="sec-title">{Number(month.slice(5, 7))}월 내 근태</h2>
+          <p className="sec-sub">기록이 있는 날만 나옵니다 · 고치실 일이 있으면 점장님께 말씀해주세요</p>
+          {myDays.length === 0 ? (
+            <p className="empty">이 달에 찍은 기록이 없습니다.</p>
+          ) : (
+            <div className="mcard">
+              {myDays.map(({ 날짜, f }) => (
+                <div className="mrow" key={날짜}>
+                  <div className="t">
+                    <b>{korDate(날짜)}</b>
+                    {f.kind && f.kind !== "정상" && (
+                      <span className={`pill ${f.kind === "지각" || f.kind === "결근" ? "bad" : "warn"}`}>
+                        {f.kind}
+                        {f.kind === "지각" && Number(f.head?.지각분) > 0 && ` ${f.head.지각분}분`}
+                      </span>
+                    )}
+                    <span className="dim">
+                      {f.net > 0 ? `일한 시간 ${hourText(f.net)}` : f.working ? "근무 중" : ""}
+                    </span>
+                  </div>
+                  <span className="sub">{dayLine(f)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+      <>
       {/* 한 달 격자 */}
       <h2 className="sec-title">{Number(month.slice(5, 7))}월 근태표</h2>
       <p className="sec-sub">
@@ -460,6 +531,8 @@ export default function Client(p: Props) {
           ))}
         </div>
       </div>
+      </>
+      )}
 
       {edit && (
         <EditBox
