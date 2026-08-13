@@ -84,12 +84,40 @@ export async function collectPlace(placeId: string): Promise<Collected> {
     throw new Error(String(json?.error ?? "리뷰를 가져오지 못했습니다."));
   }
 
-  const m = json?.material ?? {};
-  const open: OpenReview[] = (Array.isArray(m.openReviews) ? m.openReviews : [])
+  /*
+   * 이름이 조금 달라져도 읽어낸다
+   *
+   * 리뷰를 긁는 쪽은 대표님이 계속 고치시는 코드다. 네이버가 페이지를 바꾸면
+   * 그쪽도 따라 바뀐다. 그때마다 대시보드가 같이 멈추면 두 군데를 고쳐야 하니,
+   * 부르는 쪽에서 후보를 몇 개 걸어 둔다.
+   */
+  const m = json?.material ?? json ?? {};
+  const rawOpen =
+    (Array.isArray(m.openReviews) && m.openReviews) ||
+    (Array.isArray(json?.openReviews) && json.openReviews) ||
+    (Array.isArray(m.noReply) && m.noReply) ||
+    null;
+
+  /*
+   * "못 읽은 것"과 "정말 없는 것"을 가른다
+   *
+   * 둘 다 0개로 보이면, 답글을 다 달아둔 것인지 응답 형식이 바뀐 것인지
+   * 알 수가 없다. 목록 자체를 못 찾았으면 그렇다고 말한다.
+   */
+  if (rawOpen === null) {
+    throw new Error(
+      "진단 서버 응답에서 리뷰 목록을 찾지 못했습니다. " +
+        "서버 쪽 응답 형식이 바뀌었을 수 있습니다 (material.openReviews)."
+    );
+  }
+
+  const open: OpenReview[] = rawOpen
     .map((r: any) => ({
-      body: String(r?.body ?? "").trim(),
-      rating: Number(r?.rating) || null,
-      date: String(r?.date ?? "").trim(),
+      body: String(r?.body ?? r?.text ?? r?.contents ?? r?.description ?? "")
+        .replace(/\s+/g, " ")
+        .trim(),
+      rating: Number(r?.rating ?? r?.star ?? r?.score) || null,
+      date: String(r?.date ?? r?.created ?? r?.visited ?? "").trim(),
     }))
     .filter((r: OpenReview) => r.body.length >= 10);
 
@@ -98,7 +126,7 @@ export async function collectPlace(placeId: string): Promise<Collected> {
     openReviews: open,
     /* 답글에 쓸 사실. 이름이 너무 짧은 것은 무슨 말인지 몰라 빼고,
        열 개가 넘어가면 프롬프트만 길어지고 답글은 그대로다. */
-    facts: (Array.isArray(m.menuNames) ? m.menuNames : [])
+    facts: (Array.isArray(m.menuNames) ? m.menuNames : Array.isArray(m.menus) ? m.menus : [])
       .map((x: any) => String(x).trim())
       .filter((x: string) => x.length >= 3)
       .slice(0, 12),
