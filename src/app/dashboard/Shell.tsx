@@ -78,7 +78,10 @@ export default function Shell({
   const current = branches.find((b) => b.code === session.currentBranch);
 
   // 지금 화면이 어느 배포인지 — 옛 화면을 보고 있는지 구분하려고 표시한다
-  const build = (process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7) || "로컬";
+  /* NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA 는 이 프로젝트에 안 들어와서 늘 「로컬」로 나왔다.
+     판 번호는 next.config.mjs 가 만들어 넣는 NEXT_PUBLIC_BUILD 하나로 본다 —
+     로그인 화면·왼쪽 아래·휴대폰 메뉴가 같은 값을 보여야 비교가 된다. */
+  const build = process.env.NEXT_PUBLIC_BUILD || "로컬";
 
   return (
     <div className="app">
