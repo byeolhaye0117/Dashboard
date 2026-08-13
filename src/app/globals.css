@@ -1194,6 +1194,22 @@ table.grid tr.is-picked > td { background: color-mix(in srgb, var(--s1) 9%, tran
   .menu-btn { display: inline-flex; }
 }
 
+/* 답글 위에 붙는 리뷰 원문 — 어느 리뷰에 단 답글인지 알 수 있어야 한다.
+   답글과 헷갈리지 않게 왼쪽에 선을 두고 글자를 죽인다 */
+.rv-quote {
+  margin: 7px 0 0; padding: 5px 0 5px 10px;
+  border-left: 2px solid var(--line);
+  font-size: 12px; line-height: 1.65; color: var(--muted);
+}
+.rv-quote > i, .rv-tag {
+  display: inline-block; margin-right: 6px;
+  font-style: normal; font-size: 10px; font-weight: 800;
+  color: var(--muted); letter-spacing: .02em;
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 4px;
+  vertical-align: 1px;
+}
+.rv-tag { margin-right: 5px; }
+
 /* 새 판이 올라왔다는 알림 — 아래 막대 바로 위에 뜬다 */
 .stale-bar {
   position: fixed; left: 8px; right: 8px; bottom: 76px; z-index: 45;
