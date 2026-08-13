@@ -1434,6 +1434,11 @@ table.grid .late { color: var(--bad); font-weight: 800; }
   font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
 }
 .btn-danger:disabled { opacity: .6; cursor: default; }
+/* 방금 눌렀다는 표시 — 잠깐 초록으로 물들었다가 돌아온다 */
+.btn-ghost.ok {
+  color: var(--good); background: var(--good-soft);
+  border-color: color-mix(in srgb, var(--good) 35%, transparent);
+}
 .btn-ghost.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
 .btn-ghost.danger:hover { background: var(--bad-soft); }
 

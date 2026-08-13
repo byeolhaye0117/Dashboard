@@ -165,9 +165,10 @@ export function keywordsFor(branchName: string): string[] {
 }
 
 /**
- * 하루에 몇 번까지
+ * 하루에 몇 번까지 (아무것도 안 정했을 때)
  *
  * AI 는 부를 때마다 돈이 든다. 실수로 눌러대도 하루치가 정해져 있으면
- * 요금이 튀지 않는다. 환경변수로 올리고 내릴 수 있다.
+ * 요금이 튀지 않는다. 처음에는 적게 잡아 둔다 — 모자라면 화면에서 올리면 되지만,
+ * 넉넉히 잡아 두면 넘게 쓴 뒤에야 알게 된다.
  */
-export const DAILY_LIMIT_DEFAULT = 30;
+export const DAILY_LIMIT_DEFAULT = 5;

@@ -119,6 +119,8 @@ export default function Client(p: Props) {
   const [msg, setMsg] = useState("");
   const [ok, setOk] = useState("");
   const [shown, setShown] = useState<string | null>(null);
+  /* 복사했다는 말은 누른 단추에서 나와야 한다 — 딴 데 띄우면 눌렀는지도 모른다 */
+  const [copied, setCopied] = useState<{ key: string; ok: boolean } | null>(null);
 
   const branchName = useMemo(
     () => p.branches.find((b) => b.code === branch)?.name ?? "",
@@ -350,12 +352,19 @@ export default function Client(p: Props) {
     }
   }
 
-  async function doCopy(text: string) {
+  async function doCopy(text: string, key: string) {
     const done = await copy(text);
-    setOk(done ? "복사했습니다. 플레이스에 붙여넣어 주세요." : "복사가 막혔습니다. 글을 직접 끌어서 복사해주세요.");
-    setMsg("");
-    setTimeout(() => setOk(""), 3000);
+    setCopied({ key, ok: done });
+    setTimeout(() => setCopied(null), 2400);
   }
+
+  /** 그 단추에 지금 무슨 글자가 적혀 있어야 하는가 */
+  function copyLabel(key: string): string {
+    if (copied?.key !== key) return "복사";
+    return copied.ok ? "복사됨 ✓" : "복사 안 됨";
+  }
+
+  const copyFailed = copied && !copied.ok;
 
   return (
     <>
@@ -586,8 +595,8 @@ export default function Client(p: Props) {
               )}
               <div className="quote" style={{ margin: 0 }}>{out.답글}</div>
               <div className="who-acts" style={{ marginTop: 12 }}>
-                <button type="button" className="btn-dark" onClick={() => doCopy(out.답글)}>
-                  <Icon name="clipboard" size={15} /> 복사
+                <button type="button" className="btn-dark" onClick={() => doCopy(out.답글, "out")}>
+                  <Icon name="clipboard" size={15} /> {copyLabel("out")}
                 </button>
                 <button type="button" className="btn-ghost" disabled={busy} onClick={make}>
                   다시 만들기
@@ -685,6 +694,12 @@ export default function Client(p: Props) {
               <span className="sub">{mine.length}개</span>
             </div>
 
+            {copyFailed && (
+              <div className="alert-bad" style={{ marginBottom: 10 }}>
+                이 브라우저가 복사를 막았습니다. 「전체 보기」를 누른 뒤 글을 끌어서 복사해주세요.
+              </div>
+            )}
+
             {mine.length === 0 ? (
               <p className="empty">아직 만든 답글이 없습니다.</p>
             ) : (
@@ -703,8 +718,10 @@ export default function Client(p: Props) {
                       {isOpen || r.답글.length <= 90 ? r.답글 : r.답글.slice(0, 90) + "…"}
                     </p>
                     <div className="who-acts" style={{ margin: "8px 0 0" }}>
-                      <button type="button" className="btn-ghost" onClick={() => doCopy(r.답글)}>
-                        복사
+                      <button type="button"
+                              className={`btn-ghost${copied?.key === r.id && copied.ok ? " ok" : ""}`}
+                              onClick={() => doCopy(r.답글, r.id)}>
+                        {copyLabel(r.id)}
                       </button>
                       {r.답글.length > 90 && (
                         <button type="button" className="btn-ghost"
