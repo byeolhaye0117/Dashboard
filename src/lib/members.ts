@@ -1201,3 +1201,102 @@ export async function removeSampleData(byId: string): Promise<number> {
 
   return n;
 }
+
+/* ── 상담이 등록으로 바뀌면 회원 목록에 올린다 ────────────────
+ *
+ * 지금까지는 상담에서 「등록」으로 바꿔도 회원 목록에는 아무 일도 없었다.
+ * 그래서 같은 사람을 회원 화면에서 한 번 더 손으로 넣어야 했고,
+ * 그러다 빠뜨리면 등록으로 잡힌 상담과 회원 수가 어긋났다.
+ *
+ * 다만 상담만으로는 무엇을 얼마에 파셨는지 알 수 없다. 그래서 여기서는
+ * 회원 줄만 만든다 — 이용권과 결제는 회원 화면에서 「상품 추가」로 넣으신다.
+ * 없는 결제를 지어내면 매출이 틀어지고, 그건 되돌리기 어렵다.
+ * ──────────────────────────────────────────────────────── */
+
+/** 010-1234-5678 과 01012345678 을 같은 번호로 본다 */
+const phoneKey = (v: string) => (v ?? "").replace(/\D/g, "");
+
+export type Enrolled = {
+  회원번호: string;
+  /** 이번에 새로 만들었는가 (false 면 이미 있던 회원과 이었다) */
+  새로: boolean;
+  /** 이어진 회원의 이름 — 이름이 다를 때 화면에서 알려주기 위해서다 */
+  이름: string;
+};
+
+/**
+ * 이 상담을 회원으로 올린다. 이미 있으면 그 회원을 돌려준다
+ *
+ * 같은 사람인지는 전화번호로 본다. 이름은 「홍서연」과 「홍서연님」처럼
+ * 조금씩 다르게 적히지만 번호는 그렇지 않다. 번호가 같은데 이름이 다르면
+ * 새로 만들지 않고 이어 붙이되, 이어 붙인 회원의 이름을 돌려준다 —
+ * 화면에서 그대로 보여드려야 잘못 이어졌을 때 바로 아신다.
+ */
+export async function enrollFromConsultation(
+  c: {
+    상담번호: string;
+    이름: string;
+    전화번호: string;
+    지점코드: string;
+    성별?: string;
+    나이대?: string;
+    담당직원사번?: string;
+    메모?: string;
+  },
+  staffId: string
+): Promise<Enrolled> {
+  const key = phoneKey(c.전화번호);
+  if (!c.이름?.trim()) throw new Error("이름이 없어 회원으로 올릴 수 없습니다.");
+  if (!key) throw new Error("전화번호가 없어 회원으로 올릴 수 없습니다.");
+  if (!c.지점코드) throw new Error("지점이 없어 회원으로 올릴 수 없습니다.");
+
+  const m = await readSheet(SHEET_M);
+  const mCols = resolve(SHEET_M, m.headers, M_COLS);
+
+  /* 이미 있는 사람인가 — 지운 회원은 세지 않는다 */
+  const hit = m.rows.find(
+    (r) =>
+      (r["삭제여부"] ?? "").toUpperCase() !== "Y" &&
+      phoneKey(get(r, mCols, "전화번호")) === key
+  );
+  if (hit) {
+    return {
+      회원번호: get(hit, mCols, "회원번호"),
+      새로: false,
+      이름: get(hit, mCols, "이름"),
+    };
+  }
+
+  const stamp = now();
+  const memberId = nextId(m.rows.map((r) => get(r, mCols, "회원번호")), "M", 5);
+
+  await appendRow(
+    SHEET_M,
+    m.headers,
+    toSheetRow(
+      {
+        회원번호: memberId,
+        이름: c.이름.trim(),
+        전화번호: formatPhone(c.전화번호),
+        성별: c.성별 ?? "",
+        나이대: c.나이대 ?? "",
+        거주동네: "",
+        지점코드: c.지점코드,
+        가입일: today(),
+        담당직원사번: c.담당직원사번 ?? "",
+        회원상태: "유효",
+        /* 어디서 온 사람인지 남긴다. 이 줄이 있으면 상담과 회원을 짝지어 볼 수 있다 */
+        상담번호: c.상담번호,
+        메모: c.메모 ?? "",
+        등록일시: stamp,
+        등록자: staffId,
+        수정일시: stamp,
+        수정자: staffId,
+        삭제여부: "",
+      },
+      mCols
+    )
+  );
+
+  return { 회원번호: memberId, 새로: true, 이름: c.이름.trim() };
+}

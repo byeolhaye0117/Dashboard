@@ -3,6 +3,8 @@ import { readSession } from "@/lib/session";
 import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import { patchConsultation, listConsultations } from "@/lib/consultations";
+import { stageOf } from "@/lib/stage";
+import { enrollFromConsultation } from "@/lib/members";
 
 export const dynamic = "force-dynamic";
 
@@ -47,8 +49,39 @@ export async function POST(req: Request) {
       if (ALLOWED.has(k)) safe[k] = String(v ?? "");
     });
 
+    /*
+     * 등록으로 바뀌면 회원 목록에 올린다
+     *
+     * 지금까지는 상담에서 「등록」으로 바꿔도 회원 화면에는 아무 일도 없어서,
+     * 같은 사람을 한 번 더 손으로 넣어야 했다. 그러다 빠뜨리면 등록으로 잡힌
+     * 상담 수와 회원 수가 어긋난다.
+     *
+     * 같은 사람인지는 전화번호로 본다. 이미 있으면 새로 만들지 않고 잇는다.
+     * 이미 이어 둔 회원번호가 있으면 아무것도 하지 않는다 —
+     * 등록을 껐다 켰다 해도 회원이 늘어나면 안 된다.
+     */
+    let 회원: { 회원번호: string; 새로: boolean; 이름: string } | null = null;
+    const 전 = stageOf(target);
+    const 후 = safe["진행상태"] ? stageOf({ ...target, ...safe }) : 전;
+    if (후 === "등록" && !(target["전환회원번호"] ?? "").trim()) {
+      const merged = { ...target, ...safe };
+      회원 = await enrollFromConsultation(
+        {
+          상담번호: id,
+          이름: merged["이름"] ?? "",
+          전화번호: merged["전화번호"] ?? "",
+          지점코드: merged["지점코드"] ?? "",
+          성별: merged["성별"],
+          나이대: merged["나이대"],
+          담당직원사번: merged["상담자사번"],
+        },
+        session.staffId
+      );
+      safe["전환회원번호"] = 회원.회원번호;
+    }
+
     await patchConsultation(id, safe, session.staffId);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, 회원 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "저장하지 못했습니다." }, { status: 500 });
   }
