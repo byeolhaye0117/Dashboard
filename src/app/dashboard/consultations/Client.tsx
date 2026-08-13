@@ -144,6 +144,15 @@ function tellEnrolled(data: any) {
     alert(`상담은 저장했지만 회원으로 올리지 못했습니다.\n\n${data.회원경고}`);
     return;
   }
+  /* 등록을 되돌린 경우 — 회원까지 내렸는지, 왜 안 내렸는지 */
+  if (data?.내림) {
+    alert(
+      data.내림.지움
+        ? `등록을 되돌려서 회원 목록에서도 내렸습니다.\n(${data.내림.회원번호} ${data.내림.이름})`
+        : `등록은 되돌렸습니다.\n\n다만 ${data.내림.이유}\n(${data.내림.회원번호} ${data.내림.이름})`
+    );
+    return;
+  }
   if (!data?.회원) return;
   alert(
     data.회원.새로

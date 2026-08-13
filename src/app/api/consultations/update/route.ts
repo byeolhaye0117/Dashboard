@@ -4,7 +4,7 @@ import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import { patchConsultation, listConsultations } from "@/lib/consultations";
 import { stageOf } from "@/lib/stage";
-import { enrollFromConsultation } from "@/lib/members";
+import { enrollFromConsultation, unenrollFromConsultation } from "@/lib/members";
 
 export const dynamic = "force-dynamic";
 
@@ -80,8 +80,27 @@ export async function POST(req: Request) {
       safe["전환회원번호"] = 회원.회원번호;
     }
 
+    /*
+     * 등록을 되돌리면 올려둔 회원도 같이 내린다
+     *
+     * 「등록」을 잘못 눌렀다가 「약속전환」으로 되돌리는 일이 있다. 그때
+     * 회원 줄이 남아 있으면 등록하지 않은 사람이 회원 수에 계속 잡힌다.
+     *
+     * 다만 이용권이나 결제가 붙어 있으면 지우지 않는다. 돈이 얽힌 줄을
+     * 상담 화면에서 조용히 지우면 매출이 왜 줄었는지 아무도 설명하지 못한다.
+     * 그때는 그대로 두고 왜 안 지웠는지 화면에 알린다.
+     */
+    let 내림: Awaited<ReturnType<typeof unenrollFromConsultation>> = null;
+    const 이었던회원 = (target["전환회원번호"] ?? "").trim();
+    if (전 === "등록" && 후 !== "등록" && 이었던회원) {
+      내림 = await unenrollFromConsultation(id, 이었던회원, session.staffId);
+      /* 정말로 내렸을 때만 이어 둔 자국을 지운다. 남겨 뒀으면 자국도 남겨야
+         다시 등록으로 바꿀 때 같은 사람을 또 만들지 않는다 */
+      if (내림?.지움) safe["전환회원번호"] = "";
+    }
+
     await patchConsultation(id, safe, session.staffId);
-    return NextResponse.json({ ok: true, 회원 });
+    return NextResponse.json({ ok: true, 회원, 내림 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "저장하지 못했습니다." }, { status: 500 });
   }

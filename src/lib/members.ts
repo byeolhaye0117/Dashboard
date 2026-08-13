@@ -1300,3 +1300,72 @@ export async function enrollFromConsultation(
 
   return { 회원번호: memberId, 새로: true, 이름: c.이름.trim() };
 }
+
+/**
+ * 등록을 되돌리면 자동으로 올렸던 회원을 내린다
+ *
+ * 상담에서 「등록」을 잘못 눌렀다가 「약속전환」으로 되돌리는 일이 있다.
+ * 그때 회원 목록에 올려둔 줄이 그대로 남으면, 실제로는 등록하지 않은 사람이
+ * 회원 수에 계속 잡힌다.
+ *
+ * 다만 무엇이든 지우지는 않는다. 지우는 것은 되돌리기 어려운 일이라
+ * 아래 셋 중 하나라도 걸리면 그대로 두고 이유를 돌려준다.
+ *   - 이 상담에서 만든 회원이 아니다 (원래 있던 분과 이어 붙였던 경우)
+ *   - 이용권이 있다
+ *   - 결제가 있다
+ * 돈이 얽힌 줄을 상담 화면에서 조용히 지우면, 매출이 왜 줄었는지
+ * 아무도 설명하지 못하게 된다.
+ */
+export type Unenrolled = {
+  회원번호: string;
+  이름: string;
+  /** 실제로 내렸는가 */
+  지움: boolean;
+  /** 안 내렸다면 왜 */
+  이유: string;
+};
+
+export async function unenrollFromConsultation(
+  상담번호: string,
+  회원번호: string,
+  staffId: string
+): Promise<Unenrolled | null> {
+  if (!회원번호) return null;
+
+  const m = await readSheet(SHEET_M);
+  const mCols = resolve(SHEET_M, m.headers, M_COLS);
+  const i = m.rows.findIndex((r) => get(r, mCols, "회원번호") === 회원번호);
+  if (i < 0) return null;
+
+  const row = m.rows[i];
+  const 이름 = get(row, mCols, "이름");
+  if ((row["삭제여부"] ?? "").toUpperCase() === "Y") {
+    return { 회원번호, 이름, 지움: false, 이유: "이미 지워진 회원입니다." };
+  }
+
+  if (get(row, mCols, "상담번호") !== 상담번호) {
+    return {
+      회원번호, 이름, 지움: false,
+      이유: "원래 있던 회원과 이어 붙였던 것이라 회원 목록은 그대로 두었습니다.",
+    };
+  }
+
+  const [tickets, pays] = await Promise.all([listTickets(), listPayments()]);
+  const 이용권수 = tickets.filter((t) => t.회원번호 === 회원번호).length;
+  const 결제수 = pays.filter((p) => p.회원번호 === 회원번호).length;
+  if (이용권수 > 0 || 결제수 > 0) {
+    return {
+      회원번호, 이름, 지움: false,
+      이유:
+        `이용권 ${이용권수}건 · 결제 ${결제수}건이 붙어 있어 회원 목록은 그대로 두었습니다. ` +
+        `지우실 거면 회원 화면에서 확인하고 지워주세요.`,
+    };
+  }
+
+  await updateRow(SHEET_M, m.rowNumbers[i], m.headers, {
+    ...row,
+    삭제여부: "Y",
+    ...(toSheetRow({ 수정일시: now(), 수정자: staffId }, mCols) as Row),
+  });
+  return { 회원번호, 이름, 지움: true, 이유: "" };
+}
