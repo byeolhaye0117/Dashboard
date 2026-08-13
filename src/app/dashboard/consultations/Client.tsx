@@ -99,17 +99,36 @@ function whenOf(c: Row): { date: string; time: string } {
   return { date, time: time === "00:00" ? "" : time };
 }
 
+/**
+ * 표에 보여줄 날짜와 시각
+ *
+ * 표에서 보고 싶은 것은 「이 사람 언제 오기로 했나」다. 문의가 들어온 날이
+ * 아니다. 그래서 약속을 잡았으면 그 시각을 보여준다.
+ *
+ * 아직 약속이 없는 건은 문의 들어온 날을 보여주되 「문의」라고 적어 둔다.
+ * 둘을 말없이 섞으면 어느 쪽 날짜인지 알 수가 없다 — 한 번 그렇게 틀렸다.
+ */
+function showWhen(c: Row): { date: string; time: string; appt: boolean } {
+  const a = (c["약속일시"] ?? "").trim().replace("T", " ");
+  if (a) {
+    const t = a.length > 10 ? a.slice(11, 16) : "";
+    return { date: a.slice(0, 10), time: t === "00:00" ? "" : t, appt: true };
+  }
+  return { ...whenOf(c), appt: false };
+}
+
 /** 이 건을 대시보드에 넣은 시각 — 문의 시각과는 다른 것이다 */
 const enteredAt = (c: Row) => (c["접수일시"] ?? "").trim().replace("T", " ").slice(0, 16);
 
 /**
  * 줄 세우는 값
  *
- * 시각을 모르는 건은 그날 안에서 넣은 순서(접수일시)로 세운다.
+ * 표에 보이는 값 그대로 세운다. 다른 값으로 세우면 눈에 보이는 순서가
+ * 뒤죽박죽으로 읽힌다. 시각을 모르는 건은 그날 안에서 넣은 순서로 세운다 —
  * 모른다고 아무 데나 두면 같은 날 건들이 매번 다른 자리에 나온다.
  */
 const whenKey = (c: Row) => {
-  const w = whenOf(c);
+  const w = showWhen(c);
   return `${w.date} ${w.time || "00:00"} ${enteredAt(c)}`;
 };
 
@@ -359,7 +378,8 @@ export default function Client(p: Props) {
               <tr>
                 <th>이름</th>
                 <th>연락처</th>
-                <th>상담일시</th>
+                <th>방문 약속</th>
+                <th>문의</th>
                 <th>채널</th>
                 <th>담당</th>
                 <th>지점</th>
@@ -376,9 +396,13 @@ export default function Client(p: Props) {
                     <td className="strong">{c["이름"]}</td>
                     <td className="num">{showPhone(c["전화번호"])}</td>
                     <td className="num dim">
-                      {whenOf(c).date.slice(5)}
-                      {whenOf(c).time && <span className="at">{whenOf(c).time}</span>}
+                      {/* 약속을 잡은 건은 약속 시각, 아직인 건은 문의 들어온 날.
+                          어느 쪽인지 적어 두지 않으면 같은 칸에 다른 뜻이 섞인다 */}
+                      {!showWhen(c).appt && <span className="ktag">문의</span>}
+                      {showWhen(c).date.slice(5)}
+                      {showWhen(c).time && <span className="at">{showWhen(c).time}</span>}
                     </td>
+                    <td className="dim">{c["문의유형"] || "-"}</td>
                     <td className="dim">{chan(c) || "-"}</td>
                     <td className="dim">{p.staffNames[c["상담자사번"]] ?? "-"}</td>
                     <td className="dim">{branchName(c["지점코드"])}</td>
