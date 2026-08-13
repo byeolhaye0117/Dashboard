@@ -170,6 +170,10 @@ const RVS_COLS: ColumnSpec = {
   키워드: { names: [] },
   끝인사: { names: [] },
   하루한도: { names: ["한도", "하루 한도"] },
+  시설: { names: ["보유시설", "보유 시설"] },
+  가격: { names: ["이용권가격", "1개월 이용권"] },
+  차별점: { names: ["다른점"] },
+  우리만아는사실: { names: ["우리만 아는 사실", "직접 적은 사실"] },
   수정일시: { names: [] },
   수정자: { names: [] },
 };
@@ -181,6 +185,15 @@ export type ReviewSetting = {
   끝인사: string;
   /** 0 이면 정해두지 않았다는 뜻 — 그때는 환경변수 기본값을 쓴다 */
   하루한도: number;
+  /* ── 네이버가 모르는 것. 진단 화면의 같은 칸과 짝이다 ── */
+  /** 체크한 보유 시설 */
+  시설: string[];
+  /** 1개월 이용권 가격 */
+  가격: string;
+  /** 다른 헬스장과 다른 점 한 줄 */
+  차별점: string;
+  /** 한 줄에 하나씩 적어 둔 사실 */
+  우리만아는사실: string[];
 };
 
 export async function listSettings(): Promise<ReviewSetting[]> {
@@ -201,6 +214,13 @@ export async function listSettings(): Promise<ReviewSetting[]> {
       키워드: splitList(get(r, c, "키워드")),
       끝인사: get(r, c, "끝인사"),
       하루한도: Number(get(r, c, "하루한도")) || 0,
+      시설: splitList(get(r, c, "시설")),
+      가격: get(r, c, "가격"),
+      차별점: get(r, c, "차별점"),
+      /* 줄 단위로 적는 칸이다. 쉼표로 자르면 「트레이너 4명, 모두 2급 이상」이
+         두 줄로 쪼개져 뜻이 깨진다 */
+      우리만아는사실: (get(r, c, "우리만아는사실") ?? "")
+        .split(/\n+/).map((x) => x.trim()).filter(Boolean),
     });
   });
   return out;
@@ -209,7 +229,10 @@ export async function listSettings(): Promise<ReviewSetting[]> {
 /** 지점 한 줄을 고치거나, 없으면 새로 만든다 */
 export async function saveSetting(
   지점코드: string,
-  patch: { 플레이스ID?: string; 키워드?: string[]; 끝인사?: string; 하루한도?: number },
+  patch: {
+    플레이스ID?: string; 키워드?: string[]; 끝인사?: string; 하루한도?: number;
+    시설?: string[]; 가격?: string; 차별점?: string; 우리만아는사실?: string[];
+  },
   byId: string
 ): Promise<void> {
   if (!지점코드) throw new Error("지점을 고르지 않았습니다.");
@@ -224,6 +247,10 @@ export async function saveSetting(
   if (patch.키워드 !== undefined) fields.키워드 = patch.키워드.join(", ");
   if (patch.끝인사 !== undefined) fields.끝인사 = patch.끝인사;
   if (patch.하루한도 !== undefined) fields.하루한도 = String(patch.하루한도);
+  if (patch.시설 !== undefined) fields.시설 = patch.시설.join(", ");
+  if (patch.가격 !== undefined) fields.가격 = patch.가격.trim();
+  if (patch.차별점 !== undefined) fields.차별점 = patch.차별점.trim();
+  if (patch.우리만아는사실 !== undefined) fields.우리만아는사실 = patch.우리만아는사실.join("\n");
 
   const i = data.rows.findIndex((r) => get(r, c, "지점코드") === 지점코드);
   if (i >= 0) {
@@ -236,7 +263,10 @@ export async function saveSetting(
   await appendRow(
     SHEET_RVS,
     data.headers,
-    toSheetRow({ 지점코드, 플레이스ID: "", 키워드: "", 끝인사: "", 하루한도: "", ...fields }, c) as Row
+    toSheetRow({
+      지점코드, 플레이스ID: "", 키워드: "", 끝인사: "", 하루한도: "",
+      시설: "", 가격: "", 차별점: "", 우리만아는사실: "", ...fields,
+    }, c) as Row
   );
 }
 

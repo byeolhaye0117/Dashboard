@@ -1662,6 +1662,7 @@ table.perm-table tr.off .what { opacity: .55; }
   .mcols.phone-order .ph-2 { order: 2; }
   .mcols.phone-order .ph-3 { order: 3; }
   .mcols.phone-order .ph-4 { order: 4; }
+  .mcols.phone-order .ph-5 { order: 5; }
 }
 
 .mcard {

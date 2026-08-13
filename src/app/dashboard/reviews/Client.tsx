@@ -14,8 +14,11 @@ import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import {
-  LENGTHS, ENDINGS, keywordsFor, suggestTone, MODEL_WON,
+  LENGTHS, ENDINGS, keywordsFor, suggestTone, MODEL_WON, OWN_MAX,
 } from "@/lib/reviewMeta";
+/* 시설 목록은 답글 코어에 있다 — 플레이스 홈페이지와 같은 목록을 써야
+   한쪽에서 체크한 것이 다른 쪽 답글에도 들어간다 */
+import { FACILITIES } from "@/lib/replyCore";
 
 type Named = { code: string; name: string };
 type Person = { id: string; name: string };
@@ -26,6 +29,7 @@ type Reply = {
 };
 type Setting = {
   지점코드: string; 플레이스ID: string; 키워드: string[]; 끝인사: string; 하루한도: number;
+  시설: string[]; 가격: string; 차별점: string; 우리만아는사실: string[];
 };
 type OpenReview = { body: string; rating: number | null; date: string };
 
@@ -106,6 +110,18 @@ export default function Client(p: Props) {
   /* 지시문 맨 앞에 붙는 가게 소개. 「불러오기」가 만들어 주고 화면이 들고 있다가
      답글 만들 때 되돌려준다 — 답글 하나 만들 때마다 다시 긁으면 느리다 */
   const [head, setHead] = useState("");
+
+  /* ── 네이버가 모르는 것 ──────────────────────────────
+     시설·가격·리뷰 수는 긁어오면 들어온다. 개업 연차나 트레이너 경력은
+     네이버 어디에도 없어서, 이게 있고 없고가 「다른 헬스장에도 붙는 글」과
+     「우리 글」을 가른다. 플레이스 진단 화면의 같은 칸과 짝이다. */
+  const [fac, setFac] = useState<string[]>([]);
+  const [price, setPrice] = useState("");
+  const [edge, setEdge] = useState("");
+  const [own, setOwn] = useState("");
+  const [ownBox, setOwnBox] = useState(false);
+  const [ownSaving, setOwnSaving] = useState(false);
+  const [ownNote, setOwnNote] = useState<{ bad: boolean; text: string } | null>(null);
   const [pulling, setPulling] = useState(false);
   /* 저장 결과는 누른 단추 바로 옆에 보여야 한다 — 반대편 기둥에 띄우면 못 본다 */
   const [saving, setSaving] = useState(false);
@@ -163,6 +179,12 @@ export default function Client(p: Props) {
     setNote(null);
     setPlaceBox(false);
     setLimit(s?.하루한도 || p.limit);
+    setFac(s?.시설 ?? []);
+    setPrice(s?.가격 ?? "");
+    setEdge(s?.차별점 ?? "");
+    setOwn((s?.우리만아는사실 ?? []).join("\n"));
+    setOwnBox(false);
+    setOwnNote(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch]);
 
@@ -228,6 +250,12 @@ export default function Client(p: Props) {
    */
   const tone = suggestTone(star);
   const pickStar = (n: number) => setStar(n);
+
+  /* 줄 단위로 적는 칸이라 줄로 센다. 저장할 때 서버가 같은 규칙으로 자른다 */
+  const ownLines = useMemo(
+    () => own.split(/\n+/).map((x) => x.replace(/^\s*[-·*+]\s*/, "").trim()).filter((x) => x.length >= 2),
+    [own]
+  );
 
   const mine = useMemo(() => list.filter((r) => r.지점코드 === branch), [list, branch]);
   const madeKeys = useMemo(() => new Set(mine.map((r) => keyOf(r.리뷰내용))), [mine]);
@@ -664,6 +692,94 @@ export default function Client(p: Props) {
                   </div>
                 );
               })
+            )}
+          </div>
+
+          {/*
+            우리 지점만 아는 것
+
+            답글이 밋밋한 이유는 대개 재료가 없어서다. 네이버에서 긁어오면
+            시설 이름과 리뷰 수까지는 들어오는데, 그건 옆 헬스장도 똑같이 있다.
+            여기 적는 것이 「다른 헬스장에도 붙는 글」과 「우리 글」을 가른다.
+
+            한 번 적어 두면 그 지점 답글은 계속 이걸 쓴다. 접어 두는 이유는
+            자주 고칠 칸이 아니어서다 — 늘 펼쳐 두면 「불러오기」가 그만큼 밀린다.
+          */}
+          <div className="mcard ph-5">
+            <div className="mcard-head">
+              <b>우리 {branchName}만 아는 것</b>
+              <span className="sub">
+                {[fac.length && `시설 ${fac.length}`, price && "가격", edge && "다른 점",
+                  ownLines.length && `사실 ${ownLines.length}`].filter(Boolean).join(" · ") || "아직 없음"}
+              </span>
+              <button className="more" type="button" onClick={() => setOwnBox(!ownBox)}>
+                {ownBox ? "접기" : "펴기"}
+              </button>
+            </div>
+
+            {!ownBox ? (
+              <p className="stat-note" style={{ margin: 0 }}>
+                {ownLines.length || fac.length
+                  ? "적어 두신 것이 답글 재료로 들어갑니다."
+                  : "네이버가 모르는 것을 적어 두면 답글이 눈에 띄게 달라집니다. 「펴기」를 눌러주세요."}
+              </p>
+            ) : (
+              <>
+                <p className="csec">보유 시설<span>체크한 것만 답글에 쓸 수 있습니다</span></p>
+                <div className="pickbox">
+                  {FACILITIES.map((f) => (
+                    <button key={f} type="button"
+                            className={`pickone${fac.includes(f) ? " on" : ""}`}
+                            onClick={() => setFac(fac.includes(f)
+                              ? fac.filter((x) => x !== f) : [...fac, f])}>
+                      <span className="nm">{f}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <p className="csec">1개월 이용권 가격<span>비워두셔도 됩니다</span></p>
+                <input className="input" value={price} placeholder="예) 89,000원"
+                       onChange={(e) => setPrice(e.target.value)} />
+
+                <p className="csec">다른 헬스장과 다른 점 한 줄</p>
+                <input className="input" value={edge}
+                       placeholder="예) 순천향병원 3교대 근무자가 야간에 편하게 오는 곳"
+                       onChange={(e) => setEdge(e.target.value)} />
+
+                <p className="csec">
+                  우리만 아는 사실<span>한 줄에 하나씩 · {ownLines.length}/{OWN_MAX}줄</span>
+                </p>
+                <textarea className="input area" rows={5} value={own}
+                          placeholder={"한 줄에 하나씩 적으세요\n예) 2026년으로 28년째 운영 중입니다\n예) 트레이너 4명 모두 생활스포츠지도사 2급 이상\n예) 순천향병원 3교대 근무자 회원이 많습니다"}
+                          onChange={(e) => setOwn(e.target.value)} />
+                <p className="stat-note" style={{ margin: "6px 0 0" }}>
+                  <b>네이버가 모르는 것만 적으세요.</b> 시설·가격·리뷰 수는 「불러오기」로 이미 들어옵니다.
+                  개업 연차, 트레이너 수와 자격, 회원 구성, 주변 직장 — 이런 것이 답글을 다른 헬스장이
+                  흉내 못 내는 글로 만듭니다. <b>여기 적은 것은 그대로 답글에 실리니 사실만 적어주세요.</b>
+                </p>
+
+                <div className="who-acts" style={{ marginTop: 10 }}>
+                  <button type="button" className="btn-dark" style={{ flex: "0 0 auto" }}
+                          disabled={ownSaving || (!p.can.update && !p.can.create)}
+                          onClick={async () => {
+                            if (ownSaving) return;
+                            setOwnSaving(true);
+                            setOwnNote(null);
+                            const r = await keep({
+                              시설: fac, 가격: price, 차별점: edge, 우리만아는사실: own,
+                            });
+                            setOwnNote(r.ok
+                              ? { bad: false, text: "저장했습니다. 다음 답글부터 이걸 재료로 씁니다." }
+                              : { bad: true, text: r.error });
+                            setOwnSaving(false);
+                          }}>
+                    {ownSaving ? "저장 중…" : "저장"}
+                  </button>
+                  {ownNote && (
+                    <span className={ownNote.bad ? "pill bad" : "pill good"}>{ownNote.text}</span>
+                  )}
+                </div>
+              </>
             )}
           </div>
 
