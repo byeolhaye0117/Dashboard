@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import {
-  LENGTHS, ENDINGS, keywordsFor, suggestTone, MODEL_WON, OWN_MAX,
+  ENDINGS, keywordsFor, suggestTone, MODEL_WON, OWN_MAX,
 } from "@/lib/reviewMeta";
 /* 시설 목록은 답글 코어에 있다 — 플레이스 홈페이지와 같은 목록을 써야
    한쪽에서 체크한 것이 다른 쪽 답글에도 들어간다 */
@@ -92,7 +92,16 @@ export default function Client(p: Props) {
 
   const [review, setReview] = useState("");
   const [star, setStar] = useState(5);
-  const [len, setLen] = useState("중간");
+  /*
+   * 길이는 380자로 고정이다
+   *
+   * 짧게·중간·길게를 고르게 했었다. 사장님이 마음에 들어 하신 답글들이
+   * 전부 380자쯤이었고, "항상 380자로" 하자고 정하셨다. 그러면 고를 것이
+   * 없다 — 아무도 안 누를 단추를 화면에 두면 자리만 차지한다.
+   *
+   * 다시 고르실 일이 생기면 여기를 상태로 되돌리고 LENGTHS 를 그리면 된다.
+   */
+  const len = "중간";
   /*
    * 끝인사는 안 쓰는 것이 기본이다
    *
@@ -476,18 +485,6 @@ export default function Client(p: Props) {
               ))}
             </div>
 
-            <p className="csec">답글 길이</p>
-            <div className="pick-row" style={{ flexWrap: "wrap" }}>
-              {LENGTHS.map((x) => (
-                <button key={x.v} type="button"
-                        className={`pickone${len === x.v ? " on" : ""}`}
-                        onClick={() => setLen(x.v)}>
-                  <span className="nm">{x.label}</span>
-                  <span className="dim">{x.hint}</span>
-                </button>
-              ))}
-            </div>
-
             <p className="csec">
               답글에 심을 키워드<span>고른 것 {picked.length}/5개</span>
             </p>
@@ -581,6 +578,19 @@ export default function Client(p: Props) {
                 </p>
               )}
               <div className="quote" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{out.답글}</div>
+
+              {/* 380자로 뽑아달라고 시켜 두었다. 시켰으면 잰 것도 보여야 한다 —
+                  안 그러면 어긋나도 아무도 모른다 */}
+              {(() => {
+                const n = [...out.답글].length;
+                const ok = n >= 340 && n <= 430;
+                return (
+                  <p className="stat-note" style={{ margin: "8px 0 0" }}>
+                    <span className={ok ? "pill good" : "pill warn"}>{n}자</span>{" "}
+                    {ok ? "길이 알맞습니다 (380자 언저리)" : "380자 언저리가 목표입니다"}
+                  </p>
+                );
+              })()}
 
               {/* 만들어만 주고 「잘 됐나 보세요」 하는 것과, 무엇이 빠졌는지
                   짚어 주는 것은 다르다. 진단 서버가 잰 결과를 그대로 보여준다 */}
