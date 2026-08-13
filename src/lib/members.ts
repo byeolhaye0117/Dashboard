@@ -1084,3 +1084,67 @@ export async function softDeleteMembers(ids: string[], staffId: string): Promise
   await updateRows(SHEET_M, headers, items);
   return items.length;
 }
+
+/* ── 예전에 넣었던 화면 확인용 가짜 자료 지우기 ──────────────
+ *
+ * 자료가 없을 때 화면이 어떻게 보이는지 보려고, 가짜 회원·이용권·결제를
+ * 13개월치 넣는 기능이 있었다. 진짜 자료가 들어온 지금은 만드는 쪽은 지웠다.
+ * 다만 예전에 넣어 둔 줄이 남아 있을 수 있어 지우는 쪽만 남긴다.
+ *
+ * 가짜로 넣은 줄에는 메모에 [샘플] 표시가 붙어 있다. 그 표시가 있는 것만 지운다 —
+ * 진짜 자료를 건드리지 않는 유일한 기준이다.
+ * ────────────────────────────────────────────────────────── */
+
+export const SAMPLE_TAG = "[샘플]";
+
+export async function removeSampleData(byId: string): Promise<number> {
+  const stamp = now();
+  let n = 0;
+
+  /* 회원 → 그 회원의 이용권 → 그 회원의 결제 차례로 지운다.
+     회원을 먼저 찾아 두어야 딸린 줄을 알아볼 수 있다. */
+  const m = await readSheet(SHEET_M);
+  const mCols = resolve(SHEET_M, m.headers, M_COLS);
+  const ids = new Set<string>();
+  const mHits: { n: number; r: Row }[] = [];
+  m.rows.forEach((r, i) => {
+    if (!get(r, mCols, "메모").startsWith(SAMPLE_TAG)) return;
+    ids.add(get(r, mCols, "회원번호"));
+    mHits.push({ n: m.rowNumbers[i], r });
+  });
+
+  if (ids.size === 0) return 0;
+
+  for (const h of mHits) {
+    await updateRow(SHEET_M, h.n, m.headers, {
+      ...h.r,
+      ...(toSheetRow({ 삭제여부: "Y", 수정일시: stamp, 수정자: byId }, mCols) as Row),
+    });
+    n += 1;
+  }
+
+  for (const [sheet, spec, key] of [
+    [SHEET_V, V_COLS, "회원번호"],
+    [SHEET_P, P_COLS, "회원번호"],
+  ] as const) {
+    let data;
+    try {
+      data = await readSheet(sheet);
+    } catch {
+      continue;
+    }
+    const cols = resolve(sheet, data.headers, spec as any);
+    for (let i = 0; i < data.rows.length; i += 1) {
+      const r = data.rows[i];
+      if (!ids.has(get(r, cols, key))) continue;
+      if ((r["삭제여부"] ?? "").toUpperCase() === "Y") continue;
+      await updateRow(sheet, data.rowNumbers[i], data.headers, {
+        ...r,
+        ...(toSheetRow({ 삭제여부: "Y", 수정일시: stamp, 수정자: byId }, cols) as Row),
+      });
+      n += 1;
+    }
+  }
+
+  return n;
+}
