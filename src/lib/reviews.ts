@@ -169,11 +169,19 @@ const RVS_COLS: ColumnSpec = {
   플레이스ID: { names: ["플레이스", "플레이스주소", "place"] },
   키워드: { names: [] },
   끝인사: { names: [] },
+  하루한도: { names: ["한도", "하루 한도"] },
   수정일시: { names: [] },
   수정자: { names: [] },
 };
 
-export type ReviewSetting = { 지점코드: string; 플레이스ID: string; 키워드: string[]; 끝인사: string };
+export type ReviewSetting = {
+  지점코드: string;
+  플레이스ID: string;
+  키워드: string[];
+  끝인사: string;
+  /** 0 이면 정해두지 않았다는 뜻 — 그때는 환경변수 기본값을 쓴다 */
+  하루한도: number;
+};
 
 export async function listSettings(): Promise<ReviewSetting[]> {
   let data;
@@ -192,6 +200,7 @@ export async function listSettings(): Promise<ReviewSetting[]> {
       플레이스ID: get(r, c, "플레이스ID"),
       키워드: splitList(get(r, c, "키워드")),
       끝인사: get(r, c, "끝인사"),
+      하루한도: Number(get(r, c, "하루한도")) || 0,
     });
   });
   return out;
@@ -200,7 +209,7 @@ export async function listSettings(): Promise<ReviewSetting[]> {
 /** 지점 한 줄을 고치거나, 없으면 새로 만든다 */
 export async function saveSetting(
   지점코드: string,
-  patch: { 플레이스ID?: string; 키워드?: string[]; 끝인사?: string },
+  patch: { 플레이스ID?: string; 키워드?: string[]; 끝인사?: string; 하루한도?: number },
   byId: string
 ): Promise<void> {
   if (!지점코드) throw new Error("지점을 고르지 않았습니다.");
@@ -214,6 +223,7 @@ export async function saveSetting(
   if (patch.플레이스ID !== undefined) fields.플레이스ID = patch.플레이스ID.trim();
   if (patch.키워드 !== undefined) fields.키워드 = patch.키워드.join(", ");
   if (patch.끝인사 !== undefined) fields.끝인사 = patch.끝인사;
+  if (patch.하루한도 !== undefined) fields.하루한도 = String(patch.하루한도);
 
   const i = data.rows.findIndex((r) => get(r, c, "지점코드") === 지점코드);
   if (i >= 0) {
@@ -226,7 +236,7 @@ export async function saveSetting(
   await appendRow(
     SHEET_RVS,
     data.headers,
-    toSheetRow({ 지점코드, 플레이스ID: "", 키워드: "", 끝인사: "", ...fields }, c) as Row
+    toSheetRow({ 지점코드, 플레이스ID: "", 키워드: "", 끝인사: "", 하루한도: "", ...fields }, c) as Row
   );
 }
 

@@ -10,8 +10,17 @@ export const SHEET_RV = "리뷰답글";
 export const SHEET_RVS = "리뷰설정";
 
 export const RVS_HEADERS = [
-  "지점코드", "플레이스ID", "키워드", "끝인사", "수정일시", "수정자",
+  "지점코드", "플레이스ID", "키워드", "끝인사", "하루한도", "수정일시", "수정자",
 ];
+
+/**
+ * 하루 한도로 넣을 수 있는 값의 범위
+ *
+ * 0 을 허용하면 실수로 기능을 통째로 꺼 놓고 왜 안 되는지 찾게 된다.
+ * 위쪽도 막아 둔다 — 리뷰가 하루에 200개 달리는 헬스장은 없다.
+ */
+export const LIMIT_MIN = 1;
+export const LIMIT_MAX = 200;
 
 export const RV_HEADERS = [
   "답글번호", "지점코드", "별점", "리뷰내용", "주제", "답글",

@@ -5,7 +5,9 @@ import { getBranches } from "@/lib/data";
 import { ask, parseJson } from "@/lib/ai";
 import { saveReply, softDeleteReply, countToday, listSettings, saveSetting } from "@/lib/reviews";
 import { collectPlace } from "@/lib/place";
-import { LENGTHS, TONES, modelId, modelWon, DAILY_LIMIT_DEFAULT } from "@/lib/reviewMeta";
+import {
+  LENGTHS, TONES, modelId, modelWon, DAILY_LIMIT_DEFAULT, LIMIT_MIN, LIMIT_MAX,
+} from "@/lib/reviewMeta";
 
 export const dynamic = "force-dynamic";
 /* AI 가 답을 쓰는 데도, 네이버에서 리뷰를 긁어오는 데도 시간이 걸린다 */
@@ -128,6 +130,16 @@ export async function POST(req: Request) {
         patch.키워드 = body.키워드.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 5);
       }
       if (body.끝인사 !== undefined) patch.끝인사 = String(body.끝인사 ?? "");
+      if (body.하루한도 !== undefined) {
+        const n = Math.floor(Number(body.하루한도));
+        if (!Number.isFinite(n) || n < LIMIT_MIN || n > LIMIT_MAX) {
+          return NextResponse.json(
+            { error: `하루 한도는 ${LIMIT_MIN}에서 ${LIMIT_MAX} 사이로 넣어주세요.` },
+            { status: 400 }
+          );
+        }
+        patch.하루한도 = n;
+      }
       await saveSetting(branch, patch, session.staffId);
       return NextResponse.json({ ok: true });
     }
@@ -175,8 +187,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "리뷰가 너무 깁니다. 3000자 아래로 줄여주세요." }, { status: 400 });
     }
 
-    /* 하루 한도 — 실수로 눌러대도 요금이 튀지 않게 */
-    const limit = Number(process.env.REVIEW_DAILY_LIMIT) || DAILY_LIMIT_DEFAULT;
+    /* 하루 한도 — 실수로 눌러대도 요금이 튀지 않게.
+       지점에서 직접 정한 값이 먼저고, 안 정했으면 환경변수, 그것도 없으면 기본값이다. */
+    const setting = (await listSettings()).find((s) => s.지점코드 === branch);
+    const limit =
+      setting?.하루한도 || Number(process.env.REVIEW_DAILY_LIMIT) || DAILY_LIMIT_DEFAULT;
     const used = await countToday(branch);
     if (used >= limit) {
       return NextResponse.json(
