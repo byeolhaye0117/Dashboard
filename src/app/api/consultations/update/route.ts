@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
-import { patchConsultation, listConsultations } from "@/lib/consultations";
+import { patchConsultation, listConsultations, ensureLinkColumns } from "@/lib/consultations";
 import { stageOf } from "@/lib/stage";
 import { enrollFromConsultation, unenrollFromConsultation } from "@/lib/members";
 
@@ -63,6 +63,10 @@ export async function POST(req: Request) {
     let 회원: { 회원번호: string; 새로: boolean; 이름: string } | null = null;
     const 전 = stageOf(target);
     const 후 = safe["진행상태"] ? stageOf({ ...target, ...safe }) : 전;
+    /* 이어 둔 자국을 남길 칸이 시트에 있는지 먼저 본다. 없으면 만든다 —
+       없는 칸에 적으면 조용히 사라지고, 나중에 되돌릴 때 아무 일도 안 일어난다 */
+    if (safe["진행상태"]) await ensureLinkColumns();
+
     if (후 === "등록" && !(target["전환회원번호"] ?? "").trim()) {
       const merged = { ...target, ...safe };
       회원 = await enrollFromConsultation(
@@ -90,10 +94,29 @@ export async function POST(req: Request) {
      * 상담 화면에서 조용히 지우면 매출이 왜 줄었는지 아무도 설명하지 못한다.
      * 그때는 그대로 두고 왜 안 지웠는지 화면에 알린다.
      */
+    /*
+     * 한때 등록이었던 흔적이 있으면 되돌린 것으로 본다
+     *
+     * 「등록 → 약속전환」을 한 번에 잡는 것만으로는 모자랐다. 이미 되돌려
+     * 놓으신 건은 전(前) 상태가 등록이 아니라서 아무 일도 안 일어난다.
+     * 이어 둔 회원번호나 등록여부 Y 가 남아 있으면 그것도 흔적이다.
+     */
+    const 등록이었다 =
+      전 === "등록" ||
+      Boolean((target["전환회원번호"] ?? "").trim()) ||
+      (target["등록여부"] ?? "").toUpperCase() === "Y";
+
     let 내림: Awaited<ReturnType<typeof unenrollFromConsultation>> = null;
-    const 이었던회원 = (target["전환회원번호"] ?? "").trim();
-    if (전 === "등록" && 후 !== "등록" && 이었던회원) {
-      내림 = await unenrollFromConsultation(id, 이었던회원, session.staffId);
+    if (등록이었다 && 후 !== "등록") {
+      /* 이어 둔 회원번호가 없어도 찾아본다. 시트에 「전환회원번호」 칸이 없던
+         동안 만들어진 회원은 자국이 안 남아 있다 — 그것 때문에 되돌려도
+         회원이 안 사라졌다 */
+      내림 = await unenrollFromConsultation(
+        id,
+        (target["전환회원번호"] ?? "").trim(),
+        (target["전화번호"] ?? "").trim(),
+        session.staffId
+      );
       /* 정말로 내렸을 때만 이어 둔 자국을 지운다. 남겨 뒀으면 자국도 남겨야
          다시 등록으로 바꿀 때 같은 사람을 또 만들지 않는다 */
       if (내림?.지움) safe["전환회원번호"] = "";
