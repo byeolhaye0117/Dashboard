@@ -113,6 +113,28 @@ const whenKey = (c: Row) => {
   return `${w.date} ${w.time || "00:00"} ${enteredAt(c)}`;
 };
 
+/**
+ * 회원으로 올라갔는지 알린다
+ *
+ * 상태를 「등록」으로 바꾸면 서버가 회원 목록에 올린다. 조용히 넘어가면
+ * 「올라간 건가」 싶어 회원 화면에서 또 손으로 넣게 되고, 그러면 같은 사람이
+ * 둘이 된다. 올렸는지 이었는지, 어느 회원과 이었는지까지 적어 준다.
+ */
+function tellEnrolled(data: any) {
+  if (data?.회원경고) {
+    alert(`상담은 저장했지만 회원으로 올리지 못했습니다.\n\n${data.회원경고}`);
+    return;
+  }
+  if (!data?.회원) return;
+  alert(
+    data.회원.새로
+      ? `회원 목록에 올렸습니다. (${data.회원.회원번호} ${data.회원.이름})\n\n` +
+        `이용권과 결제는 아직 없습니다. 회원 화면에서 「상품 추가」로 넣어주세요.`
+      : `이미 회원 목록에 있는 번호라 새로 만들지 않고 이었습니다.\n` +
+        `(${data.회원.회원번호} ${data.회원.이름})`
+  );
+}
+
 /** 문의 채널 — 시트 제목 줄이 아직 방문경로일 수도 있어 둘 다 본다 */
 const chan = (c: Row) => (c["문의채널"] || c["방문경로"] || "").trim();
 /** 약속을 잡았는가 — 약속일시가 채워졌으면 잡은 것이다 */
@@ -442,6 +464,8 @@ function NewForm({
     const data = await res.json();
     setBusy(false);
     if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
+    /* 접수하면서 바로 등록으로 넣으신 경우 — 회원까지 올라갔는지 알려준다 */
+    tellEnrolled(data);
     location.reload();
   }
 
@@ -618,6 +642,10 @@ function Detail({
       setBusy(false);
       return setMsg(data.error ?? "저장하지 못했습니다.");
     }
+
+    /* 회원 목록에 올라갔는지 알려준다. 조용히 넘어가면 「올라간 건가」 하고
+       회원 화면에 가서 또 손으로 넣게 된다 — 그러면 같은 사람이 둘이 된다 */
+    tellEnrolled(data);
 
     // 자세한 사정은 연락 이력에 남겨서 나중에 읽을 수 있게 한다
     if (stage === "미등록" && reasonMemo.trim()) {
