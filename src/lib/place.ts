@@ -126,10 +126,18 @@ export async function collectPlace(placeId: string): Promise<Collected> {
     openReviews: open,
     /* 답글에 쓸 사실. 이름이 너무 짧은 것은 무슨 말인지 몰라 빼고,
        열 개가 넘어가면 프롬프트만 길어지고 답글은 그대로다. */
-    facts: (Array.isArray(m.menuNames) ? m.menuNames : Array.isArray(m.menus) ? m.menus : [])
+    /* 답글에 쓸 사실. 시설 이름만 넘기다 보니 재료가 늘 서너 줄이었다.
+       편의시설·결제수단·사장님이 올린 소식까지 같이 넘긴다 —
+       「24시간 운영」, 「주차 가능」 같은 것이 손님 질문에 대한 답이 되는 자리가 많다. */
+    facts: [
+      ...(Array.isArray(m.menuNames) ? m.menuNames : Array.isArray(m.menus) ? m.menus : []),
+      ...(Array.isArray(m.conveniences) ? m.conveniences : []),
+      ...(Array.isArray(m.payments) ? m.payments.map((x: any) => `${x} 결제 가능`) : []),
+    ]
       .map((x: any) => String(x).trim())
       .filter((x: string) => x.length >= 3)
-      .slice(0, 12),
+      .filter((x: string, i: number, a: string[]) => a.indexOf(x) === i)
+      .slice(0, 18),
     landmarks: (Array.isArray(m.landmarks) ? m.landmarks : [])
       .map((x: any) => String(x).trim())
       .filter(Boolean)
