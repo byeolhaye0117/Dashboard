@@ -88,6 +88,10 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         placeId: got.placeId,
+        /* 답글 첫 문장이 「안녕하세요 OOO입니다.」다. 그 OOO 는 우리끼리 부르는
+           「쌍용점」이 아니라 네이버에 걸린 상호여야 한다. 여기서 같이 넘겨
+           화면이 들고 있다가 답글 만들 때 되돌려준다 — 그때 또 긁으면 느리다. */
+        상호: got.name,
         openReviews: got.openReviews,
         facts: got.facts,
         landmarks: got.landmarks,
@@ -131,6 +135,9 @@ export async function POST(req: Request) {
     /* 인사말에 들어갈 이름이다. 「쌍용점」보다 네이버에 걸린 진짜 상호가 낫고,
        그건 재료를 긁어올 때 같이 온다 — 아래에서 오면 그걸로 바꾼다. */
     let branchName = branches.find((b) => b.code === branch)?.name ?? branch;
+    /* 「불러오기」를 눌렀다면 화면이 진짜 상호를 들고 있다. 그게 인사말이 된다 */
+    const 상호 = String(body.상호 ?? "").trim();
+    if (상호) branchName = 상호;
 
     const stars = Number(body.별점) || 0;
     const length = String(body.길이 ?? "중간");
