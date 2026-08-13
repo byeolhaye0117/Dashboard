@@ -531,7 +531,9 @@ export default function Client(p: Props) {
                   ))}
                 </div>
               )}
-              <div className="quote" style={{ margin: 0 }}>{out.답글}</div>
+              {/* 답글은 문단으로 나뉘어 온다. 한 덩어리로 붙여 보여주면
+                  올렸을 때 어떻게 보일지 알 수가 없다 */}
+              <div className="quote" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{out.답글}</div>
 
               {/* 만들어만 주고 「잘 됐나 보세요」 하는 것과, 무엇이 빠졌는지
                   짚어 주는 것은 다르다. 진단 서버가 잰 결과를 그대로 보여준다 */}
@@ -681,7 +683,7 @@ export default function Client(p: Props) {
                     {r.주제.length > 0 && (
                       <span className="sub">읽어낸 주제 · {r.주제.join(" · ")}</span>
                     )}
-                    <p className="ntext" style={{ margin: "6px 0 0" }}>
+                    <p className="ntext" style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>
                       {isOpen || r.답글.length <= 90 ? r.답글 : r.답글.slice(0, 90) + "…"}
                     </p>
                     <div className="who-acts" style={{ margin: "8px 0 0" }}>
