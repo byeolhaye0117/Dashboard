@@ -67,6 +67,8 @@ type Props = {
   missingRefund: string[];
   /** 시트에 칸을 만들 수 있는 사람인지 (대표) */
   canSetup: boolean;
+  /** 결제 한 줄을 지울 수 있는가 — 회원 삭제 권한을 따른다 */
+  canWipePay: boolean;
   problem: string;
 };
 
@@ -142,6 +144,29 @@ export default function Client(p: Props) {
   const thisMonth = now.slice(0, 7);
   const [month, setMonth] = useState(thisMonth);
   const [branch, setBranch] = useState("전체");
+  /* 지우기는 한 번 더 묻는다. 돈이 오간 기록이라 되돌리기가 번거롭다 */
+  const [wipe, setWipe] = useState<Payment | null>(null);
+  const [wiping, setWiping] = useState(false);
+  const [wipeErr, setWipeErr] = useState("");
+
+  async function doWipe() {
+    if (!wipe || wiping) return;
+    setWiping(true);
+    setWipeErr("");
+    try {
+      const res = await fetch("/api/members/payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "del", id: wipe.id }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "지우지 못했습니다.");
+      location.reload();
+    } catch (e: any) {
+      setWipeErr(String(e.message ?? e));
+      setWiping(false);
+    }
+  }
 
   const branchName = (c: string) => p.branches.find((b) => b.code === c)?.name ?? c;
   const productOf = (code: string) => p.products.find((x) => x.code === code);
@@ -1053,6 +1078,7 @@ export default function Client(p: Props) {
                   <th>넣은 사람</th>
                   <th className="r">금액</th>
                   <th className="r">미수금</th>
+                  {p.canWipePay && <th />}
                 </tr>
               </thead>
               <tbody>
@@ -1078,6 +1104,14 @@ export default function Client(p: Props) {
                       <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
                         {num(x.미수금액) > 0 ? money(num(x.미수금액)) : "-"}
                       </td>
+                      {p.canWipePay && (
+                        <td className="r">
+                          <button type="button" className="linkish"
+                                  onClick={() => setWipe(x)}>
+                            지우기
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
               </tbody>
@@ -1085,6 +1119,37 @@ export default function Client(p: Props) {
           </div>
         )}
       </details>
+
+      {wipe && (
+        <div className="modal-back" onClick={() => !wiping && setWipe(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>이 결제를 지웁니다</h3>
+            <div className="kv">
+              <div className="kv-row"><span>결제일</span><b>{(wipe.결제일시 ?? "").slice(0, 10)}</b></div>
+              <div className="kv-row">
+                <span>회원</span>
+                <b>{p.memberNames[wipe.회원번호] ?? `${wipe.회원번호} (지워진 회원)`}</b>
+              </div>
+              <div className="kv-row"><span>금액</span><b className="num">{money(num(wipe.결제금액))}</b></div>
+              <div className="kv-row">
+                <span>넣은 사람</span>
+                <b>{p.staffNames[wipe.등록자] ?? wipe.등록자 ?? "-"}
+                  {wipe.등록일시 ? ` · ${wipe.등록일시.slice(0, 16)}` : ""}</b>
+              </div>
+            </div>
+            <p className="stat-note">
+              매출에서 빠집니다. 줄은 시트에 남고 지운 표시만 붙으므로, 나중에 되짚어 볼 수 있습니다.
+            </p>
+            {wipeErr && <div className="alert-bad">{wipeErr}</div>}
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setWipe(null)} disabled={wiping}>그만두기</button>
+              <button className="btn-danger" onClick={doWipe} disabled={wiping}>
+                {wiping ? "지우는 중…" : "지웁니다"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

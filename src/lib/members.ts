@@ -1029,6 +1029,25 @@ export async function softDeleteTicket(id: string, staffId: string): Promise<voi
  * 금액을 고치면 현금·카드·계좌 칸도 같이 맞춘다.
  * 총액만 바꾸고 나머지를 두면 시트 안에서 숫자가 서로 안 맞게 된다.
  */
+/**
+ * 결제 한 줄을 지운다
+ *
+ * 회원을 지워도 그 회원의 결제는 남는다. 그래서 이름이 안 나오는 결제만
+ * 매출에 덩그러니 남는 일이 생긴다 — 지울 방법이 화면에 없었다.
+ * 줄을 진짜로 없애지 않고 표시만 남긴다. 돈이 오간 기록이라 흔적은 있어야 한다.
+ */
+export async function softDeletePayment(id: string, byId: string): Promise<void> {
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_P);
+  const cols = resolve(SHEET_P, headers, P_COLS);
+  const i = rows.findIndex((r) => get(r, cols, "결제번호") === id);
+  if (i < 0) throw new Error("해당 결제를 찾지 못했습니다.");
+
+  await updateRow(SHEET_P, rowNumbers[i], headers, {
+    ...rows[i],
+    ...(toSheetRow({ 삭제여부: "Y", 수정일시: now(), 수정자: byId }, cols) as Row),
+  });
+}
+
 export async function patchPayment(
   id: string,
   changes: Record<string, string>,
@@ -1088,6 +1107,34 @@ export async function softDeleteMembers(ids: string[], staffId: string): Promise
   if (items.length === 0) throw new Error("고르신 회원을 찾지 못했습니다.");
 
   await updateRows(SHEET_M, headers, items);
+
+  /*
+   * 딸린 이용권·결제도 같이 지운다
+   *
+   * 회원만 지우면 그 사람의 결제가 매출에 그대로 남는다. 이름은 안 나오고
+   * 회원번호만 덩그러니 남아서, 나중에 「이 1만원은 뭐지」를 아무도 못 푼다.
+   * 실제로 그렇게 됐다. 사람을 지우면 그 사람 것도 같이 내린다.
+   */
+  for (const [sheet, spec] of [[SHEET_V, V_COLS], [SHEET_P, P_COLS]] as const) {
+    let data;
+    try {
+      data = await readSheet(sheet);
+    } catch {
+      continue;
+    }
+    const c = resolve(sheet, data.headers, spec as any);
+    const hits: { rowNumber: number; row: Row }[] = [];
+    data.rows.forEach((r, i) => {
+      if (!want.has(get(r, c, "회원번호"))) return;
+      if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
+      hits.push({
+        rowNumber: data.rowNumbers[i],
+        row: { ...r, 삭제여부: "Y", ...toSheetRow({ 수정일시: stamp, 수정자: staffId }, c) },
+      });
+    });
+    if (hits.length > 0) await updateRows(sheet, data.headers, hits);
+  }
+
   return items.length;
 }
 
