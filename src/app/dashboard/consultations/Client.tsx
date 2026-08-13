@@ -64,28 +64,53 @@ const STAGE_TONE: Record<string, string> = {
 };
 
 /**
+ * 날짜+시각 칸에 넣을 값
+ *
+ * datetime-local 은 「2026-08-14」 처럼 날짜만 주면 칸을 통째로 비운다.
+ * 그대로 저장하면 날짜까지 날아간다. 시각이 없으면 00:00 을 붙여 넣고,
+ * 00:00 은 보여줄 때 「시각 모름」으로 되돌린다.
+ */
+function forInput(v: string): string {
+  const t = (v ?? "").trim().replace(" ", "T");
+  if (!t) return "";
+  return t.length > 10 ? t.slice(0, 16) : `${t.slice(0, 10)}T00:00`;
+}
+
+/**
  * 문의가 들어온 날과 시각
  *
- * 표에 날짜만 있으면 같은 날 들어온 건들의 앞뒤를 알 수가 없다.
- * 상담날짜에 시각이 같이 적혀 있으면 그걸 쓰고, 날짜만 있으면
- * 접수일시의 시각을 쓴다 — 접수일시는 이 건이 실제로 들어온 순간이다.
- * 상담날짜와 접수일시의 날짜가 다르면(지난 건을 나중에 넣은 경우)
- * 시각을 붙이지 않는다. 없는 시각을 지어내는 것보다 비워두는 편이 낫다.
+ * ── 한 번 잘못 만들었던 자리다 ─────────────────────────────
+ * 처음에는 상담날짜에 시각이 없으면 접수일시의 시각을 대신 썼다.
+ * 접수일시는 「이 건을 대시보드에 넣은 시각」이지 「문의가 들어온 시각」이
+ * 아니다. 그래서 아침 일곱 시에 몰아서 입력한 건들이 전부 7:02, 7:03 으로
+ * 나왔고, 사장님이 바로 알아보셨다.
+ *
+ * 모르는 것은 모른다고 둔다. 상담날짜에 시각이 적혀 있을 때만 시각이다.
+ * 접수 시각은 자세히 보기에 「언제 넣었는지」로 따로 적는다 — 지우지는 않되,
+ * 문의 시각인 척하지도 않는다.
+ *
+ * 00:00 은 「시각 모름」으로 본다. 날짜만 있는 옛 기록을 고칠 때 시각 칸이
+ * 00:00 으로 채워지는데, 자정에 들어온 문의는 실무상 없다.
  */
 function whenOf(c: Row): { date: string; time: string } {
   const raw = (c["상담날짜"] ?? "").trim().replace("T", " ");
   const date = raw.slice(0, 10);
-  const own = raw.length > 10 ? raw.slice(11, 16) : "";
-  if (own) return { date, time: own };
-  const got = (c["접수일시"] ?? "").trim().replace("T", " ");
-  if (got.slice(0, 10) === date) return { date, time: got.slice(11, 16) };
-  return { date, time: "" };
+  const time = raw.length > 10 ? raw.slice(11, 16) : "";
+  return { date, time: time === "00:00" ? "" : time };
 }
 
-/** 날짜 + 시각을 한 줄로 — 정렬에 쓰는 값이기도 하다 */
+/** 이 건을 대시보드에 넣은 시각 — 문의 시각과는 다른 것이다 */
+const enteredAt = (c: Row) => (c["접수일시"] ?? "").trim().replace("T", " ").slice(0, 16);
+
+/**
+ * 줄 세우는 값
+ *
+ * 시각을 모르는 건은 그날 안에서 넣은 순서(접수일시)로 세운다.
+ * 모른다고 아무 데나 두면 같은 날 건들이 매번 다른 자리에 나온다.
+ */
 const whenKey = (c: Row) => {
   const w = whenOf(c);
-  return `${w.date} ${w.time || "00:00"}`;
+  return `${w.date} ${w.time || "00:00"} ${enteredAt(c)}`;
 };
 
 /** 문의 채널 — 시트 제목 줄이 아직 방문경로일 수도 있어 둘 다 본다 */
@@ -437,10 +462,11 @@ function NewForm({
                    value={f["전화번호"] ?? ""} onChange={(e) => set("전화번호", e.target.value)} />
           </L>
           <L label="상담일시">
-            {/* 같은 날 여러 건이 들어오면 날짜만으로는 앞뒤를 알 수 없다.
-                기본값은 지금 시각이라 대개 그대로 두고 넘어가시면 된다 */}
+            {/* 여기 적는 시각은 「문의가 들어온 시각」이다. 우리가 넣은 시각은
+                따로 남으니 신경 쓰지 않으셔도 된다. 모르면 00:00 으로 두면
+                표에 날짜만 나온다 */}
             <input className="input" type="datetime-local"
-                   value={(f["상담날짜"] ?? "").replace(" ", "T").slice(0, 16)}
+                   value={forInput(f["상담날짜"] ?? "")}
                    onChange={(e) => set("상담날짜", e.target.value.replace("T", " "))} />
           </L>
           <L label="지점">
@@ -658,7 +684,7 @@ function Detail({
               </L>
               <L label="상담일시">
                 <input className="input" type="datetime-local"
-                       value={(f["상담날짜"] ?? "").replace(" ", "T").slice(0, 16)}
+                       value={forInput(f["상담날짜"] ?? "")}
                        onChange={(e) => setV("상담날짜", e.target.value.replace("T", " "))} />
               </L>
               <L label="담당자">
@@ -707,7 +733,12 @@ function Detail({
         <>
         <dl className="kv">
           <Kv k="상담일시"
-              v={`${korDate(whenOf(item).date)}${whenOf(item).time ? ` ${whenOf(item).time}` : ""}`} />
+              v={`${korDate(whenOf(item).date)}${
+                whenOf(item).time ? ` ${whenOf(item).time}` : " (시각 모름)"
+              }`} />
+          {/* 문의가 들어온 시각과 우리가 넣은 시각은 다른 것이다.
+              둘을 섞어 쓰다 한 번 틀렸다 — 이제 따로 적는다 */}
+          <Kv k="넣은 시각" v={enteredAt(item) || "-"} />
           <Kv k="지점" v={branchName} />
           <Kv k="문의 채널" v={chan(item)} />
           <Kv k="문의유형" v={item["문의유형"]} />
