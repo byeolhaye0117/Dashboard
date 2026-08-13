@@ -41,6 +41,8 @@ type Payment = {
   카드액: string;
   계좌액: string;
   담당직원사번: string;
+  등록자: string;
+  등록일시: string;
 };
 
 type Ticket = { id: string; 상품코드: string; 결제번호: string; 금액: string };
@@ -1042,10 +1044,13 @@ export default function Client(p: Props) {
               <thead>
                 <tr>
                   <th>결제일</th>
+                  <th>회원</th>
                   <th>지점</th>
                   <th>유형</th>
                   <th>수단</th>
                   <th>담당</th>
+                  {/* 「이 결제 누가 넣었지」는 시트를 열지 않고도 답할 수 있어야 한다 */}
+                  <th>넣은 사람</th>
                   <th className="r">금액</th>
                   <th className="r">미수금</th>
                 </tr>
@@ -1057,6 +1062,7 @@ export default function Client(p: Props) {
                   .map((x) => (
                     <tr key={x.id}>
                       <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
+                      <td>{p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"}</td>
                       <td className="dim">{branchName(x.지점코드)}</td>
                       <td>
                         <span className={`pill${isRefund(x) ? " bad" : ""}`}>
@@ -1065,6 +1071,9 @@ export default function Client(p: Props) {
                       </td>
                       <td className="dim">{x.결제수단 || "-"}</td>
                       <td className="dim">{p.staffNames[x.담당직원사번] ?? "-"}</td>
+                      <td className="dim" title={x.등록일시 ?? ""}>
+                        {p.staffNames[x.등록자] ?? x.등록자 ?? "-"}
+                      </td>
                       <td className="r big num">{money(num(x.결제금액))}</td>
                       <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
                         {num(x.미수금액) > 0 ? money(num(x.미수금액)) : "-"}
