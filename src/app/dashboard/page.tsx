@@ -6,6 +6,7 @@
  */
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
+import { myBranchesOf, scopeOf } from "@/lib/scope";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffAll, getProducts, getRoles } from "@/lib/data";
 import { listLessons } from "@/lib/lessons";
@@ -35,8 +36,10 @@ async function body() {
   ]);
   const canChangePassword = Boolean(ab.get("직원관리")?.update);
 
-  const myBranches =
-    session.scope === "전체" ? branches : branches.filter((b) => session.branches.includes(b.code));
+  /* 지점 범위는 화면을 열 때마다 다시 잰다 — 권한과 같은 규칙이다.
+     로그인할 때 굳혀 둔 쿠키만 믿으면, 범위를 좁혀도 다시 로그인할 때까지 넓다 */
+  const myBranches = await myBranchesOf(session, branches);
+  const reach = await scopeOf(session);
   const current = branches.find((b) => b.code === session.currentBranch);
   const working = staff.filter((s) => s.active).length;
   const selling = products.filter((p) => p["서비스상품"] !== "Y").length;
@@ -142,7 +145,7 @@ async function body() {
       <h1 className="page-title">{session.name}님, {greet}</h1>
       <p className="page-sub">
         {session.roleName} · {current?.name ?? session.currentBranch}
-        {session.scope === "전체" && " · 전 지점 조회 가능"}
+        {reach.all && " · 전 지점 조회 가능"}
         {" · "}볼 수 있는 메뉴 {menus.length}개
       </p>
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import { patchPayment, softDeletePayment, listPayments, listMembers } from "@/lib/members";
 
@@ -14,6 +15,7 @@ const ALLOWED = new Set([
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const reach = await scopeOf(session);
 
   const ab = (await abilitiesFor(session.roleCode)).get("회원");
   if (!ab?.update && !ab?.remove) {
@@ -30,7 +32,7 @@ export async function POST(req: Request) {
 
     const owner = items.find((m) => m.id === target.회원번호);
     const branch = owner?.지점코드 || target.지점코드;
-    if (session.scope !== "전체" && !session.branches.includes(branch)) {
+    if (!reach.all && !reach.codes.includes(branch)) {
       return NextResponse.json({ error: "이 결제를 고칠 권한이 없습니다." }, { status: 403 });
     }
 

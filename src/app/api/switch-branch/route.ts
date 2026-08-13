@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession, createSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -7,11 +8,12 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const reach = await scopeOf(session);
 
   const { branch } = await req.json();
   if (!branch) return NextResponse.json({ error: "지점을 선택해주세요." }, { status: 400 });
 
-  const allowed = session.scope === "전체" || session.branches.includes(branch);
+  const allowed = reach.all || reach.codes.includes(branch);
   if (!allowed) {
     return NextResponse.json({ error: "이 지점을 볼 권한이 없습니다." }, { status: 403 });
   }

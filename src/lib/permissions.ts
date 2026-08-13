@@ -6,7 +6,7 @@
  *
  * 대표(R1)가 스스로를 잠그는 것만은 막는다. 잠기면 되돌릴 화면 자체에 못 들어간다.
  */
-import { readSheet, appendRow, updateRow, type Row } from "./sheets";
+import { readSheet, appendRow, updateRow, addColumns, type Row } from "./sheets";
 import { SHEET } from "./data";
 import { now } from "./time";
 
@@ -81,4 +81,46 @@ export async function saveRolePermissions(
       await appendRow(SHEET.권한, headers, { ...values, 등록일시: stamp, 등록자: byId });
     }
   }
+}
+
+/* ── 이 직급이 어느 지점을 보는가 ─────────────────────────
+ *
+ * 직급 탭의 「지점범위」 칸이다. 지금까지는 시트를 직접 열어야 바꿀 수
+ * 있었고, 화면 어디에도 안 보여서 누가 전 지점을 보고 있는지 알 수가 없었다.
+ * 권한과 같은 자리에서 같이 정하게 한다 — 어차피 같은 질문이다.
+ * ──────────────────────────────────────────────────── */
+
+export const SCOPES = ["전체", "담당지점"] as const;
+
+export async function saveRoleScope(
+  roleCode: string,
+  scope: string,
+  byId: string
+): Promise<void> {
+  if (!roleCode) throw new Error("직급을 고르지 않았습니다.");
+  if (!(SCOPES as readonly string[]).includes(scope)) {
+    throw new Error("지점 범위는 「전체」나 「담당지점」만 넣을 수 있습니다.");
+  }
+
+  /* 대표가 전 지점을 못 보게 되면 지점별 숫자를 확인할 사람이 없어진다.
+     권한과 같은 이유로 이 하나는 막는다. */
+  if (roleCode === "R1" && scope !== "전체") {
+    throw new Error("대표는 전 지점을 보는 직급입니다. 이 값은 바꿀 수 없습니다.");
+  }
+
+  /* 칸이 없으면 만들어 준다. 없는 칸에 적으면 조용히 사라진다 */
+  await addColumns(SHEET.직급, ["지점범위"]);
+
+  const { headers, rows, rowNumbers } = await readSheet(SHEET.직급);
+  const i = rows.findIndex(
+    (r) => r["직급코드"] === roleCode && (r["삭제여부"] ?? "").toUpperCase() !== "Y"
+  );
+  if (i < 0) throw new Error("해당 직급을 찾지 못했습니다.");
+
+  await updateRow(SHEET.직급, rowNumbers[i], headers, {
+    ...rows[i],
+    지점범위: scope,
+    수정일시: now(),
+    수정자: byId,
+  });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import { patchConsultation, listConsultations } from "@/lib/consultations";
 
@@ -16,6 +17,7 @@ const ALLOWED = new Set([
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const reach = await scopeOf(session);
 
   const ab = (await abilitiesFor(session.roleCode)).get("상담");
   if (!ab?.update) {
@@ -31,7 +33,7 @@ export async function POST(req: Request) {
     if (!target) return NextResponse.json({ error: "해당 상담이 없습니다." }, { status: 404 });
 
     // 볼 수 있는 지점인지, 담당건만 보는 직급이면 내 건인지 다시 확인한다
-    const branchOk = session.scope === "전체" || session.branches.includes(target["지점코드"]);
+    const branchOk = reach.all || reach.codes.includes(target["지점코드"]);
     const mineOk =
       !(ab.condition ?? "").includes("담당") ||
       target["상담자사번"] === session.staffId ||

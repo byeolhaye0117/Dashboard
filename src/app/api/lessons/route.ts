@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesForStaff } from "@/lib/menu";
 import { getStaffAll, getStaffBranches } from "@/lib/data";
 import {
@@ -19,6 +20,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const reach = await scopeOf(session);
 
   try {
     const body = await req.json();
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
       if (!l) return "해당 수업을 찾지 못했습니다.";
       if (l.트레이너사번 === session.staffId) return "";
       if (!mine.update) return "다른 트레이너의 수업은 고칠 수 없습니다.";
-      if (session.scope !== "전체" && !session.branches.includes(l.지점코드)) {
+      if (!reach.all && !reach.codes.includes(l.지점코드)) {
         return "담당 지점 수업만 고칠 수 있습니다.";
       }
       return "";
@@ -59,7 +61,7 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: "없는 직원입니다." }, { status: 400 });
         }
         const where = [...(branchMap.get(trainer) ?? []), target.mainBranch].filter(Boolean);
-        if (session.scope !== "전체" && !where.some((b) => session.branches.includes(b))) {
+        if (!reach.all && !where.some((b) => reach.codes.includes(b))) {
           return NextResponse.json({ error: "담당 지점 직원에게만 수업을 잡아줄 수 있습니다." }, { status: 403 });
         }
       }

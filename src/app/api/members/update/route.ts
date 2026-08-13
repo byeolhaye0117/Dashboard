@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import { patchMember, listMembers } from "@/lib/members";
 
@@ -14,6 +15,7 @@ const ALLOWED = new Set([
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const reach = await scopeOf(session);
 
   const ab = (await abilitiesFor(session.roleCode)).get("회원");
   if (!ab?.update) {
@@ -28,7 +30,7 @@ export async function POST(req: Request) {
     const target = items.find((m) => m.id === id);
     if (!target) return NextResponse.json({ error: "해당 회원이 없습니다." }, { status: 404 });
 
-    const branchOk = session.scope === "전체" || session.branches.includes(target.지점코드);
+    const branchOk = reach.all || reach.codes.includes(target.지점코드);
     const mineOk =
       !(ab.condition ?? "").includes("담당") || target.담당직원사번 === session.staffId;
     if (!branchOk || !mineOk) {

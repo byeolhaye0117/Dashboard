@@ -6,6 +6,7 @@
  */
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
+import { myBranchesOf } from "@/lib/scope";
 import { visibleMenus, abilitiesFor, MENUS } from "@/lib/menu";
 import { getBranches, getRoles, getPermissions, getStaffAll } from "@/lib/data";
 import Shell from "../Shell";
@@ -33,8 +34,9 @@ async function body() {
     getStaffAll(),
   ]);
 
-  const myBranches =
-    session.scope === "전체" ? branches : branches.filter((b) => session.branches.includes(b.code));
+  /* 지점 범위는 화면을 열 때마다 다시 잰다 — 권한과 같은 규칙이다.
+     로그인할 때 굳혀 둔 쿠키만 믿으면, 범위를 좁혀도 다시 로그인할 때까지 넓다 */
+  const myBranches = await myBranchesOf(session, branches);
 
   /** 직급마다 몇 명이 쓰고 있는지 — 권한을 바꿀 때 영향 범위를 알아야 한다 */
   const headcount: Record<string, number> = {};

@@ -5,7 +5,7 @@
  */
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
-import { korDate, today } from "@/lib/time";
+import { korDate, today, now as nowMinute } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { stageOf, baseDate, monthOf, isSettled, stageNow as stageAt } from "@/lib/stage";
 
@@ -63,6 +63,31 @@ const STAGE_TONE: Record<string, string> = {
   미등록: "bad",
 };
 
+/**
+ * 문의가 들어온 날과 시각
+ *
+ * 표에 날짜만 있으면 같은 날 들어온 건들의 앞뒤를 알 수가 없다.
+ * 상담날짜에 시각이 같이 적혀 있으면 그걸 쓰고, 날짜만 있으면
+ * 접수일시의 시각을 쓴다 — 접수일시는 이 건이 실제로 들어온 순간이다.
+ * 상담날짜와 접수일시의 날짜가 다르면(지난 건을 나중에 넣은 경우)
+ * 시각을 붙이지 않는다. 없는 시각을 지어내는 것보다 비워두는 편이 낫다.
+ */
+function whenOf(c: Row): { date: string; time: string } {
+  const raw = (c["상담날짜"] ?? "").trim().replace("T", " ");
+  const date = raw.slice(0, 10);
+  const own = raw.length > 10 ? raw.slice(11, 16) : "";
+  if (own) return { date, time: own };
+  const got = (c["접수일시"] ?? "").trim().replace("T", " ");
+  if (got.slice(0, 10) === date) return { date, time: got.slice(11, 16) };
+  return { date, time: "" };
+}
+
+/** 날짜 + 시각을 한 줄로 — 정렬에 쓰는 값이기도 하다 */
+const whenKey = (c: Row) => {
+  const w = whenOf(c);
+  return `${w.date} ${w.time || "00:00"}`;
+};
+
 /** 문의 채널 — 시트 제목 줄이 아직 방문경로일 수도 있어 둘 다 본다 */
 const chan = (c: Row) => (c["문의채널"] || c["방문경로"] || "").trim();
 /** 약속을 잡았는가 — 약속일시가 채워졌으면 잡은 것이다 */
@@ -106,7 +131,11 @@ export default function Client(p: Props) {
         if (!hay.includes(q.toLowerCase())) return false;
       }
       return true;
-    });
+    })
+    /* 날짜 + 시각으로 줄 세운다. 최근 것이 위다 —
+       시트에 들어간 순서(접수일시)로만 세우면 지난 건을 나중에 넣었을 때
+       표에 보이는 날짜와 순서가 어긋난다. */
+    .sort((a, b) => whenKey(b).localeCompare(whenKey(a)) || b.id.localeCompare(a.id));
   }, [p.items, tab, branch, q]);
 
   const thisMonth = now.slice(0, 7);
@@ -283,7 +312,7 @@ export default function Client(p: Props) {
               <tr>
                 <th>이름</th>
                 <th>연락처</th>
-                <th>상담일</th>
+                <th>상담일시</th>
                 <th>채널</th>
                 <th>담당</th>
                 <th>지점</th>
@@ -299,7 +328,10 @@ export default function Client(p: Props) {
                   <tr key={c.id} onClick={() => setDetail(c)}>
                     <td className="strong">{c["이름"]}</td>
                     <td className="num">{showPhone(c["전화번호"])}</td>
-                    <td className="num dim">{(c["상담날짜"] ?? "").slice(5)}</td>
+                    <td className="num dim">
+                      {whenOf(c).date.slice(5)}
+                      {whenOf(c).time && <span className="at">{whenOf(c).time}</span>}
+                    </td>
                     <td className="dim">{chan(c) || "-"}</td>
                     <td className="dim">{p.staffNames[c["상담자사번"]] ?? "-"}</td>
                     <td className="dim">{branchName(c["지점코드"])}</td>
@@ -362,7 +394,7 @@ function NewForm({
   onClose: () => void;
 }) {
   const [f, setF] = useState<Record<string, string>>({
-    상담날짜: today(),
+    상담날짜: nowMinute(),
     지점코드: defaultBranch,
     상담자사번: me,
     진행상태: "예약",
@@ -404,9 +436,12 @@ function NewForm({
             <input className="input" inputMode="tel" placeholder="010-0000-0000"
                    value={f["전화번호"] ?? ""} onChange={(e) => set("전화번호", e.target.value)} />
           </L>
-          <L label="상담일">
-            <input className="input" type="date" value={f["상담날짜"] ?? ""}
-                   onChange={(e) => set("상담날짜", e.target.value)} />
+          <L label="상담일시">
+            {/* 같은 날 여러 건이 들어오면 날짜만으로는 앞뒤를 알 수 없다.
+                기본값은 지금 시각이라 대개 그대로 두고 넘어가시면 된다 */}
+            <input className="input" type="datetime-local"
+                   value={(f["상담날짜"] ?? "").replace(" ", "T").slice(0, 16)}
+                   onChange={(e) => set("상담날짜", e.target.value.replace("T", " "))} />
           </L>
           <L label="지점">
             <select className="input" value={f["지점코드"] ?? ""} onChange={(e) => set("지점코드", e.target.value)}>
@@ -621,9 +656,10 @@ function Detail({
                 <input className="input" inputMode="tel" value={f["전화번호"] ?? ""}
                        onChange={(e) => setV("전화번호", e.target.value)} />
               </L>
-              <L label="상담일">
-                <input className="input" type="date" value={(f["상담날짜"] ?? "").slice(0, 10)}
-                       onChange={(e) => setV("상담날짜", e.target.value)} />
+              <L label="상담일시">
+                <input className="input" type="datetime-local"
+                       value={(f["상담날짜"] ?? "").replace(" ", "T").slice(0, 16)}
+                       onChange={(e) => setV("상담날짜", e.target.value.replace("T", " "))} />
               </L>
               <L label="담당자">
                 <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => setV("상담자사번", e.target.value)}>
@@ -670,7 +706,8 @@ function Detail({
         ) : (
         <>
         <dl className="kv">
-          <Kv k="상담일" v={korDate(item["상담날짜"])} />
+          <Kv k="상담일시"
+              v={`${korDate(whenOf(item).date)}${whenOf(item).time ? ` ${whenOf(item).time}` : ""}`} />
           <Kv k="지점" v={branchName} />
           <Kv k="문의 채널" v={chan(item)} />
           <Kv k="문의유형" v={item["문의유형"]} />

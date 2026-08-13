@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import { softDeleteMember, softDeleteMembers, listMembers } from "@/lib/members";
 
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const reach = await scopeOf(session);
 
   const ab = (await abilitiesFor(session.roleCode)).get("회원");
   if (!ab?.remove) {
@@ -20,7 +22,7 @@ export async function POST(req: Request) {
     const { items } = await listMembers();
 
     const canSee = (branch: string) =>
-      session.scope === "전체" || session.branches.includes(branch);
+      reach.all || reach.codes.includes(branch);
 
     /* 여러 명 한 번에 — 화면이 보낸 번호를 하나하나 담당 범위 안인지 본다 */
     if (Array.isArray(body.ids)) {
@@ -39,7 +41,7 @@ export async function POST(req: Request) {
     const target = items.find((m) => m.id === String(id ?? ""));
     if (!target) return NextResponse.json({ error: "해당 회원이 없습니다." }, { status: 404 });
 
-    const branchOk = session.scope === "전체" || session.branches.includes(target.지점코드);
+    const branchOk = reach.all || reach.codes.includes(target.지점코드);
     if (!branchOk) {
       return NextResponse.json({ error: "이 회원을 지울 권한이 없습니다." }, { status: 403 });
     }

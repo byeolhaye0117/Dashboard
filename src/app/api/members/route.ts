@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
+import { scopeOf } from "@/lib/scope";
 import { abilitiesFor } from "@/lib/menu";
 import { createMember, type NewTicket } from "@/lib/members";
 
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const reach = await scopeOf(session);
 
   const ab = (await abilitiesFor(session.roleCode)).get("회원");
   if (!ab?.create) {
@@ -26,7 +28,7 @@ export async function POST(req: Request) {
     if (!지점코드) return NextResponse.json({ error: "등록 지점을 골라주세요." }, { status: 400 });
 
     // 볼 수 없는 지점에 회원을 만들어 넣지 못하게 막는다
-    if (session.scope !== "전체" && !session.branches.includes(지점코드)) {
+    if (!reach.all && !reach.codes.includes(지점코드)) {
       return NextResponse.json({ error: "이 지점에 등록할 권한이 없습니다." }, { status: 403 });
     }
 

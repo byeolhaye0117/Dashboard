@@ -6,6 +6,7 @@
  */
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
+import { myBranchesOf, scopeOf } from "@/lib/scope";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getRoles } from "@/lib/data";
 import { listStaffAdmin } from "@/lib/staffAdmin";
@@ -34,17 +35,18 @@ async function body() {
     listStaffAdmin(),
   ]);
 
-  const myBranches =
-    session.scope === "전체" ? branches : branches.filter((b) => session.branches.includes(b.code));
+  /* 지점 범위는 화면을 열 때마다 다시 잰다 — 권한과 같은 규칙이다.
+     로그인할 때 굳혀 둔 쿠키만 믿으면, 범위를 좁혀도 다시 로그인할 때까지 넓다 */
+  const myBranches = await myBranchesOf(session, branches);
 
   // 담당 지점만 보는 직급이면 그 지점 사람만 보인다
+  const reach = await scopeOf(session);
   const allowed = new Set(myBranches.map((b) => b.code));
-  const visible =
-    session.scope === "전체"
-      ? items
-      : items.filter(
-          (s) => allowed.has(s.mainBranch) || s.branches.some((c) => allowed.has(c))
-        );
+  const visible = reach.all
+    ? items
+    : items.filter(
+        (s) => allowed.has(s.mainBranch) || s.branches.some((c) => allowed.has(c))
+      );
 
   return (
     <Shell session={session} menus={menus} branches={myBranches} active="직원관리" crumb="직원 관리"
