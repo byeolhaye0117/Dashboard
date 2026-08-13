@@ -4,7 +4,7 @@ import { abilitiesFor } from "@/lib/menu";
 import { getBranches } from "@/lib/data";
 import { ask, parseJson } from "@/lib/ai";
 import { saveReply, softDeleteReply, countToday, listSettings, saveSetting } from "@/lib/reviews";
-import { collectPlace } from "@/lib/place";
+import { collectPlace, writeReply, NoReplyApi } from "@/lib/place";
 import {
   LENGTHS, TONES, modelId, modelWon, DAILY_LIMIT_DEFAULT, LIMIT_MIN, LIMIT_MAX,
 } from "@/lib/reviewMeta";
@@ -220,24 +220,56 @@ export async function POST(req: Request) {
       : [];
     const modelPick = String(body.모델 ?? "빠름");
 
-    const { system, user } = buildPrompt({
-      branchName, review, stars, length, tone, keywords, ending, facts, landmarks,
-    });
+    /*
+     * 답글은 진단 서버에 맡긴다
+     *
+     * 지시문과 점검 규칙은 대표님이 계속 다듬으시는 것이다. 대시보드가 한 벌
+     * 더 갖고 있으면 그쪽을 고쳐도 여기는 옛날 답글을 계속 쓴다.
+     * 다만 그 창구가 아직 없는 동안에도 답글은 나와야 하므로,
+     * 없으면 여기서 직접 만든다.
+     */
+    let 답글 = "";
+    let 주제: string[] = [];
+    let 점검: any[] = [];
+    let 통과 = 0;
+    let 전체 = 0;
+    let 만든곳 = "진단서버";
 
-    const out = await ask({
-      model: modelId(modelPick),
-      system,
-      user,
-      maxTokens: 1200,
-      prefill: "{",
-    });
+    try {
+      const w = await writeReply({
+        review, star: stars, length, tone, keywords, closing: ending,
+        facts, landmarks, name: branchName, area: "천안",
+        tier: modelPick === "꼼꼼" ? "good" : "fast",
+      });
+      답글 = w.답글;
+      주제 = w.주제.slice(0, 6);
+      점검 = w.점검;
+      통과 = w.통과;
+      전체 = w.전체;
+    } catch (e: any) {
+      if (!(e instanceof NoReplyApi)) throw e;
 
-    const parsed = parseJson(out.text);
-    const 답글 = String(parsed?.답글 ?? "").trim();
-    if (!답글) return NextResponse.json({ error: "AI 가 답글을 만들지 못했습니다. 다시 눌러주세요." }, { status: 502 });
-    const 주제: string[] = Array.isArray(parsed?.주제)
-      ? parsed.주제.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 6)
-      : [];
+      만든곳 = "대시보드";
+      const { system, user } = buildPrompt({
+        branchName, review, stars, length, tone, keywords, ending, facts, landmarks,
+      });
+      const out = await ask({
+        model: modelId(modelPick),
+        system,
+        user,
+        maxTokens: 1200,
+        prefill: "{",
+      });
+      const parsed = parseJson(out.text);
+      답글 = String(parsed?.답글 ?? "").trim();
+      주제 = Array.isArray(parsed?.주제)
+        ? parsed.주제.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 6)
+        : [];
+    }
+
+    if (!답글) {
+      return NextResponse.json({ error: "AI 가 답글을 만들지 못했습니다. 다시 눌러주세요." }, { status: 502 });
+    }
 
     const id = await saveReply(
       {
@@ -265,6 +297,10 @@ export async function POST(req: Request) {
       limit,
       /* 얼마짜리 단추를 눌렀는지 — 어림값이다 */
       원: modelWon(modelPick),
+      점검,
+      통과,
+      전체,
+      만든곳,
       등록일시: new Date().toISOString(),
     });
   } catch (e: any) {
