@@ -12,6 +12,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
+import { today } from "@/lib/time";
 import {
   LENGTHS, TONES, ENDINGS, keywordsFor, suggestTone, MODEL_WON,
 } from "@/lib/reviewMeta";
@@ -213,9 +214,15 @@ export default function Client(p: Props) {
   const mine = useMemo(() => list.filter((r) => r.지점코드 === branch), [list, branch]);
   const madeKeys = useMemo(() => new Set(mine.map((r) => keyOf(r.리뷰내용))), [mine]);
 
-  /* 오늘 몇 번, 얼마쯤 — 얼마짜리 단추인지 모르고 누르는 것보다 낫다 */
+  /*
+   * 오늘 몇 번 — 서버와 같은 날짜로 세야 한다
+   *
+   * 여기서 세계표준시로 오늘을 잡고 있었다. 한국 시각 자정부터 아침 아홉 시
+   * 사이에는 세계표준시가 아직 어제라, 화면은 「오늘 2회」인데 서버는 3회로
+   * 세어 막는 일이 생긴다. 시각은 한 군데서만 정한다.
+   */
   const todays = useMemo(() => {
-    const day = new Date().toISOString().slice(0, 10);
+    const day = today();
     return mine.filter((r) => (r.등록일시 ?? "").startsWith(day));
   }, [mine]);
   /* 한 번에 얼마쯤 드는지 — 어림값이다 */
