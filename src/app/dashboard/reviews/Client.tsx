@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import {
-  LENGTHS, TONES, MODELS, ENDINGS, keywordsFor, suggestTone, modelWon,
+  LENGTHS, TONES, ENDINGS, keywordsFor, suggestTone, MODEL_WON,
 } from "@/lib/reviewMeta";
 
 type Named = { code: string; name: string };
@@ -89,7 +89,6 @@ export default function Client(p: Props) {
   const [star, setStar] = useState(5);
   const [len, setLen] = useState("중간");
   const [tone, setTone] = useState("정중");
-  const [model, setModel] = useState("빠름");
   const [ending, setEnding] = useState(ENDINGS[0]);
   const [picked, setPicked] = useState<string[]>([]);
   /** 화면에서 직접 더 넣은 키워드 */
@@ -205,12 +204,10 @@ export default function Client(p: Props) {
     if (picked.length < 5) setPicked([...picked, w]);
   };
 
-  /* 별점이 낮으면 말투를 먼저 「사과 중심」으로 돌려둔다 — 그대로 두면 불난 데 부채질이다.
-     같이 「좋은 것」 AI 로도 넘긴다. 말의 결을 읽어야 하는 자리라 값 차이가 값어치를 한다. */
+  /* 별점이 낮으면 말투를 먼저 「사과 중심」으로 돌려둔다 — 그대로 두면 불난 데 부채질이다 */
   const pickStar = (n: number) => {
     setStar(n);
     setTone(suggestTone(n));
-    if (n <= 2) setModel("꼼꼼");
   };
 
   const mine = useMemo(() => list.filter((r) => r.지점코드 === branch), [list, branch]);
@@ -221,10 +218,8 @@ export default function Client(p: Props) {
     const day = new Date().toISOString().slice(0, 10);
     return mine.filter((r) => (r.등록일시 ?? "").startsWith(day));
   }, [mine]);
-  const wonToday = useMemo(
-    () => todays.reduce((s, r) => s + modelWon(r.모델 || "빠름"), 0),
-    [todays]
-  );
+  /* 한 번에 얼마쯤 드는지 — 어림값이다 */
+  const wonToday = todays.length * MODEL_WON;
 
   const nameOf = useMemo(() => new Map(p.people.map((x) => [x.id, x.name])), [p.people]);
   const left = Math.max(0, limit - todays.length);
@@ -288,7 +283,6 @@ export default function Client(p: Props) {
           말투: tone,
           키워드: picked,
           끝인사: ending,
-          모델: model,
           사실: facts,
           근처: near,
         }),
@@ -304,7 +298,7 @@ export default function Client(p: Props) {
         {
           id: json.id, 지점코드: branch, 별점: star, 리뷰내용: review,
           주제: json.주제 ?? [], 답글: json.답글, 키워드: picked,
-          말투: tone, 길이: len, 모델: model,
+          말투: tone, 길이: len, 모델: "기본",
           등록일시: json.등록일시 ?? new Date().toISOString(), 등록자: p.me,
         },
         ...cur,
@@ -477,31 +471,6 @@ export default function Client(p: Props) {
             <input className="input" style={{ marginTop: 8 }} value={ending}
                    placeholder="끝인사를 직접 쓰셔도 됩니다"
                    onChange={(e) => setEnding(e.target.value)} />
-
-            <p className="csec">AI</p>
-            <div className="pick-row" style={{ flexWrap: "wrap" }}>
-              {MODELS.map((x) => (
-                <button key={x.v} type="button"
-                        className={`pickone${model === x.v ? " on" : ""}`}
-                        onClick={() => setModel(x.v)}>
-                  <span className="nm">{x.label}</span>
-                  <span className="dim">{x.hint} · 약 {x.won}원</span>
-                </button>
-              ))}
-            </div>
-            <p className="stat-note">
-              <b>불만 리뷰(별 1~2개)나 비꼬는 리뷰는 「좋은 것」을 쓰세요.</b> 말의 결을 읽어야 하는
-              자리라 값 차이가 값어치를 합니다. 칭찬 리뷰는 「기본」으로 충분합니다.
-              금액은 어림값이니 몇 번 써 보시고 콘솔 잔액으로 확인해 주세요.
-            </p>
-
-            {facts.length > 0 && (
-              <p className="stat-note">
-                이 지점에서 확인된 사실 <b>{facts.length}가지</b>를 답글 재료로 씁니다 —{" "}
-                {facts.slice(0, 3).join(" · ")}
-                {facts.length > 3 && " …"}
-              </p>
-            )}
 
             {msg && <div className="alert-bad" style={{ marginTop: 12 }}>{msg}</div>}
             {ok && <div className="alert-soft" style={{ marginTop: 12 }}>{ok}</div>}

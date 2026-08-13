@@ -143,7 +143,6 @@ export async function POST(req: Request) {
     const landmarks: string[] = Array.isArray(body.근처)
       ? body.근처.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 4)
       : [];
-    const modelPick = String(body.모델 ?? "빠름");
 
     /*
      * 재료 없이 쓰면 지어낸다
@@ -176,7 +175,8 @@ export async function POST(req: Request) {
     const w = await writeReply({
       review, star: stars, length, tone, keywords, closing: ending,
       facts, landmarks, name: branchName, area: "천안",
-      tier: modelPick === "꼼꼼" ? "good" : "fast",
+      /* 늘 싼 쪽으로 쓴다 — 고르는 칸을 없앴다 */
+      tier: "fast",
       placeId: (setting?.플레이스ID ?? "").trim(),
     });
     const 답글 = w.답글;
@@ -192,7 +192,7 @@ export async function POST(req: Request) {
     const id = await saveReply(
       {
         지점코드: branch, 별점: stars, 리뷰내용: review, 주제, 답글,
-        키워드: keywords, 말투: tone, 길이: length, 끝인사: ending, 모델: modelPick,
+        키워드: keywords, 말투: tone, 길이: length, 끝인사: ending, 모델: "기본",
       },
       session.staffId
     );
@@ -214,7 +214,7 @@ export async function POST(req: Request) {
       used: used + 1,
       limit,
       /* 얼마짜리 단추를 눌렀는지 — 어림값이다 */
-      원: modelWon(modelPick),
+      원: modelWon(),
       점검,
       통과,
       전체,

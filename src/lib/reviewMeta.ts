@@ -66,35 +66,25 @@ export function suggestTone(stars: number): string {
 }
 
 /**
- * AI 고르기
+ * 답글을 쓰는 AI
  *
- * 금액은 어림잡은 값이다. 실제 요금표는 바뀔 수 있으니 여기 숫자를 믿지 말고
- * 몇 번 써 보신 뒤 콘솔 잔액으로 확인하시는 편이 정확하다.
- * 그래도 적어 두는 이유는, 얼마짜리 단추인지 모르고 누르는 것보다는 낫기 때문이다.
+ * 한때 「기본(약 10원)」과 「좋은 것(약 50원)」을 고르게 했다. 대표님이
+ * 늘 10원짜리로 쓰겠다고 하셔서 고르는 칸을 없앴다. 고를 것이 하나뿐인
+ * 단추는 자리만 차지하고, 잘못 눌러 다섯 배를 쓰는 길만 남긴다.
+ *
+ * 다시 나누실 일이 생기면 여기에 한 줄 더하고 화면에 고르는 칸을 되살리면 된다.
  */
-export const MODELS = [
-  {
-    v: "빠름",
-    label: "기본",
-    hint: "빠르고 쌈 · 칭찬 리뷰엔 이걸로",
-    id: "claude-haiku-4-5-20251001",
-    won: 10,
-  },
-  {
-    v: "꼼꼼",
-    label: "좋은 것",
-    hint: "말의 결을 읽음 · 불만·비꼬는 리뷰에",
-    id: "claude-sonnet-5",
-    won: 50,
-  },
-];
+export const MODEL_ID = "claude-haiku-4-5-20251001";
 
-export function modelId(v: string): string {
-  return MODELS.find((m) => m.v === v)?.id ?? MODELS[0].id;
+/** 한 번 부르는 데 드는 값 — 어림값이다 */
+export const MODEL_WON = 10;
+
+export function modelId(_v?: string): string {
+  return MODEL_ID;
 }
 
-export function modelWon(v: string): number {
-  return MODELS.find((m) => m.v === v)?.won ?? MODELS[0].won;
+export function modelWon(_v?: string): number {
+  return MODEL_WON;
 }
 
 /**
