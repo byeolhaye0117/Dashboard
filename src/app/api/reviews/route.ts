@@ -2,14 +2,17 @@ import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import { getBranches } from "@/lib/data";
-import { saveReply, softDeleteReply, countToday, listSettings, saveSetting } from "@/lib/reviews";
+import {
+  saveReply, softDeleteReply, countToday, listSettings, saveSetting,
+  type ReviewSetting,
+} from "@/lib/reviews";
 import { collectPlace, writeReply, NoReplyApi, type Collected } from "@/lib/place";
 import { ask } from "@/lib/ai";
 import {
   buildReplyPrompt, parseReply, auditReply, replySafe, replyFacts, promptFacts,
 } from "@/lib/replyCore";
 import {
-  modelId, modelWon, DAILY_LIMIT_DEFAULT, LIMIT_MIN, LIMIT_MAX,
+  modelId, modelWon, DAILY_LIMIT_DEFAULT, LIMIT_MIN, LIMIT_MAX, OWN_MAX,
 } from "@/lib/reviewMeta";
 
 export const dynamic = "force-dynamic";
@@ -32,16 +35,25 @@ export const maxDuration = 120;
  * 현재 소개글이 그것이다. 그 칸들은 그 화면의 브라우저에 저장되어 있어서
  * 대시보드가 볼 수 없다. 비워서 넘기면 저쪽 함수가 알아서 빼고 만든다.
  */
-function 재료만들기(got: Collected, 지점이름: string, keywords: string[]) {
+function 재료만들기(
+  got: Collected,
+  지점이름: string,
+  keywords: string[],
+  설정?: ReviewSetting
+) {
   const 상호 = got.name || 지점이름;
   const o = {
-    name: 상호, area: "천안", type: "헬스장",
-    keywords, fac: [], repkw: [], intro: "", price: "", edge: "",
+    name: 상호, area: "천안", type: "헬스장", keywords, repkw: [], intro: "",
+    /* 네이버가 모르는 것들. 리뷰 화면의 「우리 지점만 아는 것」에서 온다 */
+    fac: 설정?.시설 ?? [],
+    price: 설정?.가격 ?? "",
+    edge: 설정?.차별점 ?? "",
   };
+  const own = 설정?.우리만아는사실 ?? [];
   return {
     상호,
-    사실: replyFacts(o, got.raw, []) as string[],
-    머리글: promptFacts("reply", o, got.raw, {}) as string,
+    사실: replyFacts(o, got.raw, own) as string[],
+    머리글: promptFacts("reply", o, got.raw, { own }) as string,
   };
 }
 
@@ -88,6 +100,20 @@ export async function POST(req: Request) {
         patch.키워드 = body.키워드.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 5);
       }
       if (body.끝인사 !== undefined) patch.끝인사 = String(body.끝인사 ?? "");
+      if (Array.isArray(body.시설)) {
+        patch.시설 = body.시설.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 20);
+      }
+      if (body.가격 !== undefined) patch.가격 = String(body.가격 ?? "").slice(0, 40);
+      if (body.차별점 !== undefined) patch.차별점 = String(body.차별점 ?? "").slice(0, 200);
+      if (body.우리만아는사실 !== undefined) {
+        /* 줄 단위로 적는 칸이다. 두 글자 아래는 무슨 말인지 몰라 뺀다 —
+           원본(ownFacts)이 그렇게 자른다 */
+        patch.우리만아는사실 = String(body.우리만아는사실 ?? "")
+          .split(/\n+/)
+          .map((x: string) => x.replace(/^\s*[-·*+]\s*/, "").trim())
+          .filter((x: string) => x.length >= 2)
+          .slice(0, OWN_MAX);
+      }
       if (body.하루한도 !== undefined) {
         const n = Math.floor(Number(body.하루한도));
         if (!Number.isFinite(n) || n < LIMIT_MIN || n > LIMIT_MAX) {
@@ -117,7 +143,9 @@ export async function POST(req: Request) {
       }
       const got = await collectPlace(placeId);
       const bs = await getBranches();
-      const 재료 = 재료만들기(got, bs.find((b) => b.code === branch)?.name ?? branch, setting?.키워드 ?? []);
+      const 재료 = 재료만들기(
+        got, bs.find((b) => b.code === branch)?.name ?? branch, setting?.키워드 ?? [], setting
+      );
       return NextResponse.json({
         ok: true,
         placeId: got.placeId,
@@ -203,7 +231,7 @@ export async function POST(req: Request) {
     if (facts.length === 0 && (setting?.플레이스ID ?? "").trim()) {
       try {
         const got = await collectPlace(setting!.플레이스ID);
-        const 재료 = 재료만들기(got, branchName, keywords);
+        const 재료 = 재료만들기(got, branchName, keywords, setting);
         facts.push(...재료.사실);
         landmarks.push(...got.landmarks);
         head = 재료.머리글;
