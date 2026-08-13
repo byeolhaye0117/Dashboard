@@ -30,6 +30,14 @@ export type Collected = {
   landmarks: string[];
   /** 사장님이 올린 소식 제목 */
   feeds: string[];
+  /**
+   * 긁어온 것 통째로
+   *
+   * 답글 재료를 만드는 일은 플레이스 홈페이지 쪽 함수(replyFacts·promptFacts)가
+   * 한다. 그 함수가 이 모양 그대로를 받는다 — 여기서 미리 골라 내면
+   * 그때부터 재료가 달라지고, 같은 지시문인데 다른 답글이 나온다.
+   */
+  raw: { data: any; material: any };
 };
 
 function base(): string {
@@ -154,6 +162,7 @@ export async function collectPlace(placeId: string): Promise<Collected> {
       .map((f: any) => String(f?.title ?? "").trim())
       .filter(Boolean)
       .slice(0, 3),
+    raw: { data: json?.data ?? {}, material: m },
   };
 }
 
@@ -200,6 +209,8 @@ export async function writeReply(input: {
   name: string;
   area: string;
   tier: string;
+  /** 지시문 맨 앞에 붙는 가게 소개 — 화면과 같은 함수로 만든 것 */
+  head?: string;
   /** 재료가 비면 서버가 이걸로 직접 긁어온다 */
   placeId?: string;
 }): Promise<Written> {

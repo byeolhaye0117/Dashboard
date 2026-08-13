@@ -103,6 +103,9 @@ export default function Client(p: Props) {
   /* 네이버에 걸린 진짜 상호. 답글 첫 문장이 「안녕하세요 OOO입니다.」라서
      이 이름이 곧 인사말이 된다 — 「쌍용점」으로 인사하면 손님이 모르는 이름이다 */
   const [realName, setRealName] = useState("");
+  /* 지시문 맨 앞에 붙는 가게 소개. 「불러오기」가 만들어 주고 화면이 들고 있다가
+     답글 만들 때 되돌려준다 — 답글 하나 만들 때마다 다시 긁으면 느리다 */
+  const [head, setHead] = useState("");
   const [pulling, setPulling] = useState(false);
   /* 저장 결과는 누른 단추 바로 옆에 보여야 한다 — 반대편 기둥에 띄우면 못 본다 */
   const [saving, setSaving] = useState(false);
@@ -153,6 +156,7 @@ export default function Client(p: Props) {
     setOpen(null);
     setFacts([]);
     setRealName("");
+    setHead("");
     setNear([]);
     setOut(null);
     setMsg("");
@@ -261,6 +265,7 @@ export default function Client(p: Props) {
       setOpen(json.openReviews ?? []);
       setFacts(json.facts ?? []);
       setRealName(String(json.상호 ?? ""));
+      setHead(String(json.머리글 ?? ""));
       setNear(json.landmarks ?? []);
       setNote({
         bad: false,
@@ -306,6 +311,7 @@ export default function Client(p: Props) {
           키워드: picked,
           끝인사: ending,
           상호: realName,
+          머리글: head,
           사실: facts,
           근처: near,
         }),

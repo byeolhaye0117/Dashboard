@@ -3,9 +3,11 @@ import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import { getBranches } from "@/lib/data";
 import { saveReply, softDeleteReply, countToday, listSettings, saveSetting } from "@/lib/reviews";
-import { collectPlace, writeReply, NoReplyApi } from "@/lib/place";
+import { collectPlace, writeReply, NoReplyApi, type Collected } from "@/lib/place";
 import { ask } from "@/lib/ai";
-import { buildReplyPrompt, parseReply, auditReply, replySafe } from "@/lib/replyCore";
+import {
+  buildReplyPrompt, parseReply, auditReply, replySafe, replyFacts, promptFacts,
+} from "@/lib/replyCore";
 import {
   modelId, modelWon, DAILY_LIMIT_DEFAULT, LIMIT_MIN, LIMIT_MAX,
 } from "@/lib/reviewMeta";
@@ -13,6 +15,35 @@ import {
 export const dynamic = "force-dynamic";
 /* AI 가 답을 쓰는 데도, 네이버에서 리뷰를 긁어오는 데도 시간이 걸린다 */
 export const maxDuration = 120;
+
+
+/**
+ * 답글 재료를 플레이스 홈페이지와 똑같이 만든다
+ *
+ * 지시문을 한 파일로 합치고 나서도 답글이 원조와 달랐다. 이유는 재료였다 —
+ * 같은 지시문에 다른 재료를 넣으면 다른 답글이 나온다. 대시보드는 메뉴 이름
+ * 몇 줄만 넣고 있었고, 원조는 지하철·버스·블로그 후기·손님이 자주 쓰는 말·
+ * 소식·운영 연차까지 넣고 있었다.
+ *
+ * 그래서 고르는 일을 여기서 하지 않는다. 긁어온 것을 그대로 저쪽 함수에 넘긴다.
+ *
+ * 다만 브라우저에만 있는 값 몇 개는 여기서 채울 수 없다 — 진단 화면에서
+ * 손으로 체크하신 보유 시설, 1개월 이용권 가격, 「우리만 아는 사실」 칸,
+ * 현재 소개글이 그것이다. 그 칸들은 그 화면의 브라우저에 저장되어 있어서
+ * 대시보드가 볼 수 없다. 비워서 넘기면 저쪽 함수가 알아서 빼고 만든다.
+ */
+function 재료만들기(got: Collected, 지점이름: string, keywords: string[]) {
+  const 상호 = got.name || 지점이름;
+  const o = {
+    name: 상호, area: "천안", type: "헬스장",
+    keywords, fac: [], repkw: [], intro: "", price: "", edge: "",
+  };
+  return {
+    상호,
+    사실: replyFacts(o, got.raw, []) as string[],
+    머리글: promptFacts("reply", o, got.raw, {}) as string,
+  };
+}
 
 export async function POST(req: Request) {
   const session = await readSession();
@@ -85,15 +116,19 @@ export async function POST(req: Request) {
         );
       }
       const got = await collectPlace(placeId);
+      const bs = await getBranches();
+      const 재료 = 재료만들기(got, bs.find((b) => b.code === branch)?.name ?? branch, setting?.키워드 ?? []);
       return NextResponse.json({
         ok: true,
         placeId: got.placeId,
         /* 답글 첫 문장이 「안녕하세요 OOO입니다.」다. 그 OOO 는 우리끼리 부르는
            「쌍용점」이 아니라 네이버에 걸린 상호여야 한다. 여기서 같이 넘겨
            화면이 들고 있다가 답글 만들 때 되돌려준다 — 그때 또 긁으면 느리다. */
-        상호: got.name,
+        상호: 재료.상호,
         openReviews: got.openReviews,
-        facts: got.facts,
+        facts: 재료.사실,
+        /* 지시문 맨 앞에 붙는 가게 소개. 화면이 들고 있다가 되돌려준다 */
+        머리글: 재료.머리글,
         landmarks: got.landmarks,
         feeds: got.feeds,
       });
@@ -149,11 +184,14 @@ export async function POST(req: Request) {
     /* 수집한 사실은 화면이 들고 있다가 같이 보낸다 — 답글 하나 만들 때마다
        네이버를 다시 긁으면 느리고, 긁는 쪽이 막힐 이유만 늘어난다 */
     const facts: string[] = Array.isArray(body.사실)
-      ? body.사실.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 12)
+      /* 스물여덟 개까지다 — 원본이 그렇게 자른다. 여기서 열두 개로 줄여 놨더니
+         지하철·버스·연차가 잘려 나가 같은 지시문인데 답글이 얇아졌다 */
+      ? body.사실.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 28)
       : [];
     const landmarks: string[] = Array.isArray(body.근처)
       ? body.근처.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 4)
       : [];
+    let head = String(body.머리글 ?? "").trim();
 
     /*
      * 재료 없이 쓰면 지어낸다
@@ -165,9 +203,11 @@ export async function POST(req: Request) {
     if (facts.length === 0 && (setting?.플레이스ID ?? "").trim()) {
       try {
         const got = await collectPlace(setting!.플레이스ID);
-        facts.push(...got.facts);
+        const 재료 = 재료만들기(got, branchName, keywords);
+        facts.push(...재료.사실);
         landmarks.push(...got.landmarks);
-        if (got.name) branchName = got.name;
+        head = 재료.머리글;
+        branchName = 재료.상호;
       } catch {
         /* 못 가져와도 답글은 만든다. 대신 지시문이 「사실이 없다」 쪽으로 간다 */
       }
@@ -195,7 +235,7 @@ export async function POST(req: Request) {
     try {
       const w = await writeReply({
         review, star: stars, length, tone, keywords, closing: ending,
-        facts, landmarks, name: branchName, area: "천안",
+        facts, landmarks, name: branchName, area: "천안", head,
         /* 늘 싼 쪽으로 쓴다 — 고르는 칸을 없앴다 */
         tier: "fast",
         placeId: (setting?.플레이스ID ?? "").trim(),
@@ -212,7 +252,7 @@ export async function POST(req: Request) {
       사본 = true;
       const prompt = buildReplyPrompt({
         name: branchName, area: "천안", review, star: stars,
-        length, keywords, facts, landmarks, closing: ending,
+        length, keywords, facts, landmarks, closing: ending, head,
       });
       /* 지시문이 「답글 하나만, 머리말 없이」라고 시킨다 — JSON 을 강요하면
          문단 나눔과 이모지 자리가 흐트러진다. 그래서 앞글자를 박지 않는다. */
