@@ -58,6 +58,7 @@ export async function POST(req: Request) {
         성별: String(b.성별 ?? ""),
         나이대: String(b.나이대 ?? ""),
         거주동네: String(b.거주동네 ?? ""),
+        직업: String(b.직업 ?? "").slice(0, 60),
         지점코드,
         가입일: String(b.가입일 ?? ""),
         담당직원사번: String(b.담당직원사번 ?? ""),

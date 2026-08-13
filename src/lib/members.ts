@@ -35,6 +35,8 @@ const M_COLS: ColumnSpec = {
   성별: { names: [] },
   나이대: { names: ["연령대", "나이"] },
   거주동네: { names: ["거주지역", "거주지", "동네"] },
+  /* 뒤늦게 생긴 칸이다. 없으면 저장할 때 스스로 만든다 */
+  직업: { names: ["하는 일", "업종"] },
   지점코드: { names: ["소속지점", "등록지점", "지점"], required: true },
   가입일: { names: ["최초등록일", "등록일", "가입일자"], required: true },
   담당직원사번: { names: ["담당트레이너사번", "담당직원", "담당트레이너", "담당사번"] },
@@ -152,6 +154,7 @@ export type Member = {
   성별: string;
   나이대: string;
   거주동네: string;
+  직업: string;
   지점코드: string;
   가입일: string;
   담당직원사번: string;
@@ -229,6 +232,7 @@ export async function listMembers(): Promise<{
       성별: get(r, cols, "성별"),
       나이대: get(r, cols, "나이대"),
       거주동네: get(r, cols, "거주동네"),
+      직업: get(r, cols, "직업"),
       지점코드: get(r, cols, "지점코드"),
       가입일: get(r, cols, "가입일"),
       담당직원사번: get(r, cols, "담당직원사번"),
@@ -374,6 +378,7 @@ export type NewMember = {
   성별?: string;
   나이대?: string;
   거주동네?: string;
+  직업?: string;
   지점코드: string;
   가입일: string;
   담당직원사번?: string;
@@ -585,6 +590,9 @@ async function writePurchase(
 export async function createMember(input: NewMember, staffId: string): Promise<string> {
   const stamp = now();
 
+  /* 뒤늦게 생긴 칸들. 없는 칸에 적으면 조용히 사라진다 */
+  await addColumns(SHEET_M, ["직업", "상담번호"]);
+
   const m = await readSheet(SHEET_M);
   const mCols = resolve(SHEET_M, m.headers, M_COLS);
   const memberId = nextId(m.rows.map((r) => get(r, mCols, "회원번호")), "M", 5);
@@ -600,6 +608,7 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
         성별: input.성별 ?? "",
         나이대: input.나이대 ?? "",
         거주동네: input.거주동네 ?? "",
+        직업: input.직업 ?? "",
         지점코드: input.지점코드,
         가입일: input.가입일 || today(),
         담당직원사번: input.담당직원사번 ?? "",
@@ -657,6 +666,8 @@ export async function patchMember(
   changes: Partial<Record<string, string>>,
   staffId: string
 ): Promise<void> {
+  if (changes["직업"] !== undefined) await addColumns(SHEET_M, ["직업"]);
+
   const { headers, rows, rowNumbers } = await readSheet(SHEET_M);
   const cols = resolve(SHEET_M, headers, M_COLS);
   const i = rows.findIndex((r) => get(r, cols, "회원번호") === id);
@@ -1252,7 +1263,7 @@ export async function enrollFromConsultation(
 
   /* 「상담번호」 칸이 없는 시트면 어디서 온 사람인지 자국이 안 남는다.
      그러면 등록을 되돌렸을 때 어느 회원을 내려야 할지 알 수가 없다 */
-  await addColumns(SHEET_M, ["상담번호"]);
+  await addColumns(SHEET_M, ["상담번호", "직업"]);
 
   const m = await readSheet(SHEET_M);
   const mCols = resolve(SHEET_M, m.headers, M_COLS);
@@ -1285,6 +1296,7 @@ export async function enrollFromConsultation(
         성별: c.성별 ?? "",
         나이대: c.나이대 ?? "",
         거주동네: "",
+        직업: "",
         지점코드: c.지점코드,
         가입일: today(),
         담당직원사번: c.담당직원사번 ?? "",

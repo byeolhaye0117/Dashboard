@@ -18,6 +18,7 @@ type Member = {
   성별: string;
   나이대: string;
   거주동네: string;
+  직업: string;
   지점코드: string;
   가입일: string;
   담당직원사번: string;
@@ -257,7 +258,7 @@ export default function Client(p: Props) {
     return scoped.filter((m) => {
       if (tab !== "전체" && stateOf(m) !== tab) return false;
       if (q) {
-        const hay = `${m.이름} ${m.전화번호} ${m.거주동네}`.toLowerCase();
+        const hay = `${m.이름} ${m.전화번호} ${m.거주동네} ${m.직업}`.toLowerCase();
         if (!hay.includes(q.toLowerCase())) return false;
       }
       return true;
@@ -1275,6 +1276,8 @@ function NewForm({
           <Sel label="성별" k="성별" f={f} set={set} opts={options["성별"]} />
           <Sel label="나이대" k="나이대" f={f} set={set} opts={options["나이대"]} />
           <Sel label="거주 동네" k="거주동네" f={f} set={set} opts={options["거주동네"]} />
+          <Free label="직업" k="직업" f={f} set={set} opts={options["직업"]}
+                placeholder="예) 간호사 · 3교대 근무" />
           <L label="등록 지점">
             <select className="input" value={f["지점코드"] ?? ""} onChange={(e) => set("지점코드", e.target.value)}>
               {branches.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
@@ -1445,7 +1448,7 @@ function Detail({
         id: item.id,
         changes: {
           이름: f["이름"], 전화번호: f["전화번호"], 성별: f["성별"], 나이대: f["나이대"],
-          거주동네: f["거주동네"], 담당직원사번: f["담당직원사번"],
+          거주동네: f["거주동네"], 직업: f["직업"], 담당직원사번: f["담당직원사번"],
           회원상태: f["회원상태"], 가입일: f["가입일"], 메모: f["메모"],
         },
       }),
@@ -1491,6 +1494,8 @@ function Detail({
               <Sel label="성별" k="성별" f={f} set={setV} opts={options["성별"]} />
               <Sel label="나이대" k="나이대" f={f} set={setV} opts={options["나이대"]} />
               <Sel label="거주 동네" k="거주동네" f={f} set={setV} opts={options["거주동네"]} />
+              <Free label="직업" k="직업" f={f} set={setV} opts={options["직업"]}
+                    placeholder="예) 간호사 · 3교대 근무" />
               <L label="담당 트레이너">
                 <select className="input" value={f["담당직원사번"] ?? ""}
                         onChange={(e) => setV("담당직원사번", e.target.value)}>
@@ -1578,6 +1583,7 @@ function Detail({
                 <dl className="kv tight">
                   <Kv k="연락처" v={showPhone(item.전화번호)} />
                   <Kv k="성별 · 나이" v={[item.성별, item.나이대].filter(Boolean).join(" · ")} />
+                  <Kv k="직업" v={item.직업} />
                   <Kv k="거주 동네" v={item.거주동네} />
                   <Kv k="등록 지점" v={branchName} />
                   <Kv k="담당 트레이너" v={staffNames[item.담당직원사번]} />
@@ -2808,6 +2814,29 @@ function L({ label, children, req, full }: {
       <label>{label}{req && <span className="req">*</span>}</label>
       {children}
     </div>
+  );
+}
+
+/**
+ * 고르기도 되고 직접 쓰기도 되는 칸
+ *
+ * 직업 같은 것은 목록을 미리 다 적어 둘 수가 없다. 그렇다고 늘 손으로 치면
+ * 「회사원」과 「직장인」이 섞여 나중에 세지지가 않는다.
+ * 그래서 「선택목록」 탭에 적어 두신 것은 밑에 뜨고, 없는 것은 그냥 치면 된다.
+ */
+function Free({ label, k, f, set, opts, placeholder }: {
+  label: string; k: string; f: Record<string, string>;
+  set: (k: string, v: string) => void; opts?: string[]; placeholder?: string;
+}) {
+  const listId = `opt-${k}`;
+  return (
+    <L label={label}>
+      <input className="input" value={f[k] ?? ""} list={listId} placeholder={placeholder}
+             onChange={(e) => set(k, e.target.value)} />
+      <datalist id={listId}>
+        {(opts ?? []).map((o) => <option key={o} value={o} />)}
+      </datalist>
+    </L>
   );
 }
 
