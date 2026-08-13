@@ -482,7 +482,20 @@ export default function Client(p: Props) {
             {msg && <div className="alert-bad" style={{ marginTop: 12 }}>{msg}</div>}
             {ok && <div className="alert-soft" style={{ marginTop: 12 }}>{ok}</div>}
 
-            <button type="button" className="btn-dark" style={{ width: "100%", marginTop: 14 }}
+            {/* 몇 개 남았는지는 누르기 직전에 보여야 한다.
+                카드 맨 위에만 두면 휴대폰에서는 스크롤에 묻혀 안 보인다 */}
+            <p className={`left-line${left === 0 ? " out" : ""}`}>
+              {left > 0 ? (
+                <>
+                  오늘 <b>{todays.length}/{limit}회</b> 썼습니다 · <b>{left}개</b> 더 만들 수 있어요
+                  {wonToday > 0 && ` · 약 ${wonToday.toLocaleString("ko-KR")}원`}
+                </>
+              ) : (
+                <>오늘 몫 <b>{limit}개</b>를 다 썼습니다 · 내일 다시 쓸 수 있어요</>
+              )}
+            </p>
+
+            <button type="button" className="btn-dark" style={{ width: "100%", marginTop: 8 }}
                     disabled={busy || !p.can.create || !p.hasKey || !branch || left === 0}
                     onClick={make}>
               {busy
