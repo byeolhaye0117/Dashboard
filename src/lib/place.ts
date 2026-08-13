@@ -140,3 +140,77 @@ export async function collectPlace(placeId: string): Promise<Collected> {
       .slice(0, 3),
   };
 }
+
+
+/* ── 답글 만들기를 진단 서버에 맡긴다 ────────────────────────
+ *
+ * 답글을 어떻게 쓸지(지시문)와 잘 썼는지(점검)는 대표님이 계속 다듬으시는
+ * 규칙이다. 대시보드가 그 규칙을 한 벌 더 갖고 있으면, 그쪽을 고쳐도
+ * 대시보드는 옛날 답글을 계속 쓴다. 그래서 서버에 물어본다.
+ *
+ * 다만 서버에 아직 그 창구가 없을 수 있다(배포 전). 그때는 없다고 알려주고,
+ * 부르는 쪽이 원래 방식으로 되돌아간다 — 창구가 생기기 전이라고 해서
+ * 답글을 못 만들면 안 된다.
+ * ────────────────────────────────────────────────────────── */
+
+export type Judged = { t: string; ok: boolean; note?: string };
+
+export type Written = {
+  답글: string;
+  주제: string[];
+  점검: Judged[];
+  통과: number;
+  전체: number;
+};
+
+/** 서버에 아직 「답글」 창구가 없을 때 */
+export class NoReplyApi extends Error {}
+
+export async function writeReply(input: {
+  review: string;
+  star: number;
+  length: string;
+  tone: string;
+  keywords: string[];
+  closing: string;
+  facts: string[];
+  landmarks: string[];
+  name: string;
+  area: string;
+  tier: string;
+}): Promise<Written> {
+  const key = (process.env.PLACE_API_KEY ?? "").trim();
+  if (!key) throw new NoReplyApi("진단 서버 열쇠가 없습니다.");
+
+  let res: Response;
+  try {
+    res = await fetch(`${base()}/api/reply`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-access-key": key },
+      body: JSON.stringify(input),
+      cache: "no-store",
+      signal: AbortSignal.timeout(90_000),
+    });
+  } catch (e: any) {
+    throw new NoReplyApi(String(e?.message ?? e));
+  }
+
+  /* 창구가 아직 없으면 404 가 온다. 이건 고장이 아니라 "아직 안 올렸다"이다 */
+  if (res.status === 404) throw new NoReplyApi("아직 /api/reply 창구가 없습니다.");
+
+  const json: any = await res.json().catch(() => null);
+  if (!json) throw new NoReplyApi("응답을 읽지 못했습니다.");
+
+  if (!res.ok || json.ok === false) {
+    /* 여기서부터는 진짜 오류다 — 되돌아가지 않고 이유를 그대로 전한다 */
+    throw new Error(String(json?.error ?? `진단 서버가 막았습니다. (${res.status})`));
+  }
+
+  return {
+    답글: String(json.reply ?? "").trim(),
+    주제: Array.isArray(json.topics) ? json.topics.map((x: any) => String(x)) : [],
+    점검: Array.isArray(json.audit) ? json.audit : [],
+    통과: Number(json.passed) || 0,
+    전체: Number(json.total) || 0,
+  };
+}

@@ -110,7 +110,11 @@ export default function Client(p: Props) {
   const [limit, setLimit] = useState(p.limit);
 
   const [list, setList] = useState<Reply[]>(p.replies);
-  const [out, setOut] = useState<{ 주제: string[]; 답글: string } | null>(null);
+  const [out, setOut] = useState<{
+    주제: string[]; 답글: string;
+    점검?: { t: string; ok: boolean; note?: string }[];
+    통과?: number; 전체?: number;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [ok, setOk] = useState("");
@@ -289,7 +293,10 @@ export default function Client(p: Props) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "답글을 만들지 못했습니다.");
 
-      setOut({ 주제: json.주제 ?? [], 답글: json.답글 });
+      setOut({
+        주제: json.주제 ?? [], 답글: json.답글,
+        점검: json.점검 ?? [], 통과: json.통과 ?? 0, 전체: json.전체 ?? 0,
+      });
       setList((cur) => [
         {
           id: json.id, 지점코드: branch, 별점: star, 리뷰내용: review,
@@ -525,6 +532,24 @@ export default function Client(p: Props) {
                 </div>
               )}
               <div className="quote" style={{ margin: 0 }}>{out.답글}</div>
+
+              {/* 만들어만 주고 「잘 됐나 보세요」 하는 것과, 무엇이 빠졌는지
+                  짚어 주는 것은 다르다. 진단 서버가 잰 결과를 그대로 보여준다 */}
+              {out.전체 ? (
+                <div className="csec" style={{ marginTop: 12 }}>
+                  답글 점검
+                  <span className={out.통과 === out.전체 ? "pill good" : "pill warn"}>
+                    {out.통과} / {out.전체}
+                  </span>
+                </div>
+              ) : null}
+              {out.점검?.filter((r) => !r.ok).map((r) => (
+                <p key={r.t} className="stat-note" style={{ margin: "2px 0 0" }}>
+                  ○ {r.t}
+                  {r.note ? ` — ${r.note}` : ""}
+                </p>
+              ))}
+
               <div className="who-acts" style={{ marginTop: 12 }}>
                 <button type="button" className="btn-dark" onClick={() => doCopy(out.답글, "out")}>
                   <Icon name="clipboard" size={15} /> {copyLabel("out")}
