@@ -100,6 +100,9 @@ export default function Client(p: Props) {
   const [facts, setFacts] = useState<string[]>([]);
   const [near, setNear] = useState<string[]>([]);
   const [pulling, setPulling] = useState(false);
+  /* 저장 결과는 누른 단추 바로 옆에 보여야 한다 — 반대편 기둥에 띄우면 못 본다 */
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState<{ bad: boolean; text: string } | null>(null);
 
   const [list, setList] = useState<Reply[]>(p.replies);
   const [out, setOut] = useState<{ 주제: string[]; 답글: string } | null>(null);
@@ -135,6 +138,7 @@ export default function Client(p: Props) {
     setNear([]);
     setOut(null);
     setMsg("");
+    setNote(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch]);
 
@@ -146,16 +150,21 @@ export default function Client(p: Props) {
    * 저장한다(그때가 "실제로 쓴 값"이 정해지는 순간이다). 여기서는 플레이스 주소처럼
    * 사람이 「저장」을 눌렀을 때만 쓴다.
    */
-  async function keep(patch: any) {
-    if (!p.can.update && !p.can.create) return;
+  async function keep(patch: any): Promise<{ ok: boolean; error: string }> {
+    if (!p.can.update && !p.can.create) {
+      return { ok: false, error: "설정을 바꿀 권한이 없는 계정입니다." };
+    }
     try {
-      await fetch("/api/reviews", {
+      const res = await fetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "settings", 지점코드: branch, ...patch }),
       });
-    } catch {
-      /* 저장이 안 돼도 지금 만드는 답글은 그대로 만들 수 있어야 한다 */
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: json.error ?? "저장하지 못했습니다." };
+      return { ok: true, error: "" };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? e) };
     }
   }
 
@@ -220,13 +229,14 @@ export default function Client(p: Props) {
       setOpen(json.openReviews ?? []);
       setFacts(json.facts ?? []);
       setNear(json.landmarks ?? []);
-      setOk(
-        (json.openReviews ?? []).length
+      setNote({
+        bad: false,
+        text: (json.openReviews ?? []).length
           ? `답글이 안 달린 리뷰 ${json.openReviews.length}개를 찾았습니다.`
-          : "답글이 안 달린 리뷰가 없습니다. 다 달아두셨네요."
-      );
+          : "답글이 안 달린 리뷰가 없습니다. 다 달아두셨네요.",
+      });
     } catch (e: any) {
-      setMsg(String(e.message ?? e));
+      setNote({ bad: true, text: String(e.message ?? e) });
     } finally {
       setPulling(false);
     }
@@ -527,15 +537,28 @@ export default function Client(p: Props) {
                      placeholder="네이버 플레이스 주소나 ID (예: 11716617)"
                      onChange={(e) => setPlace(e.target.value)} />
               <button type="button" className="btn-ghost"
-                      disabled={!p.can.update && !p.can.create}
+                      disabled={saving || (!p.can.update && !p.can.create)}
                       onClick={async () => {
-                        await keep({ 플레이스ID: place });
-                        setOk("플레이스 주소를 저장했습니다.");
-                        setTimeout(() => setOk(""), 2500);
+                        if (saving) return;
+                        setSaving(true);
+                        setNote(null);
+                        const r = await keep({ 플레이스ID: place });
+                        setNote(
+                          r.ok
+                            ? { bad: false, text: "저장했습니다. 이제 「불러오기」를 눌러보세요." }
+                            : { bad: true, text: r.error }
+                        );
+                        setSaving(false);
                       }}>
-                저장
+                {saving ? "저장 중…" : "저장"}
               </button>
             </div>
+
+            {note && (
+              <div className={note.bad ? "alert-bad" : "alert-soft"} style={{ margin: "8px 0 4px" }}>
+                {note.text}
+              </div>
+            )}
 
             {!p.hasPlace ? (
               <p className="stat-note">
