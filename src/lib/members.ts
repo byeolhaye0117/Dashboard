@@ -205,6 +205,9 @@ export type Payment = {
   카드액: string;
   계좌액: string;
   담당직원사번: string;
+  /** 이 줄을 넣은 사람과 시각 — 「내가 한 적 없는데」를 확인할 유일한 자리다 */
+  등록자: string;
+  등록일시: string;
 };
 
 export async function listMembers(): Promise<{
@@ -332,6 +335,9 @@ export async function listPayments(): Promise<Payment[]> {
       카드액: get(r, cols, "카드액"),
       계좌액: get(r, cols, "계좌액"),
       담당직원사번: get(r, cols, "담당직원사번"),
+      /* 「이 결제 누가 넣었지」를 물을 수 있어야 한다. 시트를 열지 않고도 알게 */
+      등록자: get(r, cols, "등록자"),
+      등록일시: get(r, cols, "등록일시"),
     });
   });
   return out;
