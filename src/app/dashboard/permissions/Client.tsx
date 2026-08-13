@@ -11,6 +11,19 @@
  * 볼 수 없는 것을 고칠 수는 없기 때문이다.
  */
 import { Fragment, useMemo, useState } from "react";
+import { ACTION_HINTS, VIEW_MEANS } from "@/lib/menuItems";
+
+/** 이 메뉴에서 등록·수정·삭제가 각각 무엇을 여는지 */
+function hint(key: string): string[] {
+  const h = ACTION_HINTS[key];
+  if (!h) return [];
+  if (h.note) return [h.note];
+  const out: string[] = [];
+  if (h.create) out.push(`등록 = ${h.create}`);
+  if (h.update) out.push(`수정 = ${h.update}`);
+  if (h.remove) out.push(`삭제 = ${h.remove}`);
+  return out;
+}
 
 type Role = { code: string; name: string; scope: string };
 type Menu = { key: string; label: string; group: string };
@@ -163,7 +176,7 @@ export default function Client(p: Props) {
       </div>
 
       <div className="table-wrap">
-        <table className="grid" style={{ minWidth: 520 }}>
+        <table className="grid perm-table" style={{ minWidth: 520 }}>
           <thead>
             <tr>
               <th>메뉴</th>
@@ -182,7 +195,16 @@ export default function Client(p: Props) {
                   const c = cellOf(m.key);
                   return (
                     <tr key={m.key} className={c.view ? "" : "off"}>
-                      <td><span className="nm">{m.label}</span></td>
+                      <td>
+                        <span className="nm">{m.label}</span>
+                        {/* 같은 「수정」이라도 화면마다 뜻이 다르다. 적어두지 않으면
+                            정하는 사람이 무엇을 여는지 모르고 체크하게 된다 */}
+                        <span className="what">
+                          {hint(m.key).map((x) => (
+                            <i key={x}>{x}</i>
+                          ))}
+                        </span>
+                      </td>
                       {ACTIONS.map((a) => (
                         <td key={a.key} className="r">
                           <label className="sw-box">

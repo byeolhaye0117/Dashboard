@@ -1560,6 +1560,16 @@ table.cal td.cell .twice {
 .perm-head .presets { margin-left: auto; display: flex; gap: 6px; }
 
 /* 체크 한 칸 — 표 안에서 누르기 쉬워야 한다 */
+/* 체크 하나가 무엇을 여는지 — 메뉴 이름 아래 작게.
+   표는 원래 줄바꿈을 안 하지만 이 칸만은 풀어준다. 안 그러면 표가 옆으로 한없이 늘어난다 */
+table.perm-table td:first-child { white-space: normal; max-width: 340px; }
+table.perm-table .what { display: block; margin-top: 3px; }
+table.perm-table .what > i {
+  display: block; font-style: normal;
+  font-size: 11px; line-height: 1.5; color: var(--muted);
+}
+table.perm-table tr.off .what { opacity: .55; }
+
 .sw-box { display: inline-flex; padding: 4px; cursor: pointer; }
 .sw-box input { width: 18px; height: 18px; accent-color: var(--ink); cursor: pointer; }
 .sw-box input:disabled { cursor: default; }

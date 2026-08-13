@@ -43,3 +43,57 @@ export const MENUS: MenuItem[] = [
   { key: "직원관리", label: "직원 관리", short: "직원", href: "/dashboard/staff", icon: "badge", group: "관리" },
   { key: "권한설정", label: "권한 설정", short: "권한", href: "/dashboard/permissions", icon: "lock", group: "관리" },
 ];
+
+/**
+ * 체크 하나하나가 실제로 무엇을 막는지
+ *
+ * 「보기·등록·수정·삭제」는 네 글자로 같아 보여도 화면마다 뜻이 다르다.
+ * 리뷰 답글의 「수정」은 답글을 고치는 것이 아니라 플레이스 주소를 저장하는 것이고,
+ * 근태의 「수정」은 남의 출퇴근을 고치는 것이다. 적어두지 않으면 정하는 사람이
+ * 무엇을 여는지 모르고 체크하게 된다.
+ *
+ * 빈 칸은 그 자리를 아직 아무 데서도 안 쓴다는 뜻이다 — 체크해도 달라지는 게 없다.
+ * 없는 것을 있는 척하지 않는다.
+ */
+export type ActionHint = { create?: string; update?: string; remove?: string; note?: string };
+
+export const ACTION_HINTS: Record<string, ActionHint> = {
+  홈: { note: "누구나 볼 수 있습니다" },
+  회원: {
+    create: "회원 등록",
+    update: "회원 정보 고치기 · 이용권 판매 · 결제 넣기 · 정지 · 양도",
+    remove: "회원 지우기 · 이용권 지우기",
+  },
+  매출: { note: "지금은 보기만 씁니다 — 매출은 회원 결제에서 자동으로 쌓입니다" },
+  상담: { create: "상담 남기기", update: "상담 고치기", remove: "상담 지우기" },
+  "PT·수업": {
+    create: "수업 잡기 · 수업 사진 올리기",
+    update: "남의 수업까지 고치기 (내 수업은 등록만 있어도 됩니다)",
+    remove: "수업 지우기",
+  },
+  근태: { update: "남의 출퇴근 고치기 (내 출퇴근 찍기는 권한 없이 됩니다)" },
+  공지: {
+    create: "공지 쓰기 · 업무 만들기 · 업무 완료 체크",
+    update: "공지 고치기·지우기 · 업무 고치기",
+  },
+  "시설·재고": { note: "아직 준비 중인 화면입니다" },
+  리뷰: {
+    create: "답글 만들기 (AI 부르기)",
+    update: "플레이스 주소 · 키워드 · 끝인사 저장",
+    remove: "만들어 둔 답글 지우기",
+  },
+  상품: {
+    create: "상품 만들기",
+    update: "상품 고치기 · 차례 바꾸기 · 파는 지점 정하기",
+    remove: "상품 지우기",
+  },
+  직원관리: {
+    create: "직원 추가",
+    update: "직원 정보 · 비밀번호 고치기",
+    remove: "직원 지우기",
+  },
+  권한설정: { update: "권한 바꾸기" },
+};
+
+/** 「보기」는 어디서나 같은 뜻이라 따로 적지 않는다 */
+export const VIEW_MEANS = "메뉴에 나타나고 화면이 열립니다";
