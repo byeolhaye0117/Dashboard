@@ -533,6 +533,12 @@ export default function Client(p: Props) {
               )}
               {/* 답글은 문단으로 나뉘어 온다. 한 덩어리로 붙여 보여주면
                   올렸을 때 어떻게 보일지 알 수가 없다 */}
+              {review.trim() && (
+                <p className="rv-quote" style={{ marginTop: 0 }}>
+                  <i>리뷰</i>
+                  {review.trim()}
+                </p>
+              )}
               <div className="quote" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{out.답글}</div>
 
               {/* 만들어만 주고 「잘 됐나 보세요」 하는 것과, 무엇이 빠졌는지
@@ -683,7 +689,20 @@ export default function Client(p: Props) {
                     {r.주제.length > 0 && (
                       <span className="sub">읽어낸 주제 · {r.주제.join(" · ")}</span>
                     )}
+
+                    {/* 답글만 보이면 어느 리뷰에 단 것인지 알 수 없다.
+                        붙여넣은 리뷰를 답글 바로 위에 둔다 */}
+                    {r.리뷰내용 && (
+                      <p className="rv-quote">
+                        <i>리뷰</i>
+                        {isOpen || r.리뷰내용.length <= 70
+                          ? r.리뷰내용
+                          : r.리뷰내용.slice(0, 70) + "…"}
+                      </p>
+                    )}
+
                     <p className="ntext" style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>
+                      <i className="rv-tag">답글</i>
                       {isOpen || r.답글.length <= 90 ? r.답글 : r.답글.slice(0, 90) + "…"}
                     </p>
                     <div className="who-acts" style={{ margin: "8px 0 0" }}>
@@ -692,7 +711,7 @@ export default function Client(p: Props) {
                               onClick={() => doCopy(r.답글, r.id)}>
                         {copyLabel(r.id)}
                       </button>
-                      {r.답글.length > 90 && (
+                      {(r.답글.length > 90 || r.리뷰내용.length > 70) && (
                         <button type="button" className="btn-ghost"
                                 onClick={() => setShown(isOpen ? null : r.id)}>
                           {isOpen ? "접기" : "전체 보기"}
@@ -706,16 +725,11 @@ export default function Client(p: Props) {
                       )}
                     </div>
                     {isOpen && (
-                      <div className="quote" style={{ marginTop: 10 }}>
-                        <b>붙여넣은 리뷰</b>
-                        <br />
-                        {r.리뷰내용}
-                        <br />
-                        <span className="dim">
-                          {nameOf.get(r.등록자) ?? r.등록자} 님이 만듦
-                          {r.키워드.length > 0 && ` · 키워드 ${r.키워드.join(", ")}`}
-                        </span>
-                      </div>
+                      <p className="stat-note" style={{ margin: "8px 0 0" }}>
+                        {nameOf.get(r.등록자) ?? r.등록자} 님이 만듦
+                        {r.말투 && ` · ${r.말투}`}
+                        {r.키워드.length > 0 && ` · 키워드 ${r.키워드.join(", ")}`}
+                      </p>
                     )}
                   </div>
                 );
