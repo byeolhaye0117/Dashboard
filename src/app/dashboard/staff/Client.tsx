@@ -104,12 +104,35 @@ export default function Client(p: Props) {
     setDetail(null);
   }
 
+  /* 예전에 넣었던 [샘플] 자료 지우기 — 한 번 쓰고 말 일이라 화면 맨 아래 작게 둔다 */
+  const [wiping, setWiping] = useState(false);
+  const [wipeNote, setWipeNote] = useState("");
+
+  async function wipeSample() {
+    if (wiping) return;
+    setWiping(true);
+    setWipeNote("");
+    try {
+      const res = await fetch("/api/cleanup", { method: "POST" });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "지우지 못했습니다.");
+      setWipeNote(
+        j.count > 0
+          ? `가짜 자료 ${j.count}줄을 지웠습니다. 새로고침하면 반영됩니다.`
+          : "지울 가짜 자료가 없습니다. 시트에 있는 것은 전부 진짜 자료입니다."
+      );
+    } catch (e: any) {
+      setWipeNote(String(e.message ?? e));
+    } finally {
+      setWiping(false);
+    }
+  }
+
   return (
     <>
       <div className="page-head">
         <div>
           <h1 className="page-title">직원 관리</h1>
-
         </div>
         {p.can.create && (
           <button className="btn-dark" onClick={() => setOpenNew(true)}>
@@ -300,6 +323,18 @@ export default function Client(p: Props) {
           onIssue={() => issue(detail.id)}
           onClose={() => setDetail(null)}
         />
+      )}
+
+      {/* 예전에 화면 확인용으로 넣었던 가짜 자료를 지운다.
+          한 번 쓰고 말 일이라 눈에 안 띄는 자리에 작게 둔다 */}
+      {p.can.update && (
+        <div className="stat-note" style={{ marginTop: 22 }}>
+          예전에 화면 확인용으로 넣은 가짜 자료(메모에 [샘플] 표시)가 남아 있다면
+          <button type="button" className="linkish" disabled={wiping} onClick={wipeSample}>
+            {wiping ? "지우는 중…" : "여기서 지웁니다"}
+          </button>
+          {wipeNote && <span style={{ display: "block", marginTop: 6 }}>{wipeNote}</span>}
+        </div>
       )}
     </>
   );
