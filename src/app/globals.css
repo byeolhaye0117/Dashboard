@@ -1843,3 +1843,10 @@ textarea.input { resize: vertical; min-height: 96px; line-height: 1.7; padding: 
 
 /* 상담 표 — 날짜 뒤에 붙는 시각 */
 td .at { margin-left: 6px; color: var(--muted); font-size: 11.5px; }
+
+/* 상담 표 — 「문의」처럼 그 칸의 뜻을 밝히는 작은 딱지 */
+td .ktag {
+  display: inline-block; margin-right: 5px; padding: 1px 5px;
+  border: 1px solid var(--line); border-radius: 5px;
+  font-size: 10.5px; font-weight: 700; color: var(--muted); vertical-align: 1px;
+}
