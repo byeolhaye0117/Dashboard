@@ -188,7 +188,6 @@ export default function Client(p: Props) {
       <div className="page-head">
         <div>
           <h1 className="page-title">공지 · 업무</h1>
-          <p className="page-sub">공지를 읽고, 오늘 업무를 완료로 체크합니다</p>
         </div>
       </div>
 

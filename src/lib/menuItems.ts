@@ -71,7 +71,10 @@ export const ACTION_HINTS: Record<string, ActionHint> = {
     update: "남의 수업까지 고치기 (내 수업은 등록만 있어도 됩니다)",
     remove: "수업 지우기",
   },
-  근태: { update: "남의 출퇴근 고치기 (내 출퇴근 찍기는 권한 없이 됩니다)" },
+  근태: {
+    update: "남의 출퇴근 고치기 · 대신 적어주기 (내 출퇴근 찍기는 권한 없이 됩니다)",
+    remove: "그날 기록 통째로 지우기",
+  },
   공지: {
     create: "공지 쓰기 · 업무 만들기 · 업무 완료 체크",
     update: "공지 고치기·지우기 · 업무 고치기",

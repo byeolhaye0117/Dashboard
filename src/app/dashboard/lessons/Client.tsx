@@ -336,7 +336,6 @@ export default function Client(p: Props) {
       <div className="page-head">
         <div>
           <h1 className="page-title">PT · 수업</h1>
-          <p className="page-sub">수업을 미리 잡아두고, 끝나면 결과를 찍습니다 · 회차는 완료일 때만 빠집니다</p>
         </div>
         <div className="filter-right">
           <button className="icon-btn" onClick={() => setDay(addDays(day, -1))} aria-label="어제">‹</button>

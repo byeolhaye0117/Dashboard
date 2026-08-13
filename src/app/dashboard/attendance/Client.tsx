@@ -102,6 +102,8 @@ type Props = {
   people: Person[];
   branches: { code: string; name: string }[];
   canEdit: boolean;
+  /** 그날 기록을 통째로 지울 수 있는가 — 고치는 것보다 무거운 일이다 */
+  canRemove: boolean;
   canSetup: boolean;
   ready: boolean;
   problem: string;
@@ -265,7 +267,6 @@ export default function Client(p: Props) {
       <div className="page-head">
         <div>
           <h1 className="page-title">근태</h1>
-          <p className="page-sub">출퇴근은 본인이 찍습니다 · 시각은 서버가 적습니다</p>
         </div>
         <div className="filter-right">
           <button className="icon-btn" onClick={() => setMonth(shiftMonth(month, -1))}
@@ -539,6 +540,7 @@ export default function Client(p: Props) {
           person={p.people.find((x) => x.id === edit.사번)!}
           day={edit.날짜}
           rounds={byKey[`${edit.사번}|${edit.날짜}`]?.rounds ?? []}
+          canRemove={p.canRemove}
           onClose={() => setEdit(null)}
         />
       )}
@@ -605,11 +607,12 @@ function SetupTab({ can }: { can: boolean }) {
 }
 
 /** 한 칸 고치기 — 점장·대표 */
-function EditBox({ person, day, rounds, onClose }: {
+function EditBox({ person, day, rounds, canRemove, onClose }: {
   person: Person;
   day: string;
   /** 그날의 근무 구간들. 오전·저녁이면 둘이다 */
   rounds: Row[];
+  canRemove: boolean;
   onClose: () => void;
 }) {
   // 고칠 회차를 먼저 고른다. 없던 회차를 고르면 새로 만들어진다
@@ -637,7 +640,28 @@ function EditBox({ person, day, rounds, onClose }: {
   };
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  /* 지우기는 한 번 더 묻는다. 근태는 급여로 이어지는 기록이라 되돌리기가 번거롭다 */
+  const [askDel, setAskDel] = useState(false);
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
+
+  async function wipe() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "del", 사번: person.id, 날짜: day }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "지우지 못했습니다.");
+      location.reload();
+    } catch (e: any) {
+      setMsg(e.message);
+      setBusy(false);
+      setAskDel(false);
+    }
+  }
 
   async function save() {
     setBusy(true);
@@ -717,7 +741,26 @@ function EditBox({ person, day, rounds, onClose }: {
 
         {msg && <div className="alert-bad">{msg}</div>}
 
+        {askDel && (
+          <div className="confirm-box">
+            <b>{korDate(day)} 기록을 통째로 지웁니다</b>
+            <p>회차가 둘이면 둘 다 지워집니다. 지운 사람과 시각은 시트에 남습니다.</p>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setAskDel(false)}>그만두기</button>
+              <button className="btn-danger" onClick={wipe} disabled={busy}>
+                {busy ? "지우는 중…" : "지웁니다"}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="modal-actions">
+          {canRemove && rounds.length > 0 && !askDel && (
+            <button className="btn-ghost danger" style={{ marginRight: "auto" }}
+                    onClick={() => setAskDel(true)} disabled={busy}>
+              이 날 지우기
+            </button>
+          )}
           <button className="btn-ghost" onClick={onClose}>닫기</button>
           <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
             {busy ? "저장 중…" : "저장"}

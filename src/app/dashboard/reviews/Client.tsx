@@ -351,10 +351,7 @@ export default function Client(p: Props) {
       <div className="page-head">
         <div>
           <h1 className="page-title">리뷰 답글</h1>
-          <p className="page-sub">
-            답글이 안 달린 리뷰를 찾아와 답글 초안을 만들어 드립니다.
-            그대로 올리지 마시고 한 번 읽어보고 고쳐서 올려주세요.
-          </p>
+          <p className="page-sub">AI가 쓴 초안입니다. 읽어보고 고쳐서 올려주세요.</p>
         </div>
       </div>
 

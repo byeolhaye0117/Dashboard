@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { readSession } from "@/lib/session";
 import { abilitiesFor } from "@/lib/menu";
 import { getStaffAll, getStaffBranches } from "@/lib/data";
-import { punchIn, punchOut, breakToggle, patchAttendance } from "@/lib/attendance";
+import {
+  punchIn, punchOut, breakToggle, patchAttendance, removeAttendance,
+} from "@/lib/attendance";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,36 @@ export async function POST(req: Request) {
       const branch = session.branches[0] || me?.mainBranch || "";
       const r = await punchIn(session.staffId, branch, me?.baseTime ?? "");
       return NextResponse.json({ ok: true, ...r });
+    }
+
+    /* 그날 기록 지우기 — 고치는 것보다 무거운 일이라 권한을 따로 본다 */
+    if (action === "del") {
+      const ab = await abilitiesFor(session.roleCode);
+      if (!ab.get("근태")?.remove) {
+        return NextResponse.json({ error: "근태를 지울 권한이 없습니다." }, { status: 403 });
+      }
+
+      const { 사번, 날짜, 회차 } = body;
+      if (!사번 || !날짜) {
+        return NextResponse.json({ error: "직원과 날짜가 필요합니다." }, { status: 400 });
+      }
+
+      /* 남의 지점 사람은 못 지운다 — 고치기와 같은 잣대다 */
+      const [staff, branchMap] = await Promise.all([getStaffAll(), getStaffBranches()]);
+      const target = staff.find((s) => s.id === 사번);
+      if (!target) return NextResponse.json({ error: "직원을 찾지 못했습니다." }, { status: 404 });
+      if (session.scope !== "전체") {
+        const where = [...(branchMap.get(사번) ?? []), target.mainBranch].filter(Boolean);
+        if (!where.some((b) => session.branches.includes(b))) {
+          return NextResponse.json({ error: "담당 지점 직원만 지울 수 있습니다." }, { status: 403 });
+        }
+      }
+
+      const n = await removeAttendance(
+        { 사번, 날짜, 회차: 회차 === undefined || 회차 === null ? undefined : Number(회차) },
+        session.staffId
+      );
+      return NextResponse.json({ ok: true, count: n });
     }
 
     if (action === "patch") {
