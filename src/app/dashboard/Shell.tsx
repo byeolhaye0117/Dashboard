@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
-import { GROUP_ORDER, PHONE_TABS, type MenuItem } from "@/lib/menuItems";
+import { GROUP_ORDER, PHONE_TABS, MENUS, type MenuItem } from "@/lib/menuItems";
 import type { Session } from "@/lib/session";
 
 type Props = {
@@ -220,7 +220,13 @@ export default function Shell({
             <div className="grip" />
             {GROUP_ORDER.map((g) => {
               const items = menus.filter((m) => m.group === g);
-              if (items.length === 0) return null;
+              /* 권한이 없어 못 여는 메뉴도 자리는 보여준다.
+                 그냥 사라지면 「왜 안 보이지」를 혼자 한참 찾게 된다.
+                 무엇이 있는데 왜 못 쓰는지가 보여야, 대표님께 켜 달라고 말할 수 있다. */
+              const locked = MENUS.filter(
+                (m) => m.group === g && !menus.some((v) => v.key === m.key)
+              );
+              if (items.length === 0 && locked.length === 0) return null;
               return (
                 <div className="rail-group" key={g}>
                   <h4>{g}</h4>
@@ -230,6 +236,13 @@ export default function Shell({
                         <Icon name={m.icon} size={20} />
                         {m.label}
                       </a>
+                    ))}
+                    {locked.map((m) => (
+                      <span key={m.key} className="locked" title="권한이 없어 열 수 없습니다">
+                        <Icon name={m.icon} size={20} />
+                        {m.label}
+                        <i>권한 없음</i>
+                      </span>
                     ))}
                   </div>
                 </div>

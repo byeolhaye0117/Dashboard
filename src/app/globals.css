@@ -1217,13 +1217,23 @@ table.grid tr.is-picked > td { background: color-mix(in srgb, var(--s1) 9%, tran
   font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted);
 }
 .menu-sheet .m-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.menu-sheet .m-grid a {
+.menu-sheet .m-grid a,
+.menu-sheet .m-grid .locked {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 14px 6px; border: 1px solid var(--line); border-radius: var(--r);
   text-decoration: none; color: var(--ink); font-size: 12px; font-weight: 600;
   background: var(--surface-2); text-align: center;
 }
 .menu-sheet .m-grid a.on { background: var(--surface-3); border-color: var(--ink); }
+/* 권한이 없어 못 여는 메뉴 — 자리는 두되 눌리지 않는다는 것이 보여야 한다.
+   그냥 사라지면 「왜 안 보이지」를 혼자 한참 찾게 된다. */
+.menu-sheet .m-grid .locked {
+  opacity: .45; cursor: default; gap: 4px;
+  border-style: dashed; background: none;
+}
+.menu-sheet .m-grid .locked > i {
+  font-style: normal; font-size: 10px; font-weight: 700; color: var(--muted);
+}
 
 .tab-more {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
