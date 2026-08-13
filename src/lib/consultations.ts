@@ -188,9 +188,12 @@ export async function patchConsultation(
     merged["방문경로"] = changes["문의채널"];
   }
 
-  // 등록완료로 바뀌면 등록여부도 같이 맞춘다
-  if (merged["진행상태"] === DONE_STAGE) merged["등록여부"] = "Y";
-  else if (merged["진행상태"] === "미등록") merged["등록여부"] = "N";
+  /* 등록여부는 진행상태를 따라간다
+     예전에는 「미등록」으로 갈 때만 N 으로 되돌렸다. 그래서 등록을 약속전환으로
+     되돌리면 상태만 바뀌고 등록여부는 Y 로 남았다 — 화면과 시트가 어긋났다. */
+  if (changes["진행상태"] !== undefined || merged["등록여부"] !== undefined) {
+    merged["등록여부"] = merged["진행상태"] === DONE_STAGE ? "Y" : "N";
+  }
 
   await updateRow(SHEET_C, rowOf[id], headers, merged);
 }
