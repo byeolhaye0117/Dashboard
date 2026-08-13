@@ -186,6 +186,8 @@ export async function writeReply(input: {
   name: string;
   area: string;
   tier: string;
+  /** 재료가 비면 서버가 이걸로 직접 긁어온다 */
+  placeId?: string;
 }): Promise<Written> {
   const key = (process.env.PLACE_API_KEY ?? "").trim();
   if (!key) throw new NoReplyApi("진단 서버 열쇠가 없습니다.");

@@ -284,6 +284,7 @@ export async function POST(req: Request) {
         review, star: stars, length, tone, keywords, closing: ending,
         facts, landmarks, name: branchName, area: "천안",
         tier: modelPick === "꼼꼼" ? "good" : "fast",
+        placeId: (setting?.플레이스ID ?? "").trim(),
       });
       답글 = w.답글;
       주제 = w.주제.slice(0, 6);
