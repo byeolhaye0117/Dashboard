@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import {
   LENGTHS, TONES, MODELS, ENDINGS, keywordsFor, suggestTone, modelWon,
+  LIMIT_MIN, LIMIT_MAX,
 } from "@/lib/reviewMeta";
 
 type Named = { code: string; name: string };
@@ -23,7 +24,9 @@ type Reply = {
   주제: string[]; 답글: string; 키워드: string[]; 말투: string; 길이: string;
   모델: string; 등록일시: string; 등록자: string;
 };
-type Setting = { 지점코드: string; 플레이스ID: string; 키워드: string[]; 끝인사: string };
+type Setting = {
+  지점코드: string; 플레이스ID: string; 키워드: string[]; 끝인사: string; 하루한도: number;
+};
 type OpenReview = { body: string; rating: number | null; date: string };
 
 type Props = {
@@ -104,6 +107,12 @@ export default function Client(p: Props) {
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<{ bad: boolean; text: string } | null>(null);
 
+  /* 하루 한도 — 지점마다 따로. 화면에서 바로 고친다 */
+  const [limit, setLimit] = useState(p.limit);
+  const [limitBox, setLimitBox] = useState(false);
+  const [limitVal, setLimitVal] = useState(String(p.limit));
+  const [limitNote, setLimitNote] = useState<{ bad: boolean; text: string } | null>(null);
+
   const [list, setList] = useState<Reply[]>(p.replies);
   const [out, setOut] = useState<{ 주제: string[]; 답글: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -139,6 +148,11 @@ export default function Client(p: Props) {
     setOut(null);
     setMsg("");
     setNote(null);
+    const l = s?.하루한도 || p.limit;
+    setLimit(l);
+    setLimitVal(String(l));
+    setLimitBox(false);
+    setLimitNote(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch]);
 
@@ -212,6 +226,26 @@ export default function Client(p: Props) {
   );
 
   const nameOf = useMemo(() => new Map(p.people.map((x) => [x.id, x.name])), [p.people]);
+  const left = Math.max(0, limit - todays.length);
+
+  async function saveLimit() {
+    if (saving) return;
+    const n = Math.floor(Number(limitVal));
+    if (!Number.isFinite(n) || n < LIMIT_MIN || n > LIMIT_MAX) {
+      setLimitNote({ bad: true, text: `${LIMIT_MIN}에서 ${LIMIT_MAX} 사이로 넣어주세요.` });
+      return;
+    }
+    setSaving(true);
+    setLimitNote(null);
+    const r = await keep({ 하루한도: n });
+    if (r.ok) {
+      setLimit(n);
+      setLimitNote({ bad: false, text: `하루 ${n}개로 정했습니다.` });
+    } else {
+      setLimitNote({ bad: true, text: r.error });
+    }
+    setSaving(false);
+  }
 
   async function pull() {
     if (pulling) return;
@@ -368,9 +402,51 @@ export default function Client(p: Props) {
             <div className="mcard-head">
               <b>답글 만들기</b>
               <span className="sub">
-                오늘 {todays.length}/{p.limit}회 · 약 {wonToday.toLocaleString("ko-KR")}원
+                오늘 {todays.length}/{limit}회 · 약 {wonToday.toLocaleString("ko-KR")}원
               </span>
             </div>
+
+            {/* 몇 개 남았는지가 먼저다 — 쓴 개수보다 남은 개수가 궁금한 자리다 */}
+            <p className="stat-note" style={{ marginTop: -4 }}>
+              {left > 0 ? (
+                <>
+                  오늘 <b>{left}개</b> 더 만들 수 있습니다. 하루 한도는 <b>{limit}개</b>입니다.
+                </>
+              ) : (
+                <b>오늘 한도({limit}개)를 다 썼습니다. 내일 다시 쓸 수 있습니다.</b>
+              )}
+              {(p.can.update || p.can.create) && (
+                <button type="button" className="linkish"
+                        onClick={() => { setLimitBox(!limitBox); setLimitNote(null); }}>
+                  {limitBox ? "닫기" : "한도 고치기"}
+                </button>
+              )}
+            </p>
+
+            {limitBox && (
+              <div style={{ marginBottom: 12 }}>
+                <div className="inline-form">
+                  <input className="input" type="number" min={LIMIT_MIN} max={LIMIT_MAX}
+                         value={limitVal} onChange={(e) => setLimitVal(e.target.value)} />
+                  <button type="button" className="btn-ghost" disabled={saving}
+                          onClick={saveLimit}>
+                    {saving ? "저장 중…" : "한도 저장"}
+                  </button>
+                </div>
+                {limitNote && (
+                  <div className={limitNote.bad ? "alert-bad" : "alert-soft"}
+                       style={{ marginTop: 8 }}>
+                    {limitNote.text}
+                  </div>
+                )}
+                <p className="stat-note">
+                  {LIMIT_MIN}~{LIMIT_MAX} 사이로 넣어주세요. <b>지점마다 따로</b> 걸립니다 —
+                  여기서 정한 값은 {branchName}에만 적용됩니다.
+                  「기본」으로 {limit}개면 하루 약 {(limit * 10).toLocaleString("ko-KR")}원,
+                  「좋은 것」으로만 쓰면 약 {(limit * 50).toLocaleString("ko-KR")}원입니다.
+                </p>
+              </div>
+            )}
 
             <div className="field" style={{ marginBottom: 12 }}>
               <label>리뷰 — 오른쪽에서 고르시거나 새로 달린 리뷰를 붙여넣어 주세요</label>
@@ -484,9 +560,13 @@ export default function Client(p: Props) {
             {ok && <div className="alert-soft" style={{ marginTop: 12 }}>{ok}</div>}
 
             <button type="button" className="btn-dark" style={{ width: "100%", marginTop: 14 }}
-                    disabled={busy || !p.can.create || !p.hasKey || !branch}
+                    disabled={busy || !p.can.create || !p.hasKey || !branch || left === 0}
                     onClick={make}>
-              {busy ? "쓰는 중입니다…" : "이 리뷰에 맞춘 답글 만들기"}
+              {busy
+                ? "쓰는 중입니다…"
+                : left === 0
+                ? `오늘 한도(${limit}개)를 다 썼습니다`
+                : "이 리뷰에 맞춘 답글 만들기"}
             </button>
             {!p.can.create && <p className="stat-note">답글을 만들 권한이 없는 계정입니다.</p>}
           </div>

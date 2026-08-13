@@ -1317,6 +1317,10 @@ select.input { cursor: pointer; }
   font-size: 13.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
 }
 .btn-dark:hover { opacity: .88; }
+/* 잠긴 단추 — 새까만 채로 두면 눌리는 줄 알고 계속 누르게 된다 */
+.btn-dark:disabled { opacity: .38; cursor: default; }
+.btn-dark:disabled:hover { opacity: .38; }
+.btn-ghost:disabled { opacity: .45; cursor: default; }
 /* 단추 모양을 한 링크 — 밑줄이 생기면 단추로 안 보인다 */
 a.btn-dark { text-decoration: none; }
 
