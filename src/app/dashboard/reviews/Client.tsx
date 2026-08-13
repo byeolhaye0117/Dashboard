@@ -104,6 +104,8 @@ export default function Client(p: Props) {
   const [pulling, setPulling] = useState(false);
   /* 저장 결과는 누른 단추 바로 옆에 보여야 한다 — 반대편 기둥에 띄우면 못 본다 */
   const [saving, setSaving] = useState(false);
+  /* 주소는 한 번 넣으면 끝이다. 늘 펼쳐 두면 「불러오기」가 그만큼 아래로 밀린다 */
+  const [placeBox, setPlaceBox] = useState(false);
   const [note, setNote] = useState<{ bad: boolean; text: string } | null>(null);
 
   /* 하루 한도 — 지점마다 따로. 값은 「리뷰설정」 탭에서 정한다 */
@@ -150,6 +152,7 @@ export default function Client(p: Props) {
     setOut(null);
     setMsg("");
     setNote(null);
+    setPlaceBox(false);
     setLimit(s?.하루한도 || p.limit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch]);
@@ -381,10 +384,10 @@ export default function Client(p: Props) {
         </div>
       )}
 
-      <div className="mcols" style={{ marginTop: 14 }}>
+      <div className="mcols phone-order" style={{ marginTop: 14 }}>
         {/* ── 만들기 ─────────────────────────── */}
         <div className="mcol">
-          <div className="mcard">
+          <div className="mcard ph-2">
             <div className="mcard-head">
               <b>답글 만들기</b>
               <span className="sub">
@@ -516,7 +519,7 @@ export default function Client(p: Props) {
           </div>
 
           {out && (
-            <div className="mcard">
+            <div className="mcard ph-3">
               <div className="mcard-head">
                 <b>방금 만든 답글</b>
                 <span className="sub">{stars(star)}</span>
@@ -564,7 +567,7 @@ export default function Client(p: Props) {
 
         {/* ── 밀린 리뷰 · 쌓인 답글 ───────────── */}
         <div className="mcol">
-          <div className="mcard">
+          <div className="mcard ph-1">
             <div className="mcard-head">
               <b>답글 밀린 리뷰</b>
               {open && <span className="sub">{open.length}개</span>}
@@ -574,7 +577,17 @@ export default function Client(p: Props) {
               </button>
             </div>
 
-            <div className="inline-form" style={{ marginBottom: 4 }}>
+            {place && !placeBox && (
+              <p className="stat-note" style={{ margin: "0 0 4px" }}>
+                플레이스 주소 등록됨
+                <button type="button" className="linkish" onClick={() => setPlaceBox(true)}>
+                  주소 고치기
+                </button>
+              </p>
+            )}
+
+            <div className="inline-form" style={{ marginBottom: 4,
+                                                  display: place && !placeBox ? "none" : "flex" }}>
               <input className="input" value={place}
                      placeholder="네이버 플레이스 주소나 ID (예: 11716617)"
                      onChange={(e) => setPlace(e.target.value)} />
@@ -590,6 +603,7 @@ export default function Client(p: Props) {
                             ? { bad: false, text: "저장했습니다. 이제 「불러오기」를 눌러보세요." }
                             : { bad: true, text: r.error }
                         );
+                        if (r.ok) setPlaceBox(false);
                         setSaving(false);
                       }}>
                 {saving ? "저장 중…" : "저장"}
@@ -641,7 +655,7 @@ export default function Client(p: Props) {
             )}
           </div>
 
-          <div className="mcard">
+          <div className="mcard ph-4">
             <div className="mcard-head">
               <b>만든 답글</b>
               <span className="sub">{mine.length}개</span>

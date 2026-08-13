@@ -1610,7 +1610,23 @@ table.perm-table tr.off .what { opacity: .55; }
 .mstack { display: flex; flex-direction: column; gap: 12px; }
 .mcols { display: flex; gap: 12px; align-items: flex-start; }
 .mcol { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
-@media (max-width: 620px) { .mcols { flex-direction: column; } }
+@media (max-width: 620px) {
+  .mcols { flex-direction: column; }
+
+  /*
+    휴대폰에서는 카드 차례를 다시 매긴다
+
+    PC 는 왼쪽에 만들기, 오른쪽에 목록이라 「불러오기」가 한눈에 들어온다.
+    휴대폰은 기둥이 세로로 쌓여서 그 단추가 화면 맨 아래로 내려간다 —
+    리뷰를 하나 불러올 때마다 끝까지 스크롤해야 한다.
+    기둥을 풀어 헤치고(display:contents) 카드마다 차례를 준다.
+  */
+  .mcols.phone-order > .mcol { display: contents; }
+  .mcols.phone-order .ph-1 { order: 1; }
+  .mcols.phone-order .ph-2 { order: 2; }
+  .mcols.phone-order .ph-3 { order: 3; }
+  .mcols.phone-order .ph-4 { order: 4; }
+}
 
 .mcard {
   background: var(--surface); border: 1px solid var(--line);
