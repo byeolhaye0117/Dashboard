@@ -96,6 +96,8 @@ type Props = {
   /** 상품 → 그 상품을 파는 지점들 */
   productBranches: Record<string, string[]>;
   waiting: Waiting[];
+  /* 상담이 등록이 아니라 목록에서 뺀 사람 — 소리 없이 사라지면 안 된다 */
+  hidden: { 이름: string; 상태: string }[];
   /** 이용권이 오간 기록 */
   transfers: TransferRow[];
   options: Record<string, string[]>;
@@ -323,6 +325,20 @@ export default function Client(p: Props) {
       {p.waiting.length > 0 && p.can.create && (
         <p className="stat-note">
           상담에서 넘어올 대기 <b>{p.waiting.length}명</b>
+        </p>
+      )}
+
+      {/* 숨긴 것은 숨겼다고 말한다. 소리 없이 사라지면 그게 더 무섭다 */}
+      {p.hidden.length > 0 && (
+        <p className="stat-note">
+          상담이 등록이 아니라 뺀 사람 <b>{p.hidden.length}명</b>
+          <span className="dim" style={{ marginLeft: 6 }}>
+            {p.hidden.slice(0, 4).map((h) => `${h.이름}(${h.상태})`).join(" · ")}
+            {p.hidden.length > 4 && " …"}
+          </span>
+          <span className="dim" style={{ marginLeft: 6 }}>
+            상담을 「등록」으로 되돌리면 다시 나옵니다. 이용권이나 결제가 있는 분은 빼지 않습니다.
+          </span>
         </p>
       )}
 

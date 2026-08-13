@@ -14,6 +14,8 @@ import {
 import { listMembers, listTickets, listPayments, listTicketServices } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
 import { listConsultations } from "@/lib/consultations";
+import { stageNow } from "@/lib/stage";
+import { today } from "@/lib/time";
 import { listTransfers } from "@/lib/members";
 import Shell from "../Shell";
 import Client from "./Client";
@@ -82,9 +84,59 @@ async function body() {
     transfers = [];
   }
 
+  /*
+   * 상담이 등록이 아닌 사람은 회원 목록에 두지 않는다
+   *
+   * ── 세 번 못 고친 자리다 ─────────────────────────────────────
+   * 상담을 「등록」에서 되돌리면 회원 줄을 지우는 코드를 넣었는데, 시트에
+   * 이어 둔 자국을 적을 칸이 없어 지울 대상을 못 찾았다. 칸을 만들고 찾는
+   * 길을 넓혀도 그때그때 저장이 성공해야만 맞아떨어졌다.
+   *
+   * 그래서 지우는 데 기대지 않는다. 화면을 열 때마다 상담을 보고 판단한다.
+   * 상담이 등록이 아니면 회원 목록에 안 보인다 — 지우기가 한 번 실패해도,
+   * 옛날에 자국 없이 만들어진 줄이 남아 있어도 결과는 늘 같다.
+   *
+   * 돈이 얽힌 줄은 건드리지 않는다. 이용권이나 결제가 하나라도 있으면
+   * 그건 실제로 등록하신 분이고, 상담 상태가 어떻든 회원이다.
+   *
+   * 숨긴 사람은 숨겼다고 화면에 적는다. 소리 없이 사라지면 그게 더 무섭다.
+   */
+  let hidden: { 이름: string; 상태: string }[] = [];
+
   // 상담에서 약속까지 잡혔는데 아직 등록 처리가 안 된 사람 — 바로 회원으로 만들 수 있게
   try {
     const { items } = await listConsultations();
+
+    const phone = (v: string) => (v ?? "").replace(/\D/g, "");
+    const byId = new Map(items.map((c) => [c.id, c]));
+    const byPhone = new Map<string, any>();
+    items.forEach((c) => {
+      const k = phone(c["전화번호"]);
+      /* 같은 번호로 상담이 여러 번 있으면 최근 것이 기준이다 */
+      if (k && !byPhone.has(k)) byPhone.set(k, c);
+    });
+
+    const hasMoney = new Set<string>([
+      ...tickets.map((t) => t.회원번호),
+      ...payments.map((x) => x.회원번호),
+    ]);
+
+    const keep: any[] = [];
+    members.forEach((m) => {
+      if (hasMoney.has(m.id)) return keep.push(m);
+      const c = (m.상담번호 && byId.get(m.상담번호)) || byPhone.get(phone(m.전화번호));
+      if (!c) return keep.push(m);
+      const st = stageNow(c, today());
+      if (st === "등록") return keep.push(m);
+      hidden.push({ 이름: m.이름, 상태: st });
+    });
+    if (hidden.length > 0) {
+      members = keep;
+      const ids = new Set(members.map((x) => x.id));
+      tickets = tickets.filter((x) => ids.has(x.회원번호));
+      payments = payments.filter((x) => ids.has(x.회원번호));
+    }
+
     const done = new Set(members.map((m) => m.상담번호).filter(Boolean));
     waiting = items
       .filter((c) => allowed.has(c["지점코드"]))
@@ -118,6 +170,7 @@ async function body() {
         products={products.map(readProduct)}
         productBranches={productBranches}
         waiting={waiting}
+        hidden={hidden}
         transfers={transfers}
         options={options}
         branches={myBranches}
