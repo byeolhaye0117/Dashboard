@@ -1850,3 +1850,19 @@ td .ktag {
   border: 1px solid var(--line); border-radius: 5px;
   font-size: 10.5px; font-weight: 700; color: var(--muted); vertical-align: 1px;
 }
+
+/* 결제 한 건을 뜯어 보여주는 자리 — 무엇을 샀나 · 어떻게 냈나 */
+.paylines { list-style: none; margin: 8px 0 0; padding: 0; }
+.paylines li {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 4px 0; font-size: 12.5px; border-top: 1px dashed var(--line);
+}
+.paylines li:first-child { border-top: 0; }
+.paylines .nm { color: var(--ink); }
+.paylines .dim { color: var(--muted); font-size: 11.5px; }
+.paylines .am { margin-left: auto; font-weight: 700; }
+.payways {
+  display: flex; flex-wrap: wrap; gap: 4px 12px;
+  margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line);
+  font-size: 12px; color: var(--muted);
+}
