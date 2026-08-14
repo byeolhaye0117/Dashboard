@@ -134,7 +134,15 @@ function findHeaderRow(values: string[][]): number {
  */
 const memo = cache(() => new Map<string, SheetData>());
 
-/** 이 탭에 뭔가 썼다 — 기억을 버린다 */
+/**
+ * 이 탭에 뭔가 썼다 — 기억을 버린다
+ *
+ * 쓰기 「전」에만 버리면 모자란다. 칸을 만드는 일(addColumns)은 스스로 한 번
+ * 읽는데, 그 읽기가 옛 제목 줄을 다시 기억에 담는다. 그러면 칸을 만든 직후에
+ * 읽어도 새 칸이 안 보이고, 거기 적은 값이 조용히 사라진다 —
+ * 이용권 금액이 저장해도 「기록 없음」으로 남던 이유가 이것이다.
+ * 그래서 쓰기가 끝난 뒤에도 한 번 더 버린다.
+ */
 function forget(sheetName: string): void {
   try {
     memo().delete(sheetName);
@@ -309,6 +317,7 @@ export async function appendRow(sheetName: string, headers: string[], row: Row) 
     `/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     { method: "POST", body: JSON.stringify({ values }) }
   );
+  forget(sheetName);
 }
 
 /**
@@ -326,6 +335,7 @@ export async function appendRows(sheetName: string, headers: string[], rows: Row
     `/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     { method: "POST", body: JSON.stringify({ values }) }
   );
+  forget(sheetName);
 }
 
 /** 한 줄을 통째로 다시 쓴다 */
@@ -342,6 +352,7 @@ export async function updateRow(
     method: "PUT",
     body: JSON.stringify({ values: [headers.map((h) => row[h] ?? "")] }),
   });
+  forget(sheetName);
 }
 
 /**
@@ -369,6 +380,7 @@ export async function updateRows(
       })),
     }),
   });
+  forget(sheetName);
 }
 
 /** 특정 줄의 특정 칸 하나를 고친다 */
@@ -385,6 +397,7 @@ export async function updateCell(
     method: "PUT",
     body: JSON.stringify({ values: [[value]] }),
   });
+  forget(sheetName);
 }
 
 function columnLetter(index: number): string {
@@ -427,7 +440,7 @@ export async function addColumns(sheetName: string, names: string[]): Promise<st
   }
   const have = new Set(headers.map((h) => h.replace(/\s/g, "")));
   const add = names.filter((n) => !have.has(n.replace(/\s/g, "")));
-  if (add.length === 0) return [];
+  if (add.length === 0) return [];   /* 더할 것이 없으면 기억도 그대로 옳다 */
 
   const need = headers.length + add.length;
   const info = await sheetInfo(sheetName);
@@ -455,6 +468,9 @@ export async function addColumns(sheetName: string, names: string[]): Promise<st
     method: "PUT",
     body: JSON.stringify({ values: [add] }),
   });
+  /* 제목 줄이 방금 바뀌었다. 위에서 담아 둔 옛 제목 줄을 버려야
+     바로 뒤에 읽는 쪽이 새 칸을 본다 */
+  forget(sheetName);
   return add;
 }
 
@@ -491,6 +507,7 @@ export async function createSheet(sheetName: string, headers: string[]): Promise
     method: "PUT",
     body: JSON.stringify({ values: [headers] }),
   });
+  forget(sheetName);
   return true;
 }
 
