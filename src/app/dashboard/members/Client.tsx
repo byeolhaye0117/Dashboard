@@ -2393,8 +2393,9 @@ function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem
             ? 남은돈 - 쓴돈
             : Math.round((남은돈 * l.정가) / 정가합 / 단위) * 단위;
         쓴돈 += 몫;
-        /* amount 는 건드리지 않는다. 짐작은 짐작 칸에만 담는다 */
         l.짐작 = Math.max(0, 몫);
+        l.amount = Math.max(0, 몫);
+        l.할인 = Math.max(0, l.정가 - l.amount);
         l.계산 = true;
       });
     });
@@ -2565,17 +2566,24 @@ function PaymentLine({ x, lines, onEditItem }: {
                   <div className="top">
                     <span className="nm">{l.name}</span>
                     {l.spec && <span className="sp">{l.spec}</span>}
-                    <span className="am num">
-                      {l.정가 > 0 ? won(l.정가) : <em className="none">무료</em>}
+                  </div>
+                  {/* 네 값을 늘 같은 자리에 같은 차례로 놓는다.
+                      값이 있고 없고에 따라 칸이 사라지면 눈이 매번 다시 찾는다 */}
+                  <div className="nums">
+                    <span><i>정상가</i>{l.정가 > 0 ? won(l.정가) : "-"}</span>
+                    <span className={l.할인 > 0 ? "cut" : ""}>
+                      <i>할인</i>{l.할인 > 0 ? `-${won(l.할인)}` : "0원"}
+                    </span>
+                    <span className="paid">
+                      <i>결제</i>{won(l.amount)}
+                      {/* 시트에 안 적힌 줄은 할인을 정상가 비율로 나눠 낸 값이다.
+                          적힌 값과 같은 얼굴로 두면 기록으로 믿게 된다 */}
+                      {!l.적힘 && <em className="calc">추정</em>}
+                    </span>
+                    <span className={l.미수 > 0 ? "warn-text" : ""}>
+                      <i>미수</i>{won(l.미수)}
                     </span>
                   </div>
-                  {(l.적힘 || l.할인 > 0 || l.미수 > 0) && (
-                    <div className="nums">
-                      {l.할인 > 0 && <span><i>할인</i>-{won(l.할인)}</span>}
-                      {l.적힘 && <span className="paid"><i>결제</i>{won(l.amount)}</span>}
-                      {l.미수 > 0 && <span className="warn-text"><i>미수</i>{won(l.미수)}</span>}
-                    </div>
-                  )}
                 </li>
               ))}
             </ul>
@@ -2594,10 +2602,11 @@ function PaymentLine({ x, lines, onEditItem }: {
             </div>
           )}
 
-          {!다적힘 && lines.length > 0 && 깎은값 > 0 && (
+          {!다적힘 && lines.length > 0 && (
             <p className="stat-note" style={{ margin: "6px 0 0" }}>
-              할인 {won(깎은값)}이 어느 상품에서 나온 것인지는 적혀 있지 않습니다.
-              나눠 두고 싶으시면 그 상품 줄을 눌러 금액을 적어주세요.
+              「추정」이 붙은 결제 금액은 시트에 안 적혀 있어 할인을 정상가 비율로
+              나눠 낸 값입니다. 합계는 실제 결제 금액과 맞습니다.
+              실제와 다르면 그 줄을 눌러 고쳐주세요.
             </p>
           )}
 
