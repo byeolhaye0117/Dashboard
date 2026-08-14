@@ -2417,6 +2417,39 @@ function PaymentLine({ x, lines, onEditItem }: {
   /* 건수가 쌓이면 늘 펼쳐 둔 목록은 읽기가 힘들다. 눌러서 편다 */
   const [open, setOpen] = useState(false);
 
+  /*
+   * 금액이 비어 있는 줄을 한 번에 채우는 자리
+   *
+   * 이용권 시트에 「금액」 칸이 없던 동안 판 것은 그 값이 통째로 날아갔다.
+   * 넣으신 적이 없어서가 아니라, 적을 자리가 없어 조용히 사라진 것이다.
+   * 한 줄씩 창을 열어 고치게 하면 세 상품에 창을 세 번 열어야 한다.
+   */
+  const [fill, setFill] = useState<Record<string, string> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const 빈줄 = lines.filter((l) => !l.적힘);
+
+  async function saveFill() {
+    if (!fill) return;
+    setBusy(true);
+    setMsg("");
+    for (const [id, v] of Object.entries(fill)) {
+      const n = v.replace(/[^0-9]/g, "");
+      if (!n) continue;
+      const res = await fetch("/api/members/ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, changes: { 금액: n } }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setBusy(false);
+        return setMsg(d.error ?? "저장하지 못했습니다.");
+      }
+    }
+    location.reload();
+  }
+
   const refunded = x.환불여부?.toUpperCase() === "Y";
   const owe = Number(x.미수금액) || 0;
 
@@ -2485,6 +2518,58 @@ function PaymentLine({ x, lines, onEditItem }: {
             <p className="stat-note" style={{ margin: "8px 0 0" }}>
               이 결제에 딸린 이용권을 못 찾았습니다. 이용권 탭에서 확인해주세요.
             </p>
+          )}
+
+          {/* 넣으신 값이 사라진 자리다. 그 자리에서 바로 채우실 수 있게 한다 */}
+          {onEditItem && 빈줄.length > 0 && (
+            fill ? (
+              <div className="fillbox">
+                <p className="stat-note" style={{ margin: "0 0 8px" }}>
+                  이 결제는 <b className="num">{money(Number(x.결제금액) || 0)}원</b>입니다.
+                  상품마다 얼마였는지 넣어주세요.
+                </p>
+                {빈줄.map((l) => (
+                  <label key={l.id} className="fillrow">
+                    <span className="nm">{l.name}</span>
+                    <input className="input" inputMode="numeric" value={fill[l.id] ?? ""}
+                           placeholder={l.정가 > 0 ? `정상가 ${money(l.정가)}` : "금액"}
+                           onChange={(e) =>
+                             setFill({ ...fill, [l.id]: e.target.value.replace(/[^0-9]/g, "") })} />
+                  </label>
+                ))}
+                <p className="stat-note" style={{ margin: "6px 0 0" }}>
+                  넣은 것 합계{" "}
+                  <b className="num">
+                    {money(
+                      lines.reduce(
+                        (n, l) => n + (l.적힘 ? l.amount : Number(fill[l.id]) || 0),
+                        0
+                      )
+                    )}
+                    원
+                  </b>
+                </p>
+                {msg && <div className="alert-bad" style={{ marginTop: 8 }}>{msg}</div>}
+                <div className="who-acts" style={{ marginTop: 10 }}>
+                  <button type="button" className="btn-dark" style={{ flex: "0 0 auto" }}
+                          disabled={busy} onClick={saveFill}>
+                    {busy ? "저장 중…" : "저장"}
+                  </button>
+                  <button type="button" className="btn-ghost" style={{ flex: "0 0 auto" }}
+                          disabled={busy} onClick={() => setFill(null)}>
+                    취소
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="stat-note" style={{ margin: "8px 0 0" }}>
+                금액이 안 적힌 상품이 {빈줄.length}개 있습니다.
+                <button type="button" className="linkish"
+                        onClick={() => setFill(Object.fromEntries(빈줄.map((l) => [l.id, ""])))}>
+                  금액 채우기
+                </button>
+              </p>
+            )
           )}
 
           {(ways.length > 0 || owe > 0) && (
