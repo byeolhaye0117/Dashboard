@@ -29,6 +29,8 @@ const PR_COLS: ColumnSpec = {
   결제개월: { names: [] },
   서비스개월: { names: [] },
   총이용개월: { names: ["총개월", "이용개월"] },
+  /* 기간을 개월로 세는지 일로 세는지. 없거나 비면 개월이다 */
+  기간단위: { names: ["단위"] },
   결제횟수: { names: [] },
   서비스횟수: { names: [] },
   총횟수: { names: ["총이용횟수"] },
@@ -63,6 +65,7 @@ export type AdminProduct = {
   kind: string;
   판매중: boolean;
   결제개월: string;
+  기간단위: string;
   서비스개월: string;
   총이용개월: string;
   결제횟수: string;
@@ -118,6 +121,7 @@ export async function listProductsAdmin(): Promise<AdminProduct[]> {
       kind: get(r, cols, "상품분류"),
       판매중: (get(r, cols, "판매상태") || "판매중") === "판매중",
       결제개월: get(r, cols, "결제개월"),
+      기간단위: get(r, cols, "기간단위"),
       서비스개월: get(r, cols, "서비스개월"),
       총이용개월: get(r, cols, "총이용개월"),
       결제횟수: get(r, cols, "결제횟수"),
@@ -176,6 +180,7 @@ export type NewProduct = {
   상품명: string;
   상품분류: string;
   결제개월: string;
+  기간단위: string;
   서비스개월: string;
   결제횟수: string;
   서비스횟수: string;
@@ -188,6 +193,9 @@ export type NewProduct = {
 };
 
 export async function createProduct(input: NewProduct, staffId: string): Promise<string> {
+  /* 뒤늦게 생긴 칸이다. 없는 칸에 적으면 조용히 사라진다 */
+  await addColumns(SHEET_PR, ["기간단위"]);
+
   const name = (input.상품명 ?? "").trim();
   if (!name) throw new Error("상품 이름을 적어주세요.");
   if (!KINDS.includes(input.상품분류 as any)) throw new Error("카테고리를 골라주세요.");
@@ -206,6 +214,7 @@ export async function createProduct(input: NewProduct, staffId: string): Promise
     상품분류: input.상품분류,
     판매상태: input.판매중 ? "판매중" : "판매중지",
     결제개월: input.결제개월 ?? "",
+    기간단위: input.기간단위 === "일" ? "일" : "개월",
     서비스개월: input.서비스개월 ?? "",
     총이용개월: 개월 > 0 ? String(개월) : "",
     결제횟수: input.결제횟수 ?? "",
@@ -231,7 +240,7 @@ const num = (v?: string) => Number((v ?? "").toString().replace(/[^0-9]/g, "")) 
 /** 고칠 수 있는 칸만 받는다 — 화면이 보낸 이름을 그대로 시트에 쓰지 않는다 */
 const EDITABLE = [
   "상품명", "상품분류", "판매상태",
-  "결제개월", "서비스개월", "총이용개월",
+  "결제개월", "서비스개월", "총이용개월", "기간단위",
   "결제횟수", "서비스횟수", "총횟수",
   "현금가", "카드가", "서비스상품", "옵션상품", "정렬순서", "삭제여부",
 ];
@@ -241,6 +250,8 @@ export async function patchProduct(
   changes: Record<string, string>,
   staffId: string
 ): Promise<void> {
+  if (changes["기간단위"] !== undefined) await addColumns(SHEET_PR, ["기간단위"]);
+
   const p = await readSheet(SHEET_PR);
   const cols = resolve(SHEET_PR, p.headers, PR_COLS);
   const i = p.rows.findIndex((r) => get(r, cols, "상품코드") === code);

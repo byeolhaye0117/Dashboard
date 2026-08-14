@@ -23,8 +23,18 @@ export type ProductMeta = {
   name: string;
   /** 회원권 / 1:1PT / 그룹수업 / 기타 / 서비스 / 옵션 */
   kind: string;
-  /** 이용 개월 (결제 + 서비스) */
+  /**
+   * 기간을 무엇으로 세는가 — 「개월」 또는 「일」
+   *
+   * 예전에는 개월뿐이었다. 하루 이용권이나 10일권처럼 짧은 상품을 만들
+   * 길이 없었다. 시트에 「기간단위」 칸이 없거나 비면 개월로 본다 —
+   * 지금까지 만들어 둔 상품이 그대로 읽혀야 한다.
+   */
+  unit: "개월" | "일";
+  /** 이용 개월 (결제 + 서비스). 단위가 「일」이면 0 이다 */
   months: number;
+  /** 이용 일수 (결제 + 서비스). 단위가 「개월」이면 0 이다 */
+  days: number;
   /** 이용 횟수 (결제 + 서비스) */
   count: number;
   cash: number;
@@ -48,11 +58,17 @@ export function readProduct(r: Row): ProductMeta {
 
   const yes = (v: string) => ["y", "yes", "예", "o", "true", "✅"].includes(v.trim().toLowerCase());
 
+  const unit: "개월" | "일" =
+    val(r, ["기간단위", "단위"]).trim() === "일" ? "일" : "개월";
+  const term = totalMonths || payMonths + freeMonths;
+
   return {
     code: val(r, ["상품코드"]),
     name: val(r, ["상품명"]),
     kind: val(r, ["상품분류", "분류", "구분"]),
-    months: totalMonths || payMonths + freeMonths,
+    unit,
+    months: unit === "개월" ? term : 0,
+    days: unit === "일" ? term : 0,
     count: totalCount || payCount + freeCount,
     cash: num(val(r, ["현금가", "현금(계좌)가", "현금계좌가", "현금"])),
     card: num(val(r, ["카드가", "카드"])),
@@ -60,4 +76,15 @@ export function readProduct(r: Row): ProductMeta {
     isOption: yes(val(r, ["옵션상품", "옵션상품여부", "옵션"])),
     order: num(val(r, ["정렬순서", "순서", "정렬"])),
   };
+}
+
+/**
+ * 기간을 사람이 읽는 말로
+ *
+ * 「3개월」 「10일」. 기간이 없는 상품(횟수제)은 빈 글자다.
+ * 화면 여러 곳에서 같은 말이 나와야 해서 여기 한 줄로 둔다.
+ */
+export function termOf(p: { unit?: string; months?: number; days?: number }): string {
+  if (p.unit === "일") return p.days ? `${p.days}일` : "";
+  return p.months ? `${p.months}개월` : "";
 }

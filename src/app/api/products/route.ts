@@ -53,6 +53,7 @@ export async function POST(req: Request) {
           상품명: String(body.상품명 ?? ""),
           상품분류: kind,
           결제개월: String(body.결제개월 ?? ""),
+          기간단위: String(body.기간단위 ?? "개월"),
           서비스개월: String(body.서비스개월 ?? ""),
           결제횟수: String(body.결제횟수 ?? ""),
           서비스횟수: String(body.서비스횟수 ?? ""),

@@ -22,6 +22,7 @@ type Product = {
   결제개월: string;
   서비스개월: string;
   총이용개월: string;
+  기간단위?: string;
   결제횟수: string;
   서비스횟수: string;
   총횟수: string;
@@ -45,10 +46,11 @@ const num = (v?: string) => Number((v ?? "").replace(/[^0-9]/g, "")) || 0;
 
 /** 기간과 횟수를 한 줄로 — 둘 다 있으면 둘 다, 없으면 없는 대로 */
 function spec(p: Product): string {
-  const 개월 = num(p.총이용개월) || num(p.결제개월) + num(p.서비스개월);
+  const 기간 = num(p.총이용개월) || num(p.결제개월) + num(p.서비스개월);
+  const 단위 = (p.기간단위 ?? "").trim() === "일" ? "일" : "개월";
   const 횟수 = num(p.총횟수) || num(p.결제횟수) + num(p.서비스횟수);
   const out: string[] = [];
-  if (개월 > 0) out.push(`${개월}개월`);
+  if (기간 > 0) out.push(`${기간}${단위}`);
   if (횟수 > 0) out.push(`${횟수}회`);
   return out.join(" · ");
 }
@@ -489,6 +491,8 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
     상품분류: item && KINDS.includes(item.kind) ? item.kind : "회원권",
     결제개월: item?.결제개월 ?? "",
     서비스개월: item?.서비스개월 ?? "",
+    /* 예전 상품에는 이 칸이 없다. 없으면 개월로 본다 */
+    기간단위: (item?.기간단위 ?? "").trim() === "일" ? "일" : "개월",
     결제횟수: item?.결제횟수 ?? "",
     서비스횟수: item?.서비스횟수 ?? "",
     현금가: item?.현금가 ?? "",
@@ -504,7 +508,8 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
   const [err, setErr] = useState("");
   const set = (k: string, v: any) => setF((o) => ({ ...o, [k]: v }));
 
-  const 개월 = num(f.결제개월) + num(f.서비스개월);
+  const 기간 = num(f.결제개월) + num(f.서비스개월);
+  const 단위 = f.기간단위 === "일" ? "일" : "개월";
   const 횟수 = num(f.결제횟수) + num(f.서비스횟수);
 
   function save() {
@@ -524,7 +529,8 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
         판매상태: f.판매중 ? "판매중" : "판매중지",
         결제개월: f.결제개월,
         서비스개월: f.서비스개월,
-        총이용개월: 개월 > 0 ? String(개월) : "",
+        총이용개월: 기간 > 0 ? String(기간) : "",
+        기간단위: 단위,
         결제횟수: f.결제횟수,
         서비스횟수: f.서비스횟수,
         총횟수: 횟수 > 0 ? String(횟수) : "",
@@ -570,14 +576,27 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
 
         <h4 className="mini-title">기간 · 횟수</h4>
         <div className="form-grid">
+          {/* 단위는 결제분과 서비스분이 같이 쓴다. 「결제는 개월, 서비스는 일」로
+              나뉘는 상품은 실제로 없고, 나뉘면 합친 기간을 셀 수가 없다 */}
           <div className="field">
-            <label htmlFor="p1">결제 개월</label>
+            <label htmlFor="pu">기간 단위</label>
+            <select id="pu" className="input" value={f.기간단위}
+                    onChange={(e) => set("기간단위", e.target.value)}>
+              <option value="개월">개월</option>
+              <option value="일">일</option>
+            </select>
+          </div>
+          <div className="field" />
+          <div className="field">
+            <label htmlFor="p1">결제 기간 ({단위})</label>
             <input id="p1" className="input" inputMode="numeric" value={f.결제개월}
+                   placeholder={단위 === "일" ? "예: 30" : "예: 3"}
                    onChange={(e) => set("결제개월", onlyNum(e.target.value))} />
           </div>
           <div className="field">
-            <label htmlFor="p2">서비스 개월</label>
+            <label htmlFor="p2">서비스 기간 ({단위})</label>
             <input id="p2" className="input" inputMode="numeric" value={f.서비스개월}
+                   placeholder={단위 === "일" ? "예: 7" : "예: 1"}
                    onChange={(e) => set("서비스개월", onlyNum(e.target.value))} />
           </div>
           <div className="field">
@@ -593,7 +612,7 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
         </div>
         <p className="stat-note">
           「6+6개월」처럼 덤을 주는 상품은 <b>결제 6 · 서비스 6</b>으로 적습니다.
-          회원에게는 합친 <b>{개월 > 0 ? `${개월}개월` : "—"}</b>
+          회원에게는 합친 <b>{기간 > 0 ? `${기간}${단위}` : "—"}</b>
           {횟수 > 0 && <> · <b>{횟수}회</b></>}로 나가고, 매출은 결제분만 잡힙니다.
         </p>
 

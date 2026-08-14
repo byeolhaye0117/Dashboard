@@ -3,12 +3,12 @@
 /**
  * 회원 목록 · 등록 · 이용권 관리
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today, daysBetween, weekdayIndex } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
-import type { ProductMeta } from "@/lib/productMeta";
+import { termOf, type ProductMeta } from "@/lib/productMeta";
 import { REFUND_STAGES, REFUND_REASONS } from "@/lib/refund";
 
 type Member = {
@@ -187,6 +187,16 @@ export default function Client(p: Props) {
   const [q, setQ] = useState("");
   const [openNew, setOpenNew] = useState(false);
   const [detail, setDetail] = useState<Member | null>(null);
+
+  /* 주소에 적힌 회원번호가 있으면 그 창을 다시 연다 —
+     이용권을 고치고 새로 읽은 뒤에도 보던 자리로 돌아오게 하는 길이다 */
+  useEffect(() => {
+    const id = decodeURIComponent(location.hash.replace(/^#/, "")).trim();
+    if (!id) return;
+    const m = p.items.find((x) => x.id === id);
+    if (m) setDetail(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   /*
     지금 보고 있는 지점
 
@@ -617,6 +627,35 @@ function linePrice(l: Line, pr: ProductMeta | undefined): number {
  * 사물함 · 운동복 같은 부가 상품과 24시 · 여성전용 같은 옵션이다.
  * 달마다 값이 붙는 것들이라 몇 달치를 받을지 그때그때 정한다.
  */
+/**
+ * 이 상품의 시작일에서 종료일을 잰다
+ *
+ * 개월짜리와 일짜리를 한 자리에서 다룬다. 둘을 각각 계산하는 자리가
+ * 늘어나면 한쪽만 고쳐서 어긋난다 — 종료일은 회원이 제일 먼저 보는 숫자다.
+ * 종료일은 마지막으로 쓸 수 있는 날이다. 30일권을 8월 14일에 끊으면
+ * 9월 12일까지다.
+ */
+function endOf(pr: ProductMeta | undefined, start: string, months: number): string {
+  if (!start) return "";
+  if (pr?.unit === "일") return pr.days ? addDays(start, pr.days - 1) : "";
+  return months ? addMonths(start, months) : "";
+}
+
+/**
+ * 고치고 나면 보던 자리로 돌아온다
+ *
+ * 저장하면 화면을 새로 읽는데(location.reload), 그러면 열어 두었던 회원 창이
+ * 닫히고 목록으로 튕긴다. 이용권 하나 고치고 나서 그 회원을 다시 찾아 여는
+ * 것은 하루에 몇 번씩 하는 일이라 그때마다 손이 간다.
+ *
+ * 주소 뒤에 회원번호를 적어 두고 새로 읽는다. 화면이 뜰 때 그 번호가 있으면
+ * 그 회원 창을 다시 연다. 주소에 남으므로 새로고침을 눌러도 그대로다.
+ */
+function reloadTo(memberId?: string): void {
+  if (memberId) location.hash = memberId;
+  location.reload();
+}
+
 const canPickMonths = (pr?: ProductMeta) => {
   const g = groupOf(pr);
   if (g === "서비스") return false;
@@ -831,7 +870,7 @@ function PurchaseFields({
         {
           상품코드: code,
           시작일: start,
-          종료일: months ? addMonths(start, months) : "",
+          종료일: endOf(pr, start, months),
           총횟수: pr.count ? String(pr.count) : "",
           개월: months ? String(months) : "",
           가격구분: defaultKind(b.결제수단),
@@ -889,8 +928,8 @@ function PurchaseFields({
                   <button key={x.code} type="button" className="prod" onClick={() => addLine(x.code)}>
                     <span className="nm">{x.name}</span>
                     <span className="meta">
-                      {x.months > 0 && `${x.months}개월`}
-                      {x.months > 0 && x.count > 0 && " · "}
+                      {termOf(x)}
+                      {termOf(x) && x.count > 0 && " · "}
                       {x.count > 0 && `${x.count}회`}
                     </span>
                     <span className="pr num">
@@ -982,7 +1021,8 @@ function PurchaseFields({
                                          lines: b.lines.map((x, k) => {
                                            if (k !== i) return x;
                                            const n = Number(x.개월) || pr?.months || 0;
-                                           return { ...x, 시작일: v, 종료일: n ? addMonths(v, n) : x.종료일 };
+                                           const end = endOf(pr, v, n);
+                                           return { ...x, 시작일: v, 종료일: end || x.종료일 };
                                          }),
                                        });
                                      }} />
@@ -1174,7 +1214,7 @@ function AddPurchase({
     const data = await res.json();
     setBusy(false);
     if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
-    location.reload();
+    reloadTo(member.id);
   }
 
   return (
@@ -1472,7 +1512,7 @@ function Detail({
     const data = await res.json();
     setBusy(false);
     if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
-    location.reload();
+    reloadTo(item.id);
   }
 
   async function remove() {
@@ -1485,6 +1525,8 @@ function Detail({
     const data = await res.json();
     setBusy(false);
     if (!res.ok) return setMsg(data.error ?? "지우지 못했습니다.");
+    /* 지운 회원 자리로 돌아가면 빈 창이 뜬다. 목록으로 나온다 */
+    location.hash = "";
     location.reload();
   }
 
@@ -1654,6 +1696,7 @@ function Detail({
 
                 {view === "결제" && (
                   <PayTab paid={paid} totalPaid={totalPaid} unpaid={unpaid}
+                          tickets={tickets} products={products}
                           onEdit={can.update ? setEditPay : undefined} />
                 )}
 
@@ -2131,13 +2174,39 @@ const usesCount = (pr?: ProductMeta, t?: Ticket) =>
  * 얼마 냈나"를 찾느라 훑게 된다. 달을 고르면 그 달만, 「전체」면 달마다
  * 머리글을 달아 묶어서 보여준다.
  */
-function PayTab({ paid, totalPaid, unpaid, onEdit }: {
+function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit }: {
   paid: Payment[];
   totalPaid: number;
   unpaid: number;
+  /** 이 결제로 무엇을 샀는지 잇는 데 쓴다 */
+  tickets: Ticket[];
+  products: ProductMeta[];
   onEdit?: (x: Payment) => void;
 }) {
   const [month, setMonth] = useState("");
+
+  /*
+   * 결제 한 건에 무엇이 딸려 있는지 미리 묶어 둔다
+   *
+   * 이용권 줄이 결제번호를 들고 있다. 그걸로 되짚으면 「이 134,000원이
+   * 무엇이었나」를 시트 안 열고 답할 수 있다.
+   */
+  const bought = useMemo(() => {
+    const byCode = new Map(products.map((x) => [x.code, x]));
+    const m = new Map<string, { name: string; amount: number; spec: string }[]>();
+    tickets.forEach((t) => {
+      const pid = (t.결제번호 ?? "").trim();
+      if (!pid) return;
+      const pr = byCode.get(t.상품코드);
+      const spec = [termOf(pr ?? {}), t.총횟수 ? `${t.총횟수}회` : ""].filter(Boolean).join(" · ");
+      (m.get(pid) ?? m.set(pid, []).get(pid)!).push({
+        name: pr?.name || t.상품코드,
+        amount: Number(t.금액) || 0,
+        spec,
+      });
+    });
+    return m;
+  }, [tickets, products]);
 
   const sorted = useMemo(
     () => paid.slice().sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? "")),
@@ -2205,7 +2274,8 @@ function PayTab({ paid, totalPaid, unpaid, onEdit }: {
               {r.head.slice(0, 4)}년 {Number(r.head.slice(5, 7))}월
             </h4>
           ) : (
-            <PaymentLine key={r.x!.id} x={r.x!} onEdit={onEdit && (() => onEdit(r.x!))} />
+            <PaymentLine key={r.x!.id} x={r.x!} lines={bought.get(r.x!.id) ?? []}
+                         onEdit={onEdit && (() => onEdit(r.x!))} />
           )
         )}
       </div>
@@ -2230,17 +2300,41 @@ function PayTab({ paid, totalPaid, unpaid, onEdit }: {
   );
 }
 
-function PaymentLine({ x, onEdit }: { x: Payment; onEdit?: () => void }) {
+/**
+ * 결제 한 건을 뜯어서 보여준다
+ *
+ * 「134,000원 · 계좌 · 완납」 한 줄로는 무엇을 샀는지도, 어떻게 나눠 냈는지도
+ * 알 수가 없다. 나중에 「이 돈이 뭐였지」를 물으면 시트를 열어야 했다.
+ *
+ * 두 가지를 편다.
+ *  - 무엇을 샀나 : 이 결제로 만들어진 이용권을 상품 이름과 금액으로 나열한다
+ *  - 어떻게 냈나 : 카드 · 현금 · 계좌로 나눠 적힌 금액을 그대로 보여준다
+ *
+ * 나눠 적은 금액이 없으면(결제수단만 골라 두고 금액은 안 나눈 옛 기록)
+ * 그 줄은 아예 안 그린다. 0원이라고 적으면 0원을 낸 것처럼 읽힌다.
+ */
+function PaymentLine({ x, lines, onEdit }: {
+  x: Payment;
+  /** 이 결제로 산 것들 — 상품 이름과 금액 */
+  lines: { name: string; amount: number; spec: string }[];
+  onEdit?: () => void;
+}) {
   const refunded = x.환불여부?.toUpperCase() === "Y";
   const owe = Number(x.미수금액) || 0;
+
+  const ways = [
+    { k: "카드", v: Number(x.카드액) || 0 },
+    { k: "현금", v: Number(x.현금액) || 0 },
+    { k: "계좌", v: Number(x.계좌액) || 0 },
+  ].filter((w) => w.v > 0);
 
   return (
     <div className={`line-item${onEdit ? " clickable" : ""}`} onClick={onEdit}>
       <div className="line-head">
         <b className="num">{money(Number(x.결제금액) || 0)}원</b>
         <span className="dim">
-          {(x.결제일시 ?? "").slice(0, 10)} · {x.결제수단 || "-"}
-          {owe > 0 && ` · 미수 ${money(owe)}원`}
+          {(x.결제일시 ?? "").slice(0, 10)}
+          {ways.length === 0 && ` · ${x.결제수단 || "-"}`}
         </span>
         {refunded ? (
           <span className="pill bad">환불</span>
@@ -2250,6 +2344,34 @@ function PaymentLine({ x, onEdit }: { x: Payment; onEdit?: () => void }) {
           <span className="pill good">완납</span>
         )}
       </div>
+
+      {lines.length > 0 && (
+        <ul className="paylines">
+          {lines.map((l, i) => (
+            <li key={i}>
+              <span className="nm">{l.name}</span>
+              {l.spec && <span className="dim">{l.spec}</span>}
+              <span className="am num">{l.amount > 0 ? `${money(l.amount)}원` : "-"}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {(ways.length > 0 || owe > 0) && (
+        <div className="payways">
+          {ways.map((w) => (
+            <span key={w.k}>
+              {w.k} <b className="num">{money(w.v)}원</b>
+            </span>
+          ))}
+          {owe > 0 && (
+            <span className="warn-text">
+              미수 <b className="num">{money(owe)}원</b>
+              {x.미수금결제예정일 && ` · ${x.미수금결제예정일}까지`}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2302,7 +2424,7 @@ function TicketEdit({
       setCat(ticketCat(pr));
       return setMsg(data.error ?? "카테고리를 바꾸지 못했습니다.");
     }
-    location.reload();
+    reloadTo(t.회원번호);
   }
 
   const nowDay = today();
@@ -2325,7 +2447,7 @@ function TicketEdit({
     const data = await res.json();
     setBusy(false);
     if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
-    location.reload();
+    reloadTo(t.회원번호);
   }
 
   /** 정지 · 재개 · 양도는 계산이 붙는 일이라 서버가 맡는다 */
@@ -2340,7 +2462,7 @@ function TicketEdit({
     const data = await res.json();
     setBusy(false);
     if (!res.ok) return setMsg(data.error ?? "처리하지 못했습니다.");
-    location.reload();
+    reloadTo(t.회원번호);
   }
 
   return (
@@ -2705,7 +2827,7 @@ function PaymentEdit({
     const data = await res.json();
     setBusy(false);
     if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
-    location.reload();
+    reloadTo(x.회원번호);
   }
 
   return (
