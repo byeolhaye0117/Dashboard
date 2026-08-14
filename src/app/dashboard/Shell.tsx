@@ -144,7 +144,7 @@ export default function Shell({
               <div className="rail-group" key={g}>
                 <h4>{g}</h4>
                 {items.map((m) => (
-                  <a key={m.key} href={m.href} className={active === m.key ? "on" : ""} title={m.label}>
+                  <a key={m.href} href={m.href} className={active === m.key ? "on" : ""} title={m.label}>
                     <Icon name={m.icon} size={18} />
                     <span className="label">{m.label}</span>
                   </a>
@@ -240,7 +240,7 @@ export default function Shell({
 
       <nav className="tabbar" aria-label="주 메뉴">
         {phoneTabs.map((m) => (
-          <a key={m.key} href={m.href} className={active === m.key ? "on" : ""}>
+          <a key={m.href} href={m.href} className={active === m.key ? "on" : ""}>
             <Icon name={m.icon} size={19} />
             {m.short}
           </a>
@@ -261,7 +261,9 @@ export default function Shell({
                  그냥 사라지면 「왜 안 보이지」를 혼자 한참 찾게 된다.
                  무엇이 있는데 왜 못 쓰는지가 보여야, 대표님께 켜 달라고 말할 수 있다. */
               const locked = MENUS.filter(
-                (m) => m.group === g && !menus.some((v) => v.key === m.key)
+                /* 같은 열쇠를 쓰는 메뉴가 둘 있다(권한 설정 · 목록 관리).
+                   주소로 견줘야 한쪽만 잠긴 것처럼 두 번 나오지 않는다 */
+                (m) => m.group === g && !menus.some((v) => v.href === m.href)
               );
               if (items.length === 0 && locked.length === 0) return null;
               return (
@@ -269,13 +271,13 @@ export default function Shell({
                   <h4>{g}</h4>
                   <div className="m-grid">
                     {items.map((m) => (
-                      <a key={m.key} href={m.href} className={active === m.key ? "on" : ""}>
+                      <a key={m.href} href={m.href} className={active === m.key ? "on" : ""}>
                         <Icon name={m.icon} size={20} />
                         {m.label}
                       </a>
                     ))}
                     {locked.map((m) => (
-                      <span key={m.key} className="locked" title="권한이 없어 열 수 없습니다">
+                      <span key={m.href} className="locked" title="권한이 없어 열 수 없습니다">
                         <Icon name={m.icon} size={20} />
                         {m.label}
                         <i>권한 없음</i>
