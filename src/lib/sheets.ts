@@ -138,9 +138,87 @@ const memo = cache(() => new Map<string, SheetData>());
 function forget(sheetName: string): void {
   try {
     memo().delete(sheetName);
+    pending().delete(sheetName);
   } catch {
     /* 요청 밖에서 부르면 cache 가 없다. 그때는 기억할 것도 없다 */
   }
+}
+
+/**
+ * 같은 순간에 몰린 읽기를 한 번에 묶는다
+ *
+ * ── 왜 이렇게까지 하나 ────────────────────────────────────────
+ * 구글은 1분에 받아주는 읽기 요청 수가 정해져 있다(계정당 60번쯤).
+ * 화면 하나가 탭을 열몇 개 읽으니 몇 번만 오가도 한도에 걸려
+ * 「화면을 열지 못했습니다」가 떴다. 기다렸다 다시 묻는 것으로는 모자랐다 —
+ * 요청 수 자체를 줄여야 한다.
+ *
+ * 구글에는 여러 범위를 한 번에 읽는 창구(batchGet)가 있다. 탭 열 개를
+ * 읽어도 요청은 한 번이다. 그래서 부르는 쪽 코드는 그대로 두고,
+ * 같은 순간에 들어온 읽기를 잠깐 모았다가 한 번에 보낸다.
+ *
+ * 모으는 시간은 5밀리초다. 사람은 못 느끼고, Promise.all 로 한꺼번에
+ * 부르는 자리는 전부 한 묶음이 된다.
+ * ──────────────────────────────────────────────────────── */
+type Waiting = {
+  name: string;
+  ok: (d: SheetData) => void;
+  no: (e: any) => void;
+};
+
+/** 지금 모으는 중인 읽기들 — 요청 하나 안에서만 산다 */
+const queue = cache(() => ({ list: [] as Waiting[], timer: null as any }));
+
+const RANGE = (name: string) => `${name}!A1:BZ`;
+
+function flush(q: { list: Waiting[]; timer: any }): void {
+  const batch = q.list;
+  q.list = [];
+  q.timer = null;
+  if (batch.length === 0) return;
+
+  /* 같은 탭을 여러 곳에서 기다리고 있을 수 있다. 범위는 한 번만 보낸다 */
+  const names = [...new Set(batch.map((w) => w.name))];
+  const qs = names.map((n) => `ranges=${encodeURIComponent(RANGE(n))}`).join("&");
+
+  call(`/values:batchGet?${qs}&majorDimension=ROWS`)
+    .then((data: any) => {
+      const got = new Map<string, SheetData>();
+      (data?.valueRanges ?? []).forEach((v: any, i: number) => {
+        got.set(names[i], shape(v?.values ?? []));
+      });
+      batch.forEach((w) => {
+        const d = got.get(w.name);
+        if (d) w.ok(d);
+        else w.no(new Error(`시트에서 ${w.name} 탭을 읽지 못했습니다.`));
+      });
+    })
+    .catch((e) => {
+      /*
+       * 묶어 읽다 막히면 하나씩 다시 읽는다
+       *
+       * 탭 하나가 없으면 구글은 묶음 전체를 물린다. 그러면 멀쩡한 탭까지
+       * 같이 실패하고, 무엇이 없는지도 알 수 없다. 하나씩 물어보면
+       * 없는 탭만 정확히 짚어 준다.
+       */
+      batch.forEach((w) => {
+        readSheetFresh(w.name).then(w.ok).catch(() => w.no(e));
+      });
+    });
+}
+
+function readQueued(sheetName: string): Promise<SheetData> {
+  let q: { list: Waiting[]; timer: any };
+  try {
+    q = queue();
+  } catch {
+    /* 요청 밖(스크립트 등)에서 부르면 모을 자리가 없다. 그냥 하나 읽는다 */
+    return readSheetFresh(sheetName);
+  }
+  return new Promise<SheetData>((ok, no) => {
+    q.list.push({ name: sheetName, ok, no });
+    if (!q.timer) q.timer = setTimeout(() => flush(q), 5);
+  });
 }
 
 export async function readSheet(sheetName: string): Promise<SheetData> {
@@ -152,19 +230,45 @@ export async function readSheet(sheetName: string): Promise<SheetData> {
   }
   if (hit) return hit;
 
-  const data = await readSheetFresh(sheetName);
+  /* 같은 탭을 두 곳에서 동시에 기다릴 때, 각각 따로 담지 않도록
+     읽는 약속 자체를 기억해 둔다 */
+  let busy: Map<string, Promise<SheetData>>;
   try {
-    memo().set(sheetName, data);
+    busy = pending();
   } catch {
-    /* 못 담아도 읽기는 끝났다 */
+    return readSheetFresh(sheetName);
   }
-  return data;
+  const already = busy.get(sheetName);
+  if (already) return already;
+
+  const job = readQueued(sheetName)
+    .then((d) => {
+      try {
+        memo().set(sheetName, d);
+        busy.delete(sheetName);
+      } catch {
+        /* 못 담아도 읽기는 끝났다 */
+      }
+      return d;
+    })
+    .catch((e) => {
+      try {
+        busy.delete(sheetName);
+      } catch {
+        /* 지울 자리가 없으면 그만이다 */
+      }
+      throw e;
+    });
+
+  busy.set(sheetName, job);
+  return job;
 }
 
-async function readSheetFresh(sheetName: string): Promise<SheetData> {
-  const range = encodeURIComponent(`${sheetName}!A1:BZ`);
-  const data = await call(`/values/${range}?majorDimension=ROWS`);
-  const values: string[][] = data.values ?? [];
+/** 읽는 중인 약속 — 같은 탭을 두 번 부르지 않게 한다 */
+const pending = cache(() => new Map<string, Promise<SheetData>>());
+
+/** 구글이 준 값 뭉치를 표로 만든다 */
+function shape(values: string[][]): SheetData {
   if (values.length === 0) {
     return { headers: [], headerRow: 1, rows: [], rowNumbers: [] };
   }
@@ -183,6 +287,12 @@ async function readSheetFresh(sheetName: string): Promise<SheetData> {
     rowNumbers.push(i + 1);
   }
   return { headers, headerRow: h + 1, rows, rowNumbers };
+}
+
+async function readSheetFresh(sheetName: string): Promise<SheetData> {
+  const range = encodeURIComponent(RANGE(sheetName));
+  const data = await call(`/values/${range}?majorDimension=ROWS`);
+  return shape(data.values ?? []);
 }
 
 /** 삭제 표시가 없는 줄만 */
