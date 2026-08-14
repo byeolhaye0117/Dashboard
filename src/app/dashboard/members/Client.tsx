@@ -1743,7 +1743,7 @@ function Detail({
 
                 {view === "결제" && (
                   <PayTab paid={paid} totalPaid={totalPaid} unpaid={unpaid}
-                          tickets={tickets} products={products}
+                          tickets={tickets} extras={extras} products={products}
                           onEditItem={can.update
                             ? (id) => { const t = ticketOf(id); if (t) setEditTicket(t); }
                             : undefined} />
@@ -2223,12 +2223,14 @@ const usesCount = (pr?: ProductMeta, t?: Ticket) =>
  * 얼마 냈나"를 찾느라 훑게 된다. 달을 고르면 그 달만, 「전체」면 달마다
  * 머리글을 달아 묶어서 보여준다.
  */
-function PayTab({ paid, totalPaid, unpaid, tickets, products, onEditItem }: {
+function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem }: {
   paid: Payment[];
   totalPaid: number;
   unpaid: number;
   /** 이 결제로 무엇을 샀는지 잇는 데 쓴다 */
   tickets: Ticket[];
+  /** 회원권에 얹은 옵션 — 이용권을 거쳐 같은 결제에 붙는다 */
+  extras: Extra[];
   products: ProductMeta[];
   /** 상품 한 줄을 눌렀을 때 — 그 이용권 창을 연다 */
   onEditItem?: (ticketId: string) => void;
@@ -2241,64 +2243,22 @@ function PayTab({ paid, totalPaid, unpaid, tickets, products, onEditItem }: {
    * 이용권 줄이 결제번호를 들고 있다. 그걸로 되짚으면 「이 134,000원이
    * 무엇이었나」를 시트 안 열고 답할 수 있다.
    */
-  const bought = useMemo(() => {
-    const byCode = new Map(products.map((x) => [x.code, x]));
-    const m = new Map<string, {
-      id: string; name: string; amount: number; spec: string;
-      정가: number; 할인: number; 미수: number;
-      /** 금액이 시트에 적혀 있는가 — 0원과 「기록 없음」은 다르다 */
-      적힘: boolean;
-    }[]>();
-    const put = (pid: string, t: Ticket) => {
-      const pr = byCode.get(t.상품코드);
-      const spec = [termOf(pr ?? {}), t.총횟수 ? `${t.총횟수}회` : ""].filter(Boolean).join(" · ");
-      /* 정가는 현금가·카드가 중 있는 쪽을 본다. 결제 수단이 무엇이었는지는
-         결제 한 건 단위로만 적혀 있어 상품마다 되짚을 수 없다 */
-      const 정가 = pr ? unitPrice(pr, true) : 0;
-      /* 금액 칸이 없던 동안 판 것은 이 값이 비어 있다. 0원과 「기록 없음」은
-         다른 것이라 나눠서 들고 간다 — 무료라고 적어 버리면 거짓말이 된다 */
-      const 적힘 = (t.금액 ?? "").trim() !== "";
-      const amount = Number(t.금액) || 0;
-      const 할인 = Number(t.할인) || (적힘 && 정가 > amount && amount > 0 ? 정가 - amount : 0);
-      const list = m.get(pid) ?? [];
-      list.push({
-        id: t.id, name: pr?.name || t.상품코드, amount, spec, 정가, 할인,
-        적힘, 미수: Number(t.미수금) || 0,
-      });
-      m.set(pid, list);
-    };
-
-    const 매인것: Ticket[] = [];
-    const 안매인것: Ticket[] = [];
-    tickets.forEach((t) => ((t.결제번호 ?? "").trim() ? 매인것 : 안매인것).push(t));
-    매인것.forEach((t) => put((t.결제번호 ?? "").trim(), t));
-
-    /*
-     * 결제번호가 없는 옛 이용권은 날짜로 이어 붙인다
-     *
-     * 이용권 시트에 「결제번호」 칸이 없던 동안 만들어진 줄은 어느 결제에
-     * 딸린 것인지 자국이 없다. 그렇다고 비워 두면 「이 돈이 뭐였지」에
-     * 영영 답을 못 한다.
-     *
-     * 같은 날 결제가 하나뿐이면 그 결제 것으로 본다. 여러 건이면 어느
-     * 쪽인지 알 수 없으므로 손대지 않는다 — 틀리게 붙이는 것보다 낫다.
-     */
-    if (안매인것.length > 0) {
-      const dayCount = new Map<string, Payment[]>();
-      paid.forEach((x) => {
-        const d = (x.결제일시 ?? "").slice(0, 10);
-        if (!d) return;
-        dayCount.set(d, [...(dayCount.get(d) ?? []), x]);
-      });
-      안매인것.forEach((t) => {
-        const d = (t.등록일시 ?? t.시작일 ?? "").slice(0, 10);
-        const same = dayCount.get(d) ?? [];
-        if (same.length === 1) put(same[0].id, t);
-      });
-    }
-    return m;
-  }, [tickets, products, paid]);
-
+  /*
+   * 결제 한 건에 무엇이 딸려 있는지, 각각 얼마였는지
+   *
+   * 이용권 줄이 결제번호를 들고 있다. 회원권에 얹은 옵션(이용권서비스)은
+   * 그 이용권을 거쳐 같은 결제에 붙는다.
+   *
+   * 금액이 비어 있는 줄이 있다. 이용권 시트에 「금액」 칸이 없던 동안 판
+   * 것들인데, 넣으신 값이 적을 자리가 없어 사라진 것이다. 그렇다고 손으로
+   * 다시 넣게 하는 것은 내 실수를 대표님이 메우는 일이다.
+   *
+   * 그래서 계산해서 채운다. 상품표의 정상가에 기간을 곱해 각 줄의 정가를
+   * 내고, 결제 금액을 그 비율대로 나눈다. 마지막 줄에서 잔돈을 맞춰
+   * 합이 결제 금액과 정확히 떨어지게 한다.
+   * 계산해 넣은 값은 그렇다고 표시한다 — 적힌 값과 같은 얼굴로 두면
+   * 나중에 어느 것이 사람이 넣은 값인지 알 수 없다.
+   */
   const sorted = useMemo(
     () => paid.slice().sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? "")),
     [paid]
@@ -2313,6 +2273,122 @@ function PayTab({ paid, totalPaid, unpaid, tickets, products, onEditItem }: {
     });
     return [...set].sort().reverse();
   }, [sorted]);
+
+  const bought = useMemo(() => {
+    const byCode = new Map(products.map((x) => [x.code, x]));
+    type Line = {
+      id: string; name: string; amount: number; spec: string;
+      정가: number; 할인: number; 미수: number; 적힘: boolean; 계산: boolean;
+    };
+    const m = new Map<string, Line[]>();
+
+    /* 몇 달치인가 — 달마다 값이 붙는 상품의 정가를 낼 때 쓴다 */
+    const monthsOf = (t: Ticket, pr?: ProductMeta) => {
+      const a = (t.시작일 ?? "").slice(0, 10);
+      const b = (t.종료일 ?? "").slice(0, 10);
+      if (!a || !b) return pr?.months || 1;
+      const n = Math.round(daysBetween(a, b) / 30);
+      return Math.max(1, n || pr?.months || 1);
+    };
+
+    const 정가Of = (pr: ProductMeta | undefined, t: Ticket) => {
+      if (!pr) return 0;
+      const unit = unitPrice(pr, true);
+      if (!unit) return 0;
+      if (!pricePerMonth(pr)) return unit;
+      const base = pr.months || 1;
+      return Math.round((unit * monthsOf(t, pr)) / base);
+    };
+
+    const put = (pid: string, l: Line) => m.set(pid, [...(m.get(pid) ?? []), l]);
+
+    const byTicket = new Map(tickets.map((t) => [t.id, t]));
+    const pidOf = new Map<string, string>();
+
+    const 매인것: Ticket[] = [];
+    const 안매인것: Ticket[] = [];
+    tickets.forEach((t) => ((t.결제번호 ?? "").trim() ? 매인것 : 안매인것).push(t));
+
+    /* 결제번호가 없는 옛 이용권은 같은 날 결제가 하나뿐일 때만 이어 붙인다.
+       여러 건이면 어느 쪽인지 알 수 없어 손대지 않는다 */
+    const byDay = new Map<string, Payment[]>();
+    paid.forEach((x) => {
+      const d = (x.결제일시 ?? "").slice(0, 10);
+      if (d) byDay.set(d, [...(byDay.get(d) ?? []), x]);
+    });
+    매인것.forEach((t) => pidOf.set(t.id, (t.결제번호 ?? "").trim()));
+    안매인것.forEach((t) => {
+      const same = byDay.get((t.등록일시 ?? t.시작일 ?? "").slice(0, 10)) ?? [];
+      if (same.length === 1) pidOf.set(t.id, same[0].id);
+    });
+
+    tickets.forEach((t) => {
+      const pid = pidOf.get(t.id);
+      if (!pid) return;
+      const pr = byCode.get(t.상품코드);
+      const 적힘 = (t.금액 ?? "").trim() !== "";
+      const amount = Number(t.금액) || 0;
+      const 정가 = 정가Of(pr, t);
+      put(pid, {
+        id: t.id,
+        name: pr?.name || t.상품코드,
+        spec: [termOf(pr ?? {}), t.총횟수 ? `${t.총횟수}회` : ""].filter(Boolean).join(" · "),
+        amount, 정가, 적힘, 계산: false,
+        할인: Number(t.할인) || (적힘 && 정가 > amount && amount > 0 ? 정가 - amount : 0),
+        미수: Number(t.미수금) || 0,
+      });
+    });
+
+    /* 회원권에 얹은 옵션 — 그 이용권이 붙은 결제에 같이 세운다 */
+    extras.forEach((e) => {
+      const t = byTicket.get(e.이용권번호);
+      if (!t) return;
+      const pid = pidOf.get(t.id);
+      if (!pid) return;
+      const pr = byCode.get(e.상품코드);
+      put(pid, {
+        id: `VS:${e.id}`,
+        name: pr?.name || e.상품코드,
+        spec: "회원권에 얹음",
+        amount: Number(e.추가금액) || 0,
+        정가: Number(e.추가금액) || 0,
+        할인: 0, 미수: 0,
+        적힘: (e.추가금액 ?? "").trim() !== "",
+        계산: false,
+      });
+    });
+
+    /* 비어 있는 줄을 계산해 채운다 */
+    m.forEach((list, pid) => {
+      const 빈 = list.filter((l) => !l.적힘);
+      if (빈.length === 0) return;
+      const pay = paid.find((x) => x.id === pid);
+      if (!pay) return;
+      const 총액 = Number(pay.결제금액) || 0;
+      const 적힌합 = list.filter((l) => l.적힘).reduce((n, l) => n + l.amount, 0);
+      const 남은돈 = Math.max(0, 총액 - 적힌합);
+      const 정가합 = 빈.reduce((n, l) => n + l.정가, 0);
+      if (정가합 <= 0) return;
+
+      /* 비율대로만 나누면 87,488원 같은 값이 나온다. 실제로 그렇게 파는
+         가격이 아니라서 보는 사람이 먼저 이상하다고 느낀다.
+         천원 단위로 떨어뜨리고, 마지막 줄에서 잔돈을 맞춘다 */
+      const 단위 = 남은돈 >= 10000 ? 1000 : 100;
+      let 쓴돈 = 0;
+      빈.forEach((l, i) => {
+        const 몫 =
+          i === 빈.length - 1
+            ? 남은돈 - 쓴돈
+            : Math.round((남은돈 * l.정가) / 정가합 / 단위) * 단위;
+        쓴돈 += 몫;
+        l.amount = Math.max(0, 몫);
+        l.할인 = Math.max(0, l.정가 - l.amount);
+        l.계산 = true;
+      });
+    });
+
+    return m;
+  }, [tickets, extras, products, paid]);
 
   const shown = month ? sorted.filter((x) => (x.결제일시 ?? "").startsWith(month)) : sorted;
   const sum = shown.reduce((n, x) => n + (Number(x.결제금액) || 0), 0);
@@ -2409,46 +2485,13 @@ function PaymentLine({ x, lines, onEditItem }: {
   /** 이 결제로 산 것들 */
   lines: {
     id: string; name: string; amount: number; spec: string;
-    정가: number; 할인: number; 미수: number; 적힘: boolean;
+    정가: number; 할인: number; 미수: number; 적힘: boolean; 계산: boolean;
   }[];
   /** 상품 한 줄을 눌렀을 때 — 그 이용권 창을 연다 */
   onEditItem?: (ticketId: string) => void;
 }) {
   /* 건수가 쌓이면 늘 펼쳐 둔 목록은 읽기가 힘들다. 눌러서 편다 */
   const [open, setOpen] = useState(false);
-
-  /*
-   * 금액이 비어 있는 줄을 한 번에 채우는 자리
-   *
-   * 이용권 시트에 「금액」 칸이 없던 동안 판 것은 그 값이 통째로 날아갔다.
-   * 넣으신 적이 없어서가 아니라, 적을 자리가 없어 조용히 사라진 것이다.
-   * 한 줄씩 창을 열어 고치게 하면 세 상품에 창을 세 번 열어야 한다.
-   */
-  const [fill, setFill] = useState<Record<string, string> | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
-  const 빈줄 = lines.filter((l) => !l.적힘);
-
-  async function saveFill() {
-    if (!fill) return;
-    setBusy(true);
-    setMsg("");
-    for (const [id, v] of Object.entries(fill)) {
-      const n = v.replace(/[^0-9]/g, "");
-      if (!n) continue;
-      const res = await fetch("/api/members/ticket", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, changes: { 금액: n } }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        setBusy(false);
-        return setMsg(d.error ?? "저장하지 못했습니다.");
-      }
-    }
-    location.reload();
-  }
 
   const refunded = x.환불여부?.toUpperCase() === "Y";
   const owe = Number(x.미수금액) || 0;
@@ -2493,8 +2536,9 @@ function PaymentLine({ x, lines, onEditItem }: {
                   줄을 누르면 그 상품을 고치는 창이 열린다 — 수정 단추를 따로 두면
                   줄마다 단추가 하나씩 붙어 목록이 단추밭이 된다.
                 */
-                <li key={l.id} className={onEditItem ? "hit" : ""}
-                    onClick={() => onEditItem?.(l.id)}>
+                <li key={l.id}
+                    className={onEditItem && !l.id.startsWith("VS:") ? "hit" : ""}
+                    onClick={() => !l.id.startsWith("VS:") && onEditItem?.(l.id)}>
                   <div className="top">
                     <span className="nm">{l.name}</span>
                     {l.spec && <span className="sp">{l.spec}</span>}
@@ -2505,7 +2549,11 @@ function PaymentLine({ x, lines, onEditItem }: {
                       <i>할인</i>{l.할인 > 0 ? `-${won(l.할인)}` : "0원"}
                     </span>
                     <span className="paid">
-                      <i>결제</i>{l.적힘 ? won(l.amount) : "기록 없음"}
+                      <i>결제</i>{won(l.amount)}
+                      {/* 시트에 안 적힌 줄은 정상가 비율로 나눠 계산한 값이다.
+                          적힌 값과 같은 얼굴로 두면 어느 것이 사람이 넣은
+                          값인지 나중에 알 수 없다 */}
+                      {l.계산 && <em className="calc">계산</em>}
                     </span>
                     <span className={l.미수 > 0 ? "warn-text" : ""}>
                       <i>미수</i>{won(l.미수)}
@@ -2520,56 +2568,11 @@ function PaymentLine({ x, lines, onEditItem }: {
             </p>
           )}
 
-          {/* 넣으신 값이 사라진 자리다. 그 자리에서 바로 채우실 수 있게 한다 */}
-          {onEditItem && 빈줄.length > 0 && (
-            fill ? (
-              <div className="fillbox">
-                <p className="stat-note" style={{ margin: "0 0 8px" }}>
-                  이 결제는 <b className="num">{money(Number(x.결제금액) || 0)}원</b>입니다.
-                  상품마다 얼마였는지 넣어주세요.
-                </p>
-                {빈줄.map((l) => (
-                  <label key={l.id} className="fillrow">
-                    <span className="nm">{l.name}</span>
-                    <input className="input" inputMode="numeric" value={fill[l.id] ?? ""}
-                           placeholder={l.정가 > 0 ? `정상가 ${money(l.정가)}` : "금액"}
-                           onChange={(e) =>
-                             setFill({ ...fill, [l.id]: e.target.value.replace(/[^0-9]/g, "") })} />
-                  </label>
-                ))}
-                <p className="stat-note" style={{ margin: "6px 0 0" }}>
-                  넣은 것 합계{" "}
-                  <b className="num">
-                    {money(
-                      lines.reduce(
-                        (n, l) => n + (l.적힘 ? l.amount : Number(fill[l.id]) || 0),
-                        0
-                      )
-                    )}
-                    원
-                  </b>
-                </p>
-                {msg && <div className="alert-bad" style={{ marginTop: 8 }}>{msg}</div>}
-                <div className="who-acts" style={{ marginTop: 10 }}>
-                  <button type="button" className="btn-dark" style={{ flex: "0 0 auto" }}
-                          disabled={busy} onClick={saveFill}>
-                    {busy ? "저장 중…" : "저장"}
-                  </button>
-                  <button type="button" className="btn-ghost" style={{ flex: "0 0 auto" }}
-                          disabled={busy} onClick={() => setFill(null)}>
-                    취소
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <p className="stat-note" style={{ margin: "8px 0 0" }}>
-                금액이 안 적힌 상품이 {빈줄.length}개 있습니다.
-                <button type="button" className="linkish"
-                        onClick={() => setFill(Object.fromEntries(빈줄.map((l) => [l.id, ""])))}>
-                  금액 채우기
-                </button>
-              </p>
-            )
+          {lines.some((l) => l.계산) && (
+            <p className="stat-note" style={{ margin: "8px 0 0" }}>
+              「계산」이 붙은 금액은 시트에 안 적혀 있어 정상가 비율로 나눈 값입니다.
+              합계는 결제 금액과 맞춰 두었습니다. 다르면 그 줄을 눌러 고쳐주세요.
+            </p>
           )}
 
           {(ways.length > 0 || owe > 0) && (

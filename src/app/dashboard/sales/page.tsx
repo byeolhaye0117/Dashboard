@@ -51,8 +51,17 @@ async function body() {
   try {
     const [pay, tick] = await Promise.all([listPayments(), listTickets()]);
     payments = pay.filter((x) => allowed.has(x.지점코드));
-    const ids = new Set(payments.map((x) => x.id));
-    tickets = tick.filter((t) => ids.has(t.결제번호));
+    /*
+     * 이용권을 결제번호로만 걸러내던 것을 그만둔다
+     *
+     * 이용권 시트에 「결제번호」 칸이 없던 동안 판 줄은 자국이 없다. 그것만
+     * 보고 걸러내면 그 결제는 딸린 상품이 하나도 없는 것이 되어 「기타」로
+     * 몰린다 — 실제로 회원권 13만원이 통째로 기타로 잡혔다.
+     *
+     * 지점 안의 이용권을 다 넘긴다. 어느 결제에 붙는지는 화면에서 잇는다.
+     * 이 회원이 전에 무엇을 끊었는지도 봐야 신규와 재등록을 가를 수 있다.
+     */
+    tickets = tick.filter((t) => allowed.has(t.지점코드));
   } catch (e: any) {
     problem = String(e?.message ?? e);
   }
