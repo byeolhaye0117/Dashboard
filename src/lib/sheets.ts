@@ -4,6 +4,7 @@
  * 시트 한 장을 "표"로 다룬다. 첫 줄이 제목 줄이고, 그 아래가 데이터다.
  * 제목 줄 위에 ※ 로 시작하는 안내 줄이 있을 수 있으므로 건너뛴다.
  */
+import { cache } from "react";
 import { JWT } from "google-auth-library";
 import { normalizePrivateKey } from "./privateKey";
 
@@ -45,22 +46,41 @@ async function accessToken(): Promise<string> {
   return access_token;
 }
 
+/**
+ * 잠깐 바쁜 것과 정말 안 되는 것은 다르다
+ *
+ * 구글은 1분에 받아주는 요청 수가 정해져 있다. 넘으면 429 를 보낸다.
+ * 그건 고장이 아니라 「지금 말고 조금 뒤에」라는 뜻인데, 지금까지는 그대로
+ * 화면에 오류로 띄웠다. 대표님이 「이 화면 자주 뜬다」고 하신 것이 이것이다.
+ *
+ * 세 번까지 기다렸다 다시 묻는다. 기다리는 시간은 갑절씩 늘린다 —
+ * 다 같이 같은 순간에 다시 몰려가면 또 막힌다.
+ * 권한 문제(403)나 없는 탭(400)은 기다려도 달라지지 않으므로 바로 알린다.
+ */
+const RETRY_ON = new Set([429, 500, 502, 503, 504]);
+const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function call(path: string, init?: RequestInit) {
-  const token = await accessToken();
-  const res = await fetch(`${API}/${env("GOOGLE_SHEET_ID")}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-  if (!res.ok) {
+  let last = "";
+  for (let tries = 0; tries < 4; tries++) {
+    if (tries > 0) await nap(400 * 2 ** (tries - 1) + Math.floor(Math.random() * 200));
+    const token = await accessToken();
+    const res = await fetch(`${API}/${env("GOOGLE_SHEET_ID")}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+    if (res.ok) return res.json();
+
     const body = await res.text();
-    throw new Error(explain(res.status, body));
+    last = explain(res.status, body);
+    if (!RETRY_ON.has(res.status)) throw new Error(last);
   }
-  return res.json();
+  throw new Error(last);
 }
 
 /** 구글이 보낸 오류를 사람이 읽을 수 있는 말로 바꾼다 */
@@ -79,7 +99,12 @@ function explain(status: number, body: string): string {
     return "시트에 해당 탭이 없습니다. 탭 이름을 바꾸거나 지우지 않았는지 확인해주세요.";
   }
   if (status === 429 || status === 503) {
-    return "구글 시트가 잠시 바쁩니다. 몇 초 뒤 다시 시도해주세요.";
+    /* 여기까지 왔다는 것은 이미 세 번 기다렸다 다시 물어본 뒤다.
+       그래서 「몇 초 뒤」가 아니라 「잠시 뒤」라고 적는다 */
+    return (
+      "구글 시트가 계속 바쁩니다. 여러 번 다시 물어봤는데도 안 받아줬습니다. " +
+      "잠시 뒤 「다시 시도」를 눌러주세요."
+    );
   }
   return `구글 시트 요청 실패 (${status}): ${body.slice(0, 200)}`;
 }
@@ -95,8 +120,48 @@ function findHeaderRow(values: string[][]): number {
   return 0;
 }
 
-/** 시트 한 장을 통째로 읽는다 */
+/**
+ * 한 요청 안에서는 같은 탭을 한 번만 읽는다
+ *
+ * 화면 하나를 그리는 데 시트를 열몇 번 읽는다. 그런데 같은 탭을 여러 곳에서
+ * 따로 읽고 있었다 — 권한 판정이 직급을 읽고, 지점 범위가 또 읽고, 메뉴가
+ * 또 읽는 식이다. 요청 수가 그만큼 늘고, 구글이 1분 한도에 걸려 「잠시
+ * 바쁩니다」를 뱉는다.
+ *
+ * react 의 cache 는 요청 하나 안에서만 산다. 다음 새로고침에는 새로 읽으므로
+ * 낡은 값이 남지 않는다. 다만 같은 요청 안에서 쓰고 나서 다시 읽는 자리가
+ * 있으므로(칸을 만들고 바로 읽는 것처럼), 쓸 때는 그 탭의 기억을 지운다.
+ */
+const memo = cache(() => new Map<string, SheetData>());
+
+/** 이 탭에 뭔가 썼다 — 기억을 버린다 */
+function forget(sheetName: string): void {
+  try {
+    memo().delete(sheetName);
+  } catch {
+    /* 요청 밖에서 부르면 cache 가 없다. 그때는 기억할 것도 없다 */
+  }
+}
+
 export async function readSheet(sheetName: string): Promise<SheetData> {
+  let hit: SheetData | undefined;
+  try {
+    hit = memo().get(sheetName);
+  } catch {
+    hit = undefined;
+  }
+  if (hit) return hit;
+
+  const data = await readSheetFresh(sheetName);
+  try {
+    memo().set(sheetName, data);
+  } catch {
+    /* 못 담아도 읽기는 끝났다 */
+  }
+  return data;
+}
+
+async function readSheetFresh(sheetName: string): Promise<SheetData> {
   const range = encodeURIComponent(`${sheetName}!A1:BZ`);
   const data = await call(`/values/${range}?majorDimension=ROWS`);
   const values: string[][] = data.values ?? [];
@@ -127,6 +192,7 @@ export function alive(rows: Row[]): Row[] {
 
 /** 맨 아래에 새 줄을 덧붙인다 (여러 명이 동시에 저장해도 덮어쓰지 않는다) */
 export async function appendRow(sheetName: string, headers: string[], row: Row) {
+  forget(sheetName);
   const values = [headers.map((h) => row[h] ?? "")];
   const range = encodeURIComponent(`${sheetName}!A1`);
   await call(
@@ -142,6 +208,7 @@ export async function appendRow(sheetName: string, headers: string[], row: Row) 
  * 한 번에 보내면 요청 한 번으로 끝난다.
  */
 export async function appendRows(sheetName: string, headers: string[], rows: Row[]) {
+  forget(sheetName);
   if (rows.length === 0) return;
   const values = rows.map((r) => headers.map((h) => r[h] ?? ""));
   const range = encodeURIComponent(`${sheetName}!A1`);
@@ -158,6 +225,7 @@ export async function updateRow(
   headers: string[],
   row: Row
 ) {
+  forget(sheetName);
   const last = columnLetter(headers.length - 1);
   const range = encodeURIComponent(`${sheetName}!A${rowNumber}:${last}${rowNumber}`);
   await call(`/values/${range}?valueInputOption=USER_ENTERED`, {
@@ -178,6 +246,7 @@ export async function updateRows(
   headers: string[],
   items: { rowNumber: number; row: Row }[]
 ) {
+  forget(sheetName);
   if (items.length === 0) return;
   const last = columnLetter(headers.length - 1);
   await call(`/values:batchUpdate`, {
@@ -199,6 +268,7 @@ export async function updateCell(
   columnIndex: number,
   value: string
 ) {
+  forget(sheetName);
   const col = columnLetter(columnIndex);
   const range = encodeURIComponent(`${sheetName}!${col}${rowNumber}`);
   await call(`/values/${range}?valueInputOption=USER_ENTERED`, {
@@ -240,6 +310,7 @@ async function sheetInfo(sheetName: string): Promise<{ id: number; columnCount: 
  * 만든 칸 이름을 돌려준다. (아무것도 안 만들었으면 빈 배열)
  */
 export async function addColumns(sheetName: string, names: string[]): Promise<string[]> {
+  forget(sheetName);
   const { headers, headerRow } = await readSheet(sheetName);
   if (headers.length === 0) {
     throw new Error(`${sheetName} 탭에 제목 줄이 없습니다. 먼저 제목 줄을 만들어주세요.`);
@@ -284,6 +355,7 @@ export async function addColumns(sheetName: string, names: string[]): Promise<st
  * 두 번 눌러도 탭이 겹쳐 생기지 않는다.
  */
 export async function createSheet(sheetName: string, headers: string[]): Promise<boolean> {
+  forget(sheetName);
   const names = await listSheetNames();
   if (names.includes(sheetName)) return false;
 
