@@ -42,6 +42,9 @@ export const MENUS: MenuItem[] = [
   { key: "상품", label: "상품 관리", short: "상품", href: "/dashboard/products", icon: "tag", group: "관리" },
   { key: "직원관리", label: "직원 관리", short: "직원", href: "/dashboard/staff", icon: "badge", group: "관리" },
   { key: "권한설정", label: "권한 설정", short: "권한", href: "/dashboard/permissions", icon: "lock", group: "관리" },
+  /* 목록 관리는 권한 설정과 같은 자격으로 본다. 따로 열쇠를 만들면 대표님이
+     본인 직급의 권한을 못 바꾸게 막아 둔 탓에 스스로 열 길이 없어진다 */
+  { key: "권한설정", label: "목록 관리", short: "목록", href: "/dashboard/options", icon: "clipboard", group: "관리" },
 ];
 
 /**
@@ -95,7 +98,7 @@ export const ACTION_HINTS: Record<string, ActionHint> = {
     update: "직원 정보 · 비밀번호 고치기",
     remove: "직원 지우기",
   },
-  권한설정: { update: "권한 바꾸기" },
+  권한설정: { update: "권한 바꾸기 · 목록 관리에서 고르는 값 고치기" },
 };
 
 /** 「보기」는 어디서나 같은 뜻이라 따로 적지 않는다 */

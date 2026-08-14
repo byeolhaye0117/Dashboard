@@ -689,6 +689,22 @@ function nextStart(pr: ProductMeta | undefined, tickets: Ticket[], products: Pro
   return addDays(last, 1);
 }
 
+/**
+ * 회원권 기간을 따라가는 갈래인가
+ *
+ * 수강권(무료 PT 서비스)과 서비스(24시 · 여성전용 · 운동복 · 사물함 서비스)는
+ * 회원권에 얹어 드리는 것이라 회원권이 끝나면 같이 끝난다. 그런데 상품표에
+ * 기간이 안 적혀 있어서 「기간 없음」으로 들어가고, 회원권이 만료돼도 이것들만
+ * 남아 있는 것처럼 보였다.
+ *
+ * 부가상품권(사물함처럼 돈 받고 파는 것)은 제외한다. 그건 회원권과 따로
+ * 몇 달치를 정해 받는 물건이다.
+ */
+const 회원권따라감 = (pr?: ProductMeta) => {
+  const c = ticketCat(pr);
+  return c === "수강권" || c === "서비스";
+};
+
 const canPickMonths = (pr?: ProductMeta) => {
   const g = groupOf(pr);
   if (g === "서비스") return false;
@@ -906,9 +922,45 @@ function PurchaseFields({
     )
     .slice(0, 60);
 
+  /** 지금 담겨 있거나 이미 갖고 있는 회원권의 기간 */
+  function 회원권기간(): { 시작일: string; 종료일: string } | null {
+    const 담긴것 = b.lines.find((l) => ticketCat(pOf(l.상품코드)) === "회원권");
+    if (담긴것?.시작일) return { 시작일: 담긴것.시작일, 종료일: 담긴것.종료일 };
+    /* 오늘 회원권을 같이 사지 않았다면 지금 쓰고 있는 회원권을 본다 */
+    const 쓰는것 = tickets
+      .filter((t) => ticketCat(pOf(t.상품코드)) === "회원권" && (t.종료일 ?? "") >= today())
+      .sort((a, b2) => (b2.종료일 ?? "").localeCompare(a.종료일 ?? ""))[0];
+    return 쓰는것 ? { 시작일: 쓰는것.시작일 ?? "", 종료일: 쓰는것.종료일 ?? "" } : null;
+  }
+
   function addLine(code: string) {
     const pr = pOf(code);
     if (!pr) return;
+
+    /* 수강권 · 서비스는 회원권이 끝나면 같이 끝난다 */
+    if (회원권따라감(pr)) {
+      const 기간 = 회원권기간();
+      if (기간?.시작일) {
+        setB({
+          ...b,
+          lines: [
+            ...b.lines,
+            {
+              상품코드: code,
+              시작일: 기간.시작일,
+              종료일: 기간.종료일,
+              총횟수: pr.count ? String(pr.count) : "",
+              개월: "",
+              가격구분: defaultKind(b.결제수단),
+              할인: "",
+              미수금: "",
+            },
+          ],
+        });
+        return;
+      }
+    }
+
     /* 쓰고 있는 것이 있으면 그 뒤로 이어 붙인다 */
     const start = nextStart(pr, tickets, products, baseDate || today());
     const months = canPickMonths(pr) ? pr.months || 1 : pr.months;
@@ -1067,13 +1119,23 @@ function PurchaseFields({
                               <input className="input" type="date" value={l.시작일}
                                      onChange={(e) => {
                                        const v = e.target.value;
+                                       /* 회원권 날짜를 고치면 얹은 수강권·서비스도
+                                          같이 움직인다. 따로 두면 회원권이 끝난
+                                          뒤에도 서비스만 남아 있는 것처럼 보인다 */
+                                       const 회원권줄 = ticketCat(pr) === "회원권";
+                                       const 새끝 = endOf(pr, v, Number(b.lines[i].개월) || pr?.months || 0);
                                        setB({
                                          ...b,
                                          lines: b.lines.map((x, k) => {
-                                           if (k !== i) return x;
-                                           const n = Number(x.개월) || pr?.months || 0;
-                                           const end = endOf(pr, v, n);
-                                           return { ...x, 시작일: v, 종료일: end || x.종료일 };
+                                           if (k === i) {
+                                             const n = Number(x.개월) || pr?.months || 0;
+                                             const end = endOf(pr, v, n);
+                                             return { ...x, 시작일: v, 종료일: end || x.종료일 };
+                                           }
+                                           if (회원권줄 && 회원권따라감(pOf(x.상품코드))) {
+                                             return { ...x, 시작일: v, 종료일: 새끝 || x.종료일 };
+                                           }
+                                           return x;
                                          }),
                                        });
                                      }} />
@@ -2317,6 +2379,7 @@ function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem
 
     /* 결제번호가 없는 옛 이용권은 같은 날 결제가 하나뿐일 때만 이어 붙인다.
        여러 건이면 어느 쪽인지 알 수 없어 손대지 않는다 */
+    /* 이 창은 회원 한 명 것만 다루므로 날짜만 봐도 같은 사람이다 */
     const byDay = new Map<string, Payment[]>();
     paid.forEach((x) => {
       const d = (x.결제일시 ?? "").slice(0, 10);

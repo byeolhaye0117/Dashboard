@@ -288,15 +288,19 @@ export default function Client(p: Props) {
      * 틀리게 붙이는 것보다 낫다.
      */
     const byPay: Record<string, Ticket[]> = {};
-    const byDay: Record<string, Payment[]> = {};
+    /* 회원과 날짜로 함께 찾는다. 날짜만 보면 같은 날 다른 회원이 결제했을 때
+       그 결제가 여러 건이라는 이유로 이어 붙이기를 포기하게 된다 —
+       실제로 13만원이 그것 때문에 계속 기타로 남았다 */
+    const byWho: Record<string, Payment[]> = {};
     p.payments.forEach((x) => {
       const d = (x.결제일시 ?? "").slice(0, 10);
-      if (d) (byDay[d] ??= []).push(x);
+      if (d) (byWho[`${x.회원번호 ?? ""}|${d}`] ??= []).push(x);
     });
     p.tickets.forEach((t) => {
       const pid = (t.결제번호 ?? "").trim();
       if (pid) return (byPay[pid] ??= []).push(t);
-      const same = byDay[(t.등록일시 ?? t.시작일 ?? "").slice(0, 10)] ?? [];
+      const d = (t.등록일시 ?? t.시작일 ?? "").slice(0, 10);
+      const same = byWho[`${t.회원번호 ?? ""}|${d}`] ?? [];
       if (same.length === 1) (byPay[same[0].id] ??= []).push(t);
     });
 
