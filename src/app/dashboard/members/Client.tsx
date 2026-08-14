@@ -47,6 +47,8 @@ type Ticket = {
   상태: string;
   결제번호: string;
   금액: string;
+  /** 정가에서 깎아 드린 금액 */
+  할인?: string;
   /** 언제 만들어진 줄인지 — 결제번호가 없던 옛 줄을 날짜로 이어 붙일 때 쓴다 */
   등록일시?: string;
 };
@@ -658,6 +660,33 @@ function reloadTo(memberId?: string): void {
   location.reload();
 }
 
+/**
+ * 새로 파는 것은 쓰고 있는 것 뒤에 이어 붙인다
+ *
+ * 회원권이 12월 7일까지인데 오늘 「7일 서비스」를 얹으면, 시작일이 오늘로
+ * 잡혀 기간이 겹친다. 겹치면 서비스를 드린 것이 아니라 이미 쓰고 있는
+ * 날에 덧칠한 것이 된다.
+ *
+ * 같은 갈래에서 제일 늦은 종료일 다음 날부터 시작한다. 갈래를 나누는 이유는
+ * 회원권이 남아 있어도 PT 는 오늘부터 시작하는 것이 맞기 때문이다.
+ * 지난 것뿐이면 오늘부터다.
+ *
+ * 눈에 보이는 값이라 다르면 그 자리에서 고치실 수 있다.
+ */
+function nextStart(pr: ProductMeta | undefined, tickets: Ticket[], products: ProductMeta[], now: string): string {
+  const cat = ticketCat(pr);
+  const prOf = (code: string) => products.find((x) => x.code === code);
+  let last = "";
+  tickets.forEach((t) => {
+    if (ticketCat(prOf(t.상품코드)) !== cat) return;
+    if ((t.상태 ?? "").includes("환불")) return;
+    const end = (t.종료일 ?? "").slice(0, 10);
+    if (end && end > last) last = end;
+  });
+  if (!last || last < now) return now;
+  return addDays(last, 1);
+}
+
 const canPickMonths = (pr?: ProductMeta) => {
   const g = groupOf(pr);
   if (g === "서비스") return false;
@@ -878,7 +907,8 @@ function PurchaseFields({
   function addLine(code: string) {
     const pr = pOf(code);
     if (!pr) return;
-    const start = baseDate || today();
+    /* 쓰고 있는 것이 있으면 그 뒤로 이어 붙인다 */
+    const start = nextStart(pr, tickets, products, baseDate || today());
     const months = canPickMonths(pr) ? pr.months || 1 : pr.months;
     setB({
       ...b,
@@ -1712,7 +1742,10 @@ function Detail({
                 {view === "결제" && (
                   <PayTab paid={paid} totalPaid={totalPaid} unpaid={unpaid}
                           tickets={tickets} products={products}
-                          onEdit={can.update ? setEditPay : undefined} />
+                          onEdit={can.update ? setEditPay : undefined}
+                          onEditItem={can.update
+                            ? (id) => { const t = ticketOf(id); if (t) setEditTicket(t); }
+                            : undefined} />
                 )}
 
                 {view === "기록" && (
@@ -2189,7 +2222,7 @@ const usesCount = (pr?: ProductMeta, t?: Ticket) =>
  * 얼마 냈나"를 찾느라 훑게 된다. 달을 고르면 그 달만, 「전체」면 달마다
  * 머리글을 달아 묶어서 보여준다.
  */
-function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit }: {
+function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit, onEditItem }: {
   paid: Payment[];
   totalPaid: number;
   unpaid: number;
@@ -2197,6 +2230,8 @@ function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit }: {
   tickets: Ticket[];
   products: ProductMeta[];
   onEdit?: (x: Payment) => void;
+  /** 항목 하나를 고치러 간다 — 그 이용권 창을 연다 */
+  onEditItem?: (ticketId: string) => void;
 }) {
   const [month, setMonth] = useState("");
 
@@ -2208,12 +2243,21 @@ function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit }: {
    */
   const bought = useMemo(() => {
     const byCode = new Map(products.map((x) => [x.code, x]));
-    const m = new Map<string, { name: string; amount: number; spec: string }[]>();
+    const m = new Map<string, {
+      id: string; name: string; amount: number; spec: string; 정가: number; 할인: number;
+    }[]>();
     const put = (pid: string, t: Ticket) => {
       const pr = byCode.get(t.상품코드);
       const spec = [termOf(pr ?? {}), t.총횟수 ? `${t.총횟수}회` : ""].filter(Boolean).join(" · ");
+      const amount = Number(t.금액) || 0;
+      /* 할인을 따로 적어 두기 전에 판 것은 그 칸이 비어 있다.
+         그때는 정가와 실제 금액의 차이로 되짚는다 */
+      /* 정가는 현금가·카드가 중 있는 쪽을 본다. 결제 수단이 무엇이었는지는
+         결제 한 건 단위로만 적혀 있어 상품마다 되짚을 수 없다 */
+      const 정가 = pr ? unitPrice(pr, true) : 0;
+      const 할인 = Number(t.할인) || (정가 > amount && amount > 0 ? 정가 - amount : 0);
       const list = m.get(pid) ?? [];
-      list.push({ name: pr?.name || t.상품코드, amount: Number(t.금액) || 0, spec });
+      list.push({ id: t.id, name: pr?.name || t.상품코드, amount, spec, 정가, 할인 });
       m.set(pid, list);
     };
 
@@ -2315,7 +2359,8 @@ function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit }: {
             </h4>
           ) : (
             <PaymentLine key={r.x!.id} x={r.x!} lines={bought.get(r.x!.id) ?? []}
-                         onEdit={onEdit && (() => onEdit(r.x!))} />
+                         onEdit={onEdit && (() => onEdit(r.x!))}
+                         onEditItem={onEditItem} />
           )
         )}
       </div>
@@ -2353,11 +2398,13 @@ function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit }: {
  * 나눠 적은 금액이 없으면(결제수단만 골라 두고 금액은 안 나눈 옛 기록)
  * 그 줄은 아예 안 그린다. 0원이라고 적으면 0원을 낸 것처럼 읽힌다.
  */
-function PaymentLine({ x, lines, onEdit }: {
+function PaymentLine({ x, lines, onEdit, onEditItem }: {
   x: Payment;
   /** 이 결제로 산 것들 — 상품 이름과 금액 */
-  lines: { name: string; amount: number; spec: string }[];
+  lines: { id: string; name: string; amount: number; spec: string; 정가: number; 할인: number }[];
   onEdit?: () => void;
+  /** 항목 하나를 고치러 간다 (이용권 창) */
+  onEditItem?: (ticketId: string) => void;
 }) {
   /* 건수가 쌓이면 늘 펼쳐 둔 목록은 읽기가 힘들다. 눌러서 편다 */
   const [open, setOpen] = useState(false);
@@ -2395,11 +2442,26 @@ function PaymentLine({ x, lines, onEdit }: {
         <>
           {lines.length > 0 ? (
             <ul className="paylines">
-              {lines.map((l, i) => (
-                <li key={i}>
-                  <span className="nm">{l.name}</span>
-                  {l.spec && <span className="dim">{l.spec}</span>}
-                  <span className="am num">{l.amount > 0 ? `${money(l.amount)}원` : "-"}</span>
+              {lines.map((l) => (
+                <li key={l.id}>
+                  <div className="top">
+                    <span className="nm">{l.name}</span>
+                    <span className="am num">
+                      {l.amount > 0 ? `${money(l.amount)}원` : <em className="one">무료</em>}
+                    </span>
+                  </div>
+                  <div className="sub">
+                    {l.spec && <span>{l.spec}</span>}
+                    {l.할인 > 0 && (
+                      <span>정가 {money(l.정가)}원 · 할인 {money(l.할인)}원</span>
+                    )}
+                    {onEditItem && (
+                      <button type="button" className="mini-tab"
+                              onClick={(e) => { e.stopPropagation(); onEditItem(l.id); }}>
+                        수정
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -2411,6 +2473,8 @@ function PaymentLine({ x, lines, onEdit }: {
 
           {(ways.length > 0 || owe > 0) && (
             <div className="payways">
+              {/* 수단은 결제 한 건 단위로 적힌다. 「지역주민은 카드, 사물함은 현금」처럼
+                  상품마다 나눠 적는 자리는 시트에 없다 — 없는 것을 지어내지 않는다 */}
               {ways.map((w) => (
                 <span key={w.k}>
                   {w.k} <b className="num">{money(w.v)}원</b>
@@ -2458,6 +2522,10 @@ function TicketEdit({
     정지일수: t.정지일수 ?? "",
     담당트레이너사번: t.담당트레이너사번 ?? "",
     상태: t.상태 || "진행중",
+    /* 결제 화면에서 「이건 왜 이 값이지」를 물으면 답할 자리다.
+       금액을 고쳐도 결제 줄의 합계는 따라가지 않는다 — 그건 결제 창에서 고친다 */
+    금액: t.금액 ?? "",
+    할인: t.할인 ?? "",
   });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2567,7 +2635,20 @@ function TicketEdit({
               {["진행중", "정지", "만료", "환불"].map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </L>
+          {/* 결제 화면에서 「이 상품이 얼마였지」를 물으면 답할 자리 */}
+          <L label="판 금액">
+            <input className="input" inputMode="numeric" value={f.금액}
+                   onChange={(e) => set("금액", e.target.value.replace(/[^0-9]/g, ""))} />
+          </L>
+          <L label="깎아 드린 금액">
+            <input className="input" inputMode="numeric" value={f.할인}
+                   onChange={(e) => set("할인", e.target.value.replace(/[^0-9]/g, ""))} />
+          </L>
         </div>
+        <p className="stat-note">
+          여기서 금액을 고쳐도 <b>결제 줄의 합계는 따라가지 않습니다.</b>
+          받은 돈 자체가 달랐다면 결제 탭에서 그 결제를 고쳐주세요.
+        </p>
 
         {/*
           카테고리 고치기

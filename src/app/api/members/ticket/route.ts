@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
 const ALLOWED = new Set([
   "시작일", "종료일", "총횟수", "잔여횟수", "정지일수",
   "담당트레이너사번", "상태",
+  /* 결제 화면에서 상품 하나를 고칠 때 쓴다 */
+  "금액", "할인",
 ]);
 
 export async function POST(req: Request) {
