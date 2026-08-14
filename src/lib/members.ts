@@ -91,6 +91,7 @@ const V_COLS: ColumnSpec = {
   정지시작일: { names: ["홀딩시작일"] },
   정지종료예정일: { names: ["홀딩종료예정일", "정지예정일"] },
   금액: { names: ["결제금액", "판매금액", "가격"] },
+  할인: { names: ["할인액", "할인금액"] },
   담당트레이너사번: { names: ["담당트레이너", "담당직원사번", "담당직원"] },
   등록직원사번: { names: ["등록처리직원", "등록직원", "처리직원사번"] },
   상태: { names: ["이용권상태", "진행상태"] },
@@ -186,6 +187,8 @@ export type Ticket = {
   상태: string;
   결제번호: string;
   금액: string;
+  /** 정가에서 깎아 드린 금액 */
+  할인: string;
   /** 언제 만들어진 줄인지 — 결제번호가 없던 옛 줄을 날짜로 이어 붙일 때 쓴다 */
   등록일시: string;
 };
@@ -273,6 +276,7 @@ export async function listTickets(): Promise<Ticket[]> {
       정지시작일: get(r, cols, "정지시작일"),
       정지종료예정일: get(r, cols, "정지종료예정일"),
       금액: get(r, cols, "금액"),
+      할인: get(r, cols, "할인"),
       담당트레이너사번: get(r, cols, "담당트레이너사번"),
       상태: get(r, cols, "상태") || "진행중",
       결제번호: get(r, cols, "결제번호"),
@@ -366,6 +370,8 @@ function nextId(existing: string[], prefix: string, width: number): string {
 /* ── 등록 ──────────────────────────────────── */
 
 export type NewTicket = {
+  /** 정가에서 깎아 드린 금액 */
+  할인?: string;
   상품코드: string;
   시작일: string;
   종료일: string;
@@ -453,9 +459,10 @@ async function writePurchase(
   input: Purchase,
   staffId: string
 ): Promise<{ payId: string; firstTicket: string }> {
-  /* 이용권 줄이 결제번호를 들고 있어야 「이 134,000원이 무엇이었나」를
-     되짚을 수 있다. 시트에 그 칸이 없으면 적어도 조용히 사라진다 */
-  await addColumns(SHEET_V, ["결제번호"]);
+  /* 이용권 줄이 결제번호와 금액을 들고 있어야 「이 134,000원이 무엇이었나」를
+     되짚을 수 있다. 시트에 그 칸이 없으면 적어도 조용히 사라진다 —
+     실제로 금액 칸이 없어 상품별 금액이 전부 비어 있었다 */
+  await addColumns(SHEET_V, ["결제번호", "금액", "할인"]);
 
   const stamp = now();
 
@@ -531,6 +538,8 @@ async function writePurchase(
             정지시작일: "",
             정지종료예정일: "",
             금액: String(won(t.금액)),
+            /* 얼마를 깎아 드렸는지. 나중에 「이건 왜 이 값이지」를 답할 자리다 */
+            할인: String(won(t.할인)),
             담당트레이너사번: t.담당트레이너사번 ?? input.담당직원사번 ?? "",
             등록직원사번: staffId,
             상태: "진행중",
@@ -717,6 +726,10 @@ export async function patchTicket(
   changes: Record<string, string>,
   staffId: string
 ): Promise<void> {
+  /* 뒤늦게 생긴 칸이다. 없는 칸에 적으면 조용히 사라진다 */
+  if (changes["금액"] !== undefined || changes["할인"] !== undefined) {
+    await addColumns(SHEET_V, ["금액", "할인"]);
+  }
   await patchOne(SHEET_V, V_COLS, "이용권번호", id, changes, staffId);
 }
 

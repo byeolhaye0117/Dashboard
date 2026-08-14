@@ -1853,14 +1853,20 @@ td .ktag {
 
 /* 결제 한 건을 뜯어 보여주는 자리 — 무엇을 샀나 · 어떻게 냈나 */
 .paylines { list-style: none; margin: 8px 0 0; padding: 0; }
-.paylines li {
-  display: flex; align-items: baseline; gap: 8px;
-  padding: 4px 0; font-size: 12.5px; border-top: 1px dashed var(--line);
-}
+.paylines li { padding: 7px 0; border-top: 1px dashed var(--line); }
 .paylines li:first-child { border-top: 0; }
-.paylines .nm { color: var(--ink); }
-.paylines .dim { color: var(--muted); font-size: 11.5px; }
-.paylines .am { margin-left: auto; font-weight: 700; }
+.paylines .top { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; }
+.paylines .top .nm { color: var(--ink); }
+.paylines .top .am { margin-left: auto; font-weight: 700; white-space: nowrap; }
+.paylines .sub {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px;
+  margin-top: 3px; font-size: 11px; color: var(--muted);
+}
+.paylines .sub .mini-tab {
+  margin-left: auto; flex: 0 0 auto; width: auto; min-width: 0;
+  padding: 2px 10px; font-size: 11px;
+}
+.paylines .one { font-style: normal; color: var(--muted); font-weight: 600; }
 .payways {
   display: flex; flex-wrap: wrap; gap: 4px 12px;
   margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line);
