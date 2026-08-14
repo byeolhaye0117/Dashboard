@@ -2278,7 +2278,9 @@ function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem
     const byCode = new Map(products.map((x) => [x.code, x]));
     type Line = {
       id: string; name: string; amount: number; spec: string;
-      정가: number; 할인: number; 미수: number; 적힘: boolean; 계산: boolean;
+      정가: number; 할인: number; 미수: number; 적힘: boolean;
+      /** 시트에 값이 없어 정상가 비율로 어림한 금액 — 기록이 아니라 짐작이다 */
+      계산: boolean; 짐작: number;
     };
     const m = new Map<string, Line[]>();
 
@@ -2333,7 +2335,7 @@ function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem
         id: t.id,
         name: pr?.name || t.상품코드,
         spec: [termOf(pr ?? {}), t.총횟수 ? `${t.총횟수}회` : ""].filter(Boolean).join(" · "),
-        amount, 정가, 적힘, 계산: false,
+        amount, 정가, 적힘, 계산: false, 짐작: 0,
         할인: Number(t.할인) || (적힘 && 정가 > amount && amount > 0 ? 정가 - amount : 0),
         미수: Number(t.미수금) || 0,
       });
@@ -2354,7 +2356,7 @@ function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem
         정가: Number(e.추가금액) || 0,
         할인: 0, 미수: 0,
         적힘: (e.추가금액 ?? "").trim() !== "",
-        계산: false,
+        계산: false, 짐작: 0,
       });
     });
 
@@ -2370,9 +2372,19 @@ function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem
       const 정가합 = 빈.reduce((n, l) => n + l.정가, 0);
       if (정가합 <= 0) return;
 
-      /* 비율대로만 나누면 87,488원 같은 값이 나온다. 실제로 그렇게 파는
-         가격이 아니라서 보는 사람이 먼저 이상하다고 느낀다.
-         천원 단위로 떨어뜨리고, 마지막 줄에서 잔돈을 맞춘다 */
+      /*
+       * 여기서 낸 값은 「기록」이 아니라 「짐작」이다
+       *
+       * 실제로 얼마에 파셨는지는 시트에서 사라졌고, 어떤 계산으로도 되살릴
+       * 수 없다. 정상가 비율로 나눈 값은 합계만 맞을 뿐 대표님이 실제로
+       * 받으신 금액과 다르다 — 실제로 달랐다.
+       *
+       * 그래서 이 값을 결제 기록인 것처럼 보여주지 않는다. 넣으실 때
+       * 칸을 미리 채워 두는 데만 쓴다. 손으로 다 치게 하지 않으면서도
+       * 없는 것을 있는 것처럼 적지 않는 자리다.
+       *
+       * 천원 단위로 떨어뜨린다 — 87,488원 같은 값은 실제로 파는 가격이 아니다.
+       */
       const 단위 = 남은돈 >= 10000 ? 1000 : 100;
       let 쓴돈 = 0;
       빈.forEach((l, i) => {
@@ -2381,8 +2393,8 @@ function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem
             ? 남은돈 - 쓴돈
             : Math.round((남은돈 * l.정가) / 정가합 / 단위) * 단위;
         쓴돈 += 몫;
-        l.amount = Math.max(0, 몫);
-        l.할인 = Math.max(0, l.정가 - l.amount);
+        /* amount 는 건드리지 않는다. 짐작은 짐작 칸에만 담는다 */
+        l.짐작 = Math.max(0, 몫);
         l.계산 = true;
       });
     });
@@ -2485,13 +2497,48 @@ function PaymentLine({ x, lines, onEditItem }: {
   /** 이 결제로 산 것들 */
   lines: {
     id: string; name: string; amount: number; spec: string;
-    정가: number; 할인: number; 미수: number; 적힘: boolean; 계산: boolean;
+    정가: number; 할인: number; 미수: number; 적힘: boolean;
+    계산: boolean; 짐작: number;
   }[];
   /** 상품 한 줄을 눌렀을 때 — 그 이용권 창을 연다 */
   onEditItem?: (ticketId: string) => void;
 }) {
   /* 건수가 쌓이면 늘 펼쳐 둔 목록은 읽기가 힘들다. 눌러서 편다 */
   const [open, setOpen] = useState(false);
+
+  const [fill, setFill] = useState<Record<string, string> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  /* 얹은 옵션(VS)은 이용권이 아니라 따로 고치는 자리가 없다. 여기서는 뺀다 */
+  const 빈줄 = lines.filter((l) => !l.적힘 && !l.id.startsWith("VS:"));
+
+  const 넣은합 = lines.reduce(
+    (n, l) => n + (l.적힘 ? l.amount : Number(fill?.[l.id]) || 0),
+    0
+  );
+  const 차이 = 넣은합 - (Number(x.결제금액) || 0);
+  const 맞나 = 차이 === 0;
+
+  async function saveFill() {
+    if (!fill) return;
+    setBusy(true);
+    setMsg("");
+    for (const [id, v] of Object.entries(fill)) {
+      const n = v.replace(/[^0-9]/g, "");
+      if (!n) continue;
+      const res = await fetch("/api/members/ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, changes: { 금액: n } }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setBusy(false);
+        return setMsg(d.error ?? "저장하지 못했습니다.");
+      }
+    }
+    location.reload();
+  }
 
   const refunded = x.환불여부?.toUpperCase() === "Y";
   const owe = Number(x.미수금액) || 0;
@@ -2549,11 +2596,9 @@ function PaymentLine({ x, lines, onEditItem }: {
                       <i>할인</i>{l.할인 > 0 ? `-${won(l.할인)}` : "0원"}
                     </span>
                     <span className="paid">
-                      <i>결제</i>{won(l.amount)}
-                      {/* 시트에 안 적힌 줄은 정상가 비율로 나눠 계산한 값이다.
-                          적힌 값과 같은 얼굴로 두면 어느 것이 사람이 넣은
-                          값인지 나중에 알 수 없다 */}
-                      {l.계산 && <em className="calc">계산</em>}
+                      {/* 없는 값을 지어내 적지 않는다. 짐작은 아래 채우는
+                          칸에서 미리 채워 주는 데만 쓴다 */}
+                      <i>결제</i>{l.적힘 ? won(l.amount) : <em className="none">기록 없음</em>}
                     </span>
                     <span className={l.미수 > 0 ? "warn-text" : ""}>
                       <i>미수</i>{won(l.미수)}
@@ -2568,11 +2613,60 @@ function PaymentLine({ x, lines, onEditItem }: {
             </p>
           )}
 
-          {lines.some((l) => l.계산) && (
-            <p className="stat-note" style={{ margin: "8px 0 0" }}>
-              「계산」이 붙은 금액은 시트에 안 적혀 있어 정상가 비율로 나눈 값입니다.
-              합계는 결제 금액과 맞춰 두었습니다. 다르면 그 줄을 눌러 고쳐주세요.
-            </p>
+          {/*
+            사라진 값을 채우는 자리
+
+            실제로 얼마에 파셨는지는 시트에서 사라졌고 되살릴 방법이 없다.
+            그래서 짐작한 값을 칸에 미리 채워 두기만 한다 — 손으로 다 치지
+            않으셔도 되고, 없는 것을 있는 것처럼 적지도 않는다.
+            맞으면 그대로 저장, 다르면 고쳐서 저장이다.
+          */}
+          {onEditItem && 빈줄.length > 0 && (
+            fill ? (
+              <div className="fillbox">
+                <p className="stat-note" style={{ margin: "0 0 8px" }}>
+                  이 결제는 <b className="num">{money(Number(x.결제금액) || 0)}원</b>입니다.
+                  아래 값은 정상가 비율로 <b>어림한 것</b>이라 실제와 다를 수 있습니다.
+                  맞게 고쳐 저장해주세요.
+                </p>
+                {빈줄.map((l) => (
+                  <label key={l.id} className="fillrow">
+                    <span className="nm">
+                      {l.name}
+                      {l.정가 > 0 && <i>정상가 {money(l.정가)}원</i>}
+                    </span>
+                    <input className="input" inputMode="numeric" value={fill[l.id] ?? ""}
+                           onChange={(e) =>
+                             setFill({ ...fill, [l.id]: e.target.value.replace(/[^0-9]/g, "") })} />
+                  </label>
+                ))}
+                <p className={`stat-note${맞나 ? "" : " warn-text"}`} style={{ margin: "6px 0 0" }}>
+                  넣은 것 합계 <b className="num">{money(넣은합)}원</b>
+                  {맞나 ? " · 결제 금액과 맞습니다" : ` · 결제 금액과 ${money(Math.abs(차이))}원 다릅니다`}
+                </p>
+                {msg && <div className="alert-bad" style={{ marginTop: 8 }}>{msg}</div>}
+                <div className="who-acts" style={{ marginTop: 10 }}>
+                  <button type="button" className="btn-dark" style={{ flex: "0 0 auto" }}
+                          disabled={busy} onClick={saveFill}>
+                    {busy ? "저장 중…" : "저장"}
+                  </button>
+                  <button type="button" className="btn-ghost" style={{ flex: "0 0 auto" }}
+                          disabled={busy} onClick={() => setFill(null)}>
+                    취소
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="stat-note" style={{ margin: "8px 0 0" }}>
+                금액이 안 적힌 상품이 {빈줄.length}개 있습니다 — 시트에 그 칸이 없던 때
+                판 것이라 값이 사라졌습니다.
+                <button type="button" className="linkish"
+                        onClick={() =>
+                          setFill(Object.fromEntries(빈줄.map((l) => [l.id, String(l.짐작 || "")])))}>
+                  금액 채우기
+                </button>
+              </p>
+            )
           )}
 
           {(ways.length > 0 || owe > 0) && (
