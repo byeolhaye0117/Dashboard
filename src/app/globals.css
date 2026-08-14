@@ -1860,7 +1860,7 @@ td .ktag {
 .paylines .top { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
 .paylines .top .nm { font-weight: 600; color: var(--ink); }
 .paylines .top .sp { color: var(--muted); font-size: 11px; }
-.paylines .top .am { margin-left: auto; font-weight: 700; white-space: nowrap; }
+
 .paylines .nums {
   display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 5px;
   font-size: 11.5px; color: var(--ink-2);
@@ -1886,6 +1886,11 @@ td .ktag {
 .paylines .nums .none { font-style: normal; color: var(--muted); font-weight: 500; }
 
 /* 정상가 합계 → 할인 → 실제 결제 */
+.paylines .nums .calc {
+  margin-left: 5px; padding: 0 5px; border: 1px solid var(--line); border-radius: 5px;
+  font-style: normal; font-weight: 600; font-size: 10px; color: var(--muted);
+}
+
 .paysum {
   display: flex; flex-wrap: wrap; gap: 4px 16px;
   margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line);
