@@ -1378,7 +1378,10 @@ function NewForm({
           </L>
           <Sel label="성별" k="성별" f={f} set={set} opts={options["성별"]} />
           <Sel label="나이대" k="나이대" f={f} set={set} opts={options["나이대"]} />
-          <Sel label="거주 동네" k="거주동네" f={f} set={set} opts={options["거주동네"]} />
+          {/* 목록에 없는 동네는 그냥 치면 된다. 목록만 고를 수 있게 해 두면
+              시트에 오타가 하나 있을 때 그 오타밖에 고를 수가 없다 */}
+          <Free label="거주 동네" k="거주동네" f={f} set={set} opts={options["거주동네"]}
+                placeholder="예) 쌍용동" />
           <Free label="직업" k="직업" f={f} set={set} opts={options["직업"]}
                 placeholder="예) 간호사 · 3교대 근무" />
           <L label="등록 지점">
@@ -1598,7 +1601,8 @@ function Detail({
               </L>
               <Sel label="성별" k="성별" f={f} set={setV} opts={options["성별"]} />
               <Sel label="나이대" k="나이대" f={f} set={setV} opts={options["나이대"]} />
-              <Sel label="거주 동네" k="거주동네" f={f} set={setV} opts={options["거주동네"]} />
+              <Free label="거주 동네" k="거주동네" f={f} set={setV} opts={options["거주동네"]}
+                    placeholder="예) 쌍용동" />
               <Free label="직업" k="직업" f={f} set={setV} opts={options["직업"]}
                     placeholder="예) 간호사 · 3교대 근무" />
               <L label="담당 트레이너">
