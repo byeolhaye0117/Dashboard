@@ -42,6 +42,8 @@ export async function POST(req: Request) {
             총횟수: t.총횟수 ? String(t.총횟수) : "",
             담당트레이너사번: t.담당트레이너사번 ? String(t.담당트레이너사번) : "",
             금액: t.금액 ? String(t.금액) : "",
+            할인: t.할인 ? String(t.할인) : "",
+            미수금: t.미수금 ? String(t.미수금) : "",
           }))
       : [];
 
