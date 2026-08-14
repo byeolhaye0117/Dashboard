@@ -49,6 +49,8 @@ type Ticket = {
   금액: string;
   /** 정가에서 깎아 드린 금액 */
   할인?: string;
+  /** 이 상품에서 아직 못 받은 돈 */
+  미수금?: string;
   /** 언제 만들어진 줄인지 — 결제번호가 없던 옛 줄을 날짜로 이어 붙일 때 쓴다 */
   등록일시?: string;
 };
@@ -1742,7 +1744,6 @@ function Detail({
                 {view === "결제" && (
                   <PayTab paid={paid} totalPaid={totalPaid} unpaid={unpaid}
                           tickets={tickets} products={products}
-                          onEdit={can.update ? setEditPay : undefined}
                           onEditItem={can.update
                             ? (id) => { const t = ticketOf(id); if (t) setEditTicket(t); }
                             : undefined} />
@@ -2222,15 +2223,14 @@ const usesCount = (pr?: ProductMeta, t?: Ticket) =>
  * 얼마 냈나"를 찾느라 훑게 된다. 달을 고르면 그 달만, 「전체」면 달마다
  * 머리글을 달아 묶어서 보여준다.
  */
-function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit, onEditItem }: {
+function PayTab({ paid, totalPaid, unpaid, tickets, products, onEditItem }: {
   paid: Payment[];
   totalPaid: number;
   unpaid: number;
   /** 이 결제로 무엇을 샀는지 잇는 데 쓴다 */
   tickets: Ticket[];
   products: ProductMeta[];
-  onEdit?: (x: Payment) => void;
-  /** 항목 하나를 고치러 간다 — 그 이용권 창을 연다 */
+  /** 상품 한 줄을 눌렀을 때 — 그 이용권 창을 연다 */
   onEditItem?: (ticketId: string) => void;
 }) {
   const [month, setMonth] = useState("");
@@ -2244,20 +2244,27 @@ function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit, onEditItem
   const bought = useMemo(() => {
     const byCode = new Map(products.map((x) => [x.code, x]));
     const m = new Map<string, {
-      id: string; name: string; amount: number; spec: string; 정가: number; 할인: number;
+      id: string; name: string; amount: number; spec: string;
+      정가: number; 할인: number; 미수: number;
+      /** 금액이 시트에 적혀 있는가 — 0원과 「기록 없음」은 다르다 */
+      적힘: boolean;
     }[]>();
     const put = (pid: string, t: Ticket) => {
       const pr = byCode.get(t.상품코드);
       const spec = [termOf(pr ?? {}), t.총횟수 ? `${t.총횟수}회` : ""].filter(Boolean).join(" · ");
-      const amount = Number(t.금액) || 0;
-      /* 할인을 따로 적어 두기 전에 판 것은 그 칸이 비어 있다.
-         그때는 정가와 실제 금액의 차이로 되짚는다 */
       /* 정가는 현금가·카드가 중 있는 쪽을 본다. 결제 수단이 무엇이었는지는
          결제 한 건 단위로만 적혀 있어 상품마다 되짚을 수 없다 */
       const 정가 = pr ? unitPrice(pr, true) : 0;
-      const 할인 = Number(t.할인) || (정가 > amount && amount > 0 ? 정가 - amount : 0);
+      /* 금액 칸이 없던 동안 판 것은 이 값이 비어 있다. 0원과 「기록 없음」은
+         다른 것이라 나눠서 들고 간다 — 무료라고 적어 버리면 거짓말이 된다 */
+      const 적힘 = (t.금액 ?? "").trim() !== "";
+      const amount = Number(t.금액) || 0;
+      const 할인 = Number(t.할인) || (적힘 && 정가 > amount && amount > 0 ? 정가 - amount : 0);
       const list = m.get(pid) ?? [];
-      list.push({ id: t.id, name: pr?.name || t.상품코드, amount, spec, 정가, 할인 });
+      list.push({
+        id: t.id, name: pr?.name || t.상품코드, amount, spec, 정가, 할인,
+        적힘, 미수: Number(t.미수금) || 0,
+      });
       m.set(pid, list);
     };
 
@@ -2359,7 +2366,6 @@ function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit, onEditItem
             </h4>
           ) : (
             <PaymentLine key={r.x!.id} x={r.x!} lines={bought.get(r.x!.id) ?? []}
-                         onEdit={onEdit && (() => onEdit(r.x!))}
                          onEditItem={onEditItem} />
           )
         )}
@@ -2398,12 +2404,14 @@ function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit, onEditItem
  * 나눠 적은 금액이 없으면(결제수단만 골라 두고 금액은 안 나눈 옛 기록)
  * 그 줄은 아예 안 그린다. 0원이라고 적으면 0원을 낸 것처럼 읽힌다.
  */
-function PaymentLine({ x, lines, onEdit, onEditItem }: {
+function PaymentLine({ x, lines, onEditItem }: {
   x: Payment;
-  /** 이 결제로 산 것들 — 상품 이름과 금액 */
-  lines: { id: string; name: string; amount: number; spec: string; 정가: number; 할인: number }[];
-  onEdit?: () => void;
-  /** 항목 하나를 고치러 간다 (이용권 창) */
+  /** 이 결제로 산 것들 */
+  lines: {
+    id: string; name: string; amount: number; spec: string;
+    정가: number; 할인: number; 미수: number; 적힘: boolean;
+  }[];
+  /** 상품 한 줄을 눌렀을 때 — 그 이용권 창을 연다 */
   onEditItem?: (ticketId: string) => void;
 }) {
   /* 건수가 쌓이면 늘 펼쳐 둔 목록은 읽기가 힘들다. 눌러서 편다 */
@@ -2419,6 +2427,7 @@ function PaymentLine({ x, lines, onEdit, onEditItem }: {
   ].filter((w) => w.v > 0);
 
   const 볼것 = lines.length > 0 || ways.length > 0 || owe > 0;
+  const won = (n: number) => `${money(n)}원`;
 
   return (
     <div className={`line-item${볼것 ? " clickable" : ""}${open ? " open" : ""}`}>
@@ -2443,24 +2452,31 @@ function PaymentLine({ x, lines, onEdit, onEditItem }: {
           {lines.length > 0 ? (
             <ul className="paylines">
               {lines.map((l) => (
-                <li key={l.id}>
+                /*
+                  상품 한 줄
+
+                  정상가 · 할인 · 결제 · 미수를 한 자리에 놓는다. 따로 흩어 놓으면
+                  「이게 왜 이 값이지」를 물을 때마다 세 군데를 봐야 한다.
+                  줄을 누르면 그 상품을 고치는 창이 열린다 — 수정 단추를 따로 두면
+                  줄마다 단추가 하나씩 붙어 목록이 단추밭이 된다.
+                */
+                <li key={l.id} className={onEditItem ? "hit" : ""}
+                    onClick={() => onEditItem?.(l.id)}>
                   <div className="top">
                     <span className="nm">{l.name}</span>
-                    <span className="am num">
-                      {l.amount > 0 ? `${money(l.amount)}원` : <em className="one">무료</em>}
-                    </span>
+                    {l.spec && <span className="sp">{l.spec}</span>}
                   </div>
-                  <div className="sub">
-                    {l.spec && <span>{l.spec}</span>}
-                    {l.할인 > 0 && (
-                      <span>정가 {money(l.정가)}원 · 할인 {money(l.할인)}원</span>
-                    )}
-                    {onEditItem && (
-                      <button type="button" className="mini-tab"
-                              onClick={(e) => { e.stopPropagation(); onEditItem(l.id); }}>
-                        수정
-                      </button>
-                    )}
+                  <div className="nums">
+                    <span><i>정상가</i>{l.정가 > 0 ? won(l.정가) : "-"}</span>
+                    <span className={l.할인 > 0 ? "cut" : ""}>
+                      <i>할인</i>{l.할인 > 0 ? `-${won(l.할인)}` : "0원"}
+                    </span>
+                    <span className="paid">
+                      <i>결제</i>{l.적힘 ? won(l.amount) : "기록 없음"}
+                    </span>
+                    <span className={l.미수 > 0 ? "warn-text" : ""}>
+                      <i>미수</i>{won(l.미수)}
+                    </span>
                   </div>
                 </li>
               ))}
@@ -2482,19 +2498,10 @@ function PaymentLine({ x, lines, onEdit, onEditItem }: {
               ))}
               {owe > 0 && (
                 <span className="warn-text">
-                  미수 <b className="num">{money(owe)}원</b>
+                  미수 합계 <b className="num">{money(owe)}원</b>
                   {x.미수금결제예정일 && ` · ${x.미수금결제예정일}까지`}
                 </span>
               )}
-            </div>
-          )}
-
-          {onEdit && (
-            <div className="who-acts" style={{ marginTop: 10 }}>
-              <button type="button" className="btn-ghost" style={{ flex: "0 0 auto" }}
-                      onClick={onEdit}>
-                이 결제 고치기
-              </button>
             </div>
           )}
         </>
