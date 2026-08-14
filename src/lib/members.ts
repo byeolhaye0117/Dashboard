@@ -186,6 +186,8 @@ export type Ticket = {
   상태: string;
   결제번호: string;
   금액: string;
+  /** 언제 만들어진 줄인지 — 결제번호가 없던 옛 줄을 날짜로 이어 붙일 때 쓴다 */
+  등록일시: string;
 };
 
 export type Payment = {
@@ -274,6 +276,7 @@ export async function listTickets(): Promise<Ticket[]> {
       담당트레이너사번: get(r, cols, "담당트레이너사번"),
       상태: get(r, cols, "상태") || "진행중",
       결제번호: get(r, cols, "결제번호"),
+      등록일시: get(r, cols, "등록일시"),
     });
   });
   return out;
@@ -450,6 +453,10 @@ async function writePurchase(
   input: Purchase,
   staffId: string
 ): Promise<{ payId: string; firstTicket: string }> {
+  /* 이용권 줄이 결제번호를 들고 있어야 「이 134,000원이 무엇이었나」를
+     되짚을 수 있다. 시트에 그 칸이 없으면 적어도 조용히 사라진다 */
+  await addColumns(SHEET_V, ["결제번호"]);
+
   const stamp = now();
 
   // 1) 결제 — 돈을 받은 건에 한해서만 한 줄 만든다

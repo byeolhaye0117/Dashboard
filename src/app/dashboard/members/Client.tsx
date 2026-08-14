@@ -47,6 +47,8 @@ type Ticket = {
   상태: string;
   결제번호: string;
   금액: string;
+  /** 언제 만들어진 줄인지 — 결제번호가 없던 옛 줄을 날짜로 이어 붙일 때 쓴다 */
+  등록일시?: string;
 };
 
 type Payment = {
@@ -767,17 +769,32 @@ function buyPayload(
   // 옵션은 돈을 받는 항목이라 합계에 들어간다. 무료 서비스만 뺀다
   const suggested = b.lines.reduce((s, l) => s + linePrice(l, pOf(l.상품코드)), 0);
 
+  /*
+   * 서비스·옵션만 골랐으면 그것이 곧 이용권이다
+   *
+   * 이 둘은 원래 회원권 위에 얹는 항목이다. 그런데 「네이버 7일 서비스」처럼
+   * 회원권 없이 그것만 드리는 일이 실제로 있다. 예전에는 그걸 막아 뒀는데,
+   * 막으면 데스크에서 할 수 있는 일이 없어진다.
+   *
+   * 얹을 회원권이 있으면 얹고, 없으면 그것 자체를 한 줄로 세운다.
+   * 얹을 데 없는 것을 얹으라고 넘기면 서버가 조용히 버린다 —
+   * 실제로 그래서 아무 일도 안 일어났다.
+   */
+  const 얹을것 = b.lines.filter((l) => !isExtraKind(pOf(l.상품코드)));
+  const 단독 = 얹을것.length === 0;
+
   return {
-    이용권: b.lines
-      .filter((l) => !isExtraKind(pOf(l.상품코드)))
+    이용권: (단독 ? b.lines : 얹을것)
       .map((l) => ({ ...l, 금액: String(linePrice(l, pOf(l.상품코드))) })),
-    부가서비스: b.lines
-      .filter((l) => isExtraKind(pOf(l.상품코드)))
-      .map((l) => ({
-        상품코드: l.상품코드,
-        // 옵션은 달마다 붙는 값이라 고른 개월만큼 곱해서 남긴다
-        추가금액: String(linePrice(l, pOf(l.상품코드))),
-      })),
+    부가서비스: 단독
+      ? []
+      : b.lines
+          .filter((l) => isExtraKind(pOf(l.상품코드)))
+          .map((l) => ({
+            상품코드: l.상품코드,
+            // 옵션은 달마다 붙는 값이라 고른 개월만큼 곱해서 남긴다
+            추가금액: String(linePrice(l, pOf(l.상품코드))),
+          })),
     결제수단: b.결제수단,
     결제금액: split
       ? String(onlyNum(b.카드액) + onlyNum(b.계좌액))
@@ -961,9 +978,11 @@ function PurchaseFields({
             </p>
           ) : (
             <div className="cart-list">
+              {/* 얹을 회원권이 하나도 없으면 서비스·옵션이 그 자체로 한 줄이 된다 */}
               {b.lines.map((l, i) => {
                 const pr = pOf(l.상품코드);
                 const extra = isExtraKind(pr);
+                const 얹을데없음 = !b.lines.some((x) => !isExtraKind(pOf(x.상품코드)));
                 const open = openLine === i;
                 const free = !pr || (extra && !priceOf(pr));
                 return (
@@ -986,7 +1005,7 @@ function PurchaseFields({
                               ? `${l.시작일} ~ ${l.종료일}`
                               : l.시작일 || "기간 없음",
                           !extra && usesCount(pr) && l.총횟수 ? `${l.총횟수}회` : "",
-                          extra ? "회원권에 얹음" : l.가격구분 + "가",
+                          extra ? (얹을데없음 ? "따로 등록" : "회원권에 얹음") : l.가격구분 + "가",
                           onlyNum(l.할인) > 0 ? `할인 ${money(onlyNum(l.할인))}원` : "",
                           onlyNum(l.미수금) > 0 ? `미수 ${money(onlyNum(l.미수금))}원` : "",
                         ].filter(Boolean).join(" · ")}
@@ -1201,10 +1220,6 @@ function AddPurchase({
     if (payload.이용권.length === 0 && payload.부가서비스.length === 0) {
       return setMsg("더할 상품을 하나 이상 골라주세요.");
     }
-    if (payload.이용권.length === 0) {
-      return setMsg("서비스·옵션만 더할 수는 없습니다. 얹을 회원권이나 PT를 같이 골라주세요.");
-    }
-
     setBusy(true);
     const res = await fetch("/api/members/purchase", {
       method: "POST",
@@ -2194,19 +2209,44 @@ function PayTab({ paid, totalPaid, unpaid, tickets, products, onEdit }: {
   const bought = useMemo(() => {
     const byCode = new Map(products.map((x) => [x.code, x]));
     const m = new Map<string, { name: string; amount: number; spec: string }[]>();
-    tickets.forEach((t) => {
-      const pid = (t.결제번호 ?? "").trim();
-      if (!pid) return;
+    const put = (pid: string, t: Ticket) => {
       const pr = byCode.get(t.상품코드);
       const spec = [termOf(pr ?? {}), t.총횟수 ? `${t.총횟수}회` : ""].filter(Boolean).join(" · ");
-      (m.get(pid) ?? m.set(pid, []).get(pid)!).push({
-        name: pr?.name || t.상품코드,
-        amount: Number(t.금액) || 0,
-        spec,
+      const list = m.get(pid) ?? [];
+      list.push({ name: pr?.name || t.상품코드, amount: Number(t.금액) || 0, spec });
+      m.set(pid, list);
+    };
+
+    const 매인것: Ticket[] = [];
+    const 안매인것: Ticket[] = [];
+    tickets.forEach((t) => ((t.결제번호 ?? "").trim() ? 매인것 : 안매인것).push(t));
+    매인것.forEach((t) => put((t.결제번호 ?? "").trim(), t));
+
+    /*
+     * 결제번호가 없는 옛 이용권은 날짜로 이어 붙인다
+     *
+     * 이용권 시트에 「결제번호」 칸이 없던 동안 만들어진 줄은 어느 결제에
+     * 딸린 것인지 자국이 없다. 그렇다고 비워 두면 「이 돈이 뭐였지」에
+     * 영영 답을 못 한다.
+     *
+     * 같은 날 결제가 하나뿐이면 그 결제 것으로 본다. 여러 건이면 어느
+     * 쪽인지 알 수 없으므로 손대지 않는다 — 틀리게 붙이는 것보다 낫다.
+     */
+    if (안매인것.length > 0) {
+      const dayCount = new Map<string, Payment[]>();
+      paid.forEach((x) => {
+        const d = (x.결제일시 ?? "").slice(0, 10);
+        if (!d) return;
+        dayCount.set(d, [...(dayCount.get(d) ?? []), x]);
       });
-    });
+      안매인것.forEach((t) => {
+        const d = (t.등록일시 ?? t.시작일 ?? "").slice(0, 10);
+        const same = dayCount.get(d) ?? [];
+        if (same.length === 1) put(same[0].id, t);
+      });
+    }
     return m;
-  }, [tickets, products]);
+  }, [tickets, products, paid]);
 
   const sorted = useMemo(
     () => paid.slice().sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? "")),
@@ -2319,6 +2359,9 @@ function PaymentLine({ x, lines, onEdit }: {
   lines: { name: string; amount: number; spec: string }[];
   onEdit?: () => void;
 }) {
+  /* 건수가 쌓이면 늘 펼쳐 둔 목록은 읽기가 힘들다. 눌러서 편다 */
+  const [open, setOpen] = useState(false);
+
   const refunded = x.환불여부?.toUpperCase() === "Y";
   const owe = Number(x.미수금액) || 0;
 
@@ -2328,9 +2371,11 @@ function PaymentLine({ x, lines, onEdit }: {
     { k: "계좌", v: Number(x.계좌액) || 0 },
   ].filter((w) => w.v > 0);
 
+  const 볼것 = lines.length > 0 || ways.length > 0 || owe > 0;
+
   return (
-    <div className={`line-item${onEdit ? " clickable" : ""}`} onClick={onEdit}>
-      <div className="line-head">
+    <div className={`line-item${볼것 ? " clickable" : ""}${open ? " open" : ""}`}>
+      <div className="line-head" onClick={() => 볼것 && setOpen(!open)}>
         <b className="num">{money(Number(x.결제금액) || 0)}원</b>
         <span className="dim">
           {(x.결제일시 ?? "").slice(0, 10)}
@@ -2343,34 +2388,52 @@ function PaymentLine({ x, lines, onEdit }: {
         ) : (
           <span className="pill good">완납</span>
         )}
+        {볼것 && <i className={`caret${open ? " up" : ""}`} aria-hidden />}
       </div>
 
-      {lines.length > 0 && (
-        <ul className="paylines">
-          {lines.map((l, i) => (
-            <li key={i}>
-              <span className="nm">{l.name}</span>
-              {l.spec && <span className="dim">{l.spec}</span>}
-              <span className="am num">{l.amount > 0 ? `${money(l.amount)}원` : "-"}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {(ways.length > 0 || owe > 0) && (
-        <div className="payways">
-          {ways.map((w) => (
-            <span key={w.k}>
-              {w.k} <b className="num">{money(w.v)}원</b>
-            </span>
-          ))}
-          {owe > 0 && (
-            <span className="warn-text">
-              미수 <b className="num">{money(owe)}원</b>
-              {x.미수금결제예정일 && ` · ${x.미수금결제예정일}까지`}
-            </span>
+      {open && (
+        <>
+          {lines.length > 0 ? (
+            <ul className="paylines">
+              {lines.map((l, i) => (
+                <li key={i}>
+                  <span className="nm">{l.name}</span>
+                  {l.spec && <span className="dim">{l.spec}</span>}
+                  <span className="am num">{l.amount > 0 ? `${money(l.amount)}원` : "-"}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="stat-note" style={{ margin: "8px 0 0" }}>
+              이 결제에 딸린 이용권을 못 찾았습니다. 이용권 탭에서 확인해주세요.
+            </p>
           )}
-        </div>
+
+          {(ways.length > 0 || owe > 0) && (
+            <div className="payways">
+              {ways.map((w) => (
+                <span key={w.k}>
+                  {w.k} <b className="num">{money(w.v)}원</b>
+                </span>
+              ))}
+              {owe > 0 && (
+                <span className="warn-text">
+                  미수 <b className="num">{money(owe)}원</b>
+                  {x.미수금결제예정일 && ` · ${x.미수금결제예정일}까지`}
+                </span>
+              )}
+            </div>
+          )}
+
+          {onEdit && (
+            <div className="who-acts" style={{ marginTop: 10 }}>
+              <button type="button" className="btn-ghost" style={{ flex: "0 0 auto" }}
+                      onClick={onEdit}>
+                이 결제 고치기
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
