@@ -45,7 +45,11 @@ type Payment = {
   등록일시: string;
 };
 
-type Ticket = { id: string; 상품코드: string; 결제번호: string; 금액: string };
+type Ticket = {
+  id: string; 상품코드: string; 결제번호: string; 금액: string;
+  /* 결제번호가 없던 옛 줄을 날짜로 잇고, 신규·재등록을 가르는 데 쓴다 */
+  회원번호?: string; 시작일?: string; 등록일시?: string; 지점코드?: string;
+};
 type Named = { code: string; name: string };
 type Goal = { 지점코드: string; 연월: string; 목표금액: number };
 /** 전환율·상담왕을 내기 위한 상담 한 줄 */
@@ -275,8 +279,26 @@ export default function Client(p: Props) {
    * 결제 한 건에 회원권과 사물함이 같이 들어 있어도 각각 얼마인지 알 수 있다.
    */
   const bucketOf = useMemo(() => {
+    /*
+     * 이용권을 결제에 잇는다
+     *
+     * 이용권 줄이 결제번호를 들고 있으면 그대로 쓴다. 「결제번호」 칸이 없던
+     * 동안 판 줄은 자국이 없어서, 같은 날 결제가 하나뿐일 때만 그 결제 것으로
+     * 본다. 여러 건이면 어느 쪽인지 알 수 없어 손대지 않는다 —
+     * 틀리게 붙이는 것보다 낫다.
+     */
     const byPay: Record<string, Ticket[]> = {};
-    p.tickets.forEach((t) => (byPay[t.결제번호] ??= []).push(t));
+    const byDay: Record<string, Payment[]> = {};
+    p.payments.forEach((x) => {
+      const d = (x.결제일시 ?? "").slice(0, 10);
+      if (d) (byDay[d] ??= []).push(x);
+    });
+    p.tickets.forEach((t) => {
+      const pid = (t.결제번호 ?? "").trim();
+      if (pid) return (byPay[pid] ??= []).push(t);
+      const same = byDay[(t.등록일시 ?? t.시작일 ?? "").slice(0, 10)] ?? [];
+      if (same.length === 1) (byPay[same[0].id] ??= []).push(t);
+    });
 
     const where = (kind?: string) => {
       const k = kind ?? "";
@@ -284,6 +306,25 @@ export default function Client(p: Props) {
       if (k.includes("PT")) return "PT" as const;
       if (k.includes("수업")) return "수업" as const;
       return "기타" as const;
+    };
+
+    /*
+     * 신규인가 재등록인가
+     *
+     * 결제 줄의 「매출유형」이 신규·재등록이라고 적혀 있으면 그 말이 먼저다.
+     * 「기타매출」처럼 적혀 있거나 비어 있으면 이 회원이 그 갈래를 전에도
+     * 끊었는지 본다. 전에 끊은 적이 있으면 재등록, 없으면 신규다.
+     * 적힌 말만 믿으면 회원권 13만원이 통째로 기타로 잡힌다 — 실제로 그랬다.
+     */
+    const 앞선것 = (t: Ticket) => {
+      const k = where(productOf(t.상품코드)?.kind);
+      return p.tickets.some(
+        (o) =>
+          o.회원번호 === t.회원번호 &&
+          o.id !== t.id &&
+          where(productOf(o.상품코드)?.kind) === k &&
+          (o.시작일 ?? "") < (t.시작일 ?? "")
+      );
     };
 
     const zero = () => ({ total: 0, 신규: 0, 재등록: 0 });
@@ -301,7 +342,7 @@ export default function Client(p: Props) {
       live.forEach((pay) => {
         const amt = num(pay.결제금액);
         if (amt <= 0) return;
-        const type = typeOf(pay.매출유형);
+        const 적힌유형 = typeOf(pay.매출유형);
         const ts = byPay[pay.id] ?? [];
         const w = ts.map((t) => {
           const pr = productOf(t.상품코드);
@@ -309,16 +350,27 @@ export default function Client(p: Props) {
         });
         const wsum = w.reduce((a, b) => a + b, 0);
         if (ts.length === 0 || wsum <= 0) {
-          put("미분류", amt, type);
+          put("미분류", amt, 적힌유형);
           return;
         }
+        /* 마지막 줄에서 잔돈을 맞춘다 — 나누다 남은 돈이 사라지면 안 된다 */
+        let 쓴돈 = 0;
         ts.forEach((t, i) => {
-          put(where(productOf(t.상품코드)?.kind), Math.round((amt * w[i]) / wsum), type);
+          const 몫 = i === ts.length - 1 ? amt - 쓴돈 : Math.round((amt * w[i]) / wsum);
+          쓴돈 += 몫;
+          const 갈래 = where(productOf(t.상품코드)?.kind);
+          const type =
+            적힌유형 === "신규" || 적힌유형 === "재등록"
+              ? 적힌유형
+              : 갈래 === "회원권" || 갈래 === "PT" || 갈래 === "수업"
+                ? (앞선것(t) ? "재등록" : "신규")
+                : 적힌유형;
+          put(갈래, 몫, type);
         });
       });
       return out;
     };
-  }, [p.tickets, p.products]);
+  }, [p.tickets, p.payments, p.products]);
 
   const bucket = bucketOf(cur.live);
 
@@ -645,7 +697,7 @@ export default function Client(p: Props) {
             <p className="dim mini-note">이 달에 잡힌 매출이 없습니다.</p>
           ) : (
             <div className="dwrap">
-              <Donut rows={six} center={koShort(cur.sum)}
+              <Donut rows={six} center={`${money(cur.sum)}원`}
                      label="상품 갈래별 매출 비중 도넛 그래프" />
               <ul className="dlist">
                 {six.map((k, i) => (
@@ -677,7 +729,7 @@ export default function Client(p: Props) {
             </p>
           ) : (
             <div className="dwrap">
-              <Donut rows={method.rows} center={koShort(method.named)}
+              <Donut rows={method.rows} center={`${money(method.named)}원`}
                      label="결제수단별 금액 비중 도넛 그래프" />
               <ul className="dlist">
                 {method.rows.map((r, i) => (
@@ -1369,7 +1421,12 @@ function Donut({ rows, center, label }: {
         })}
       </g>
       <text className="dn-lb" x="84" y="80" textAnchor="middle">합계</text>
-      <text className="dn-vl" x="84" y="101" textAnchor="middle">{center}</text>
+      {/* 「13만」 같은 어림값 대신 정확한 금액을 넣는다. 자릿수가 늘면
+          도넛 밖으로 넘치므로 글자 크기를 같이 줄인다 */}
+      <text className="dn-vl" x="84" y="101" textAnchor="middle"
+            style={{ fontSize: center.length > 12 ? 11 : center.length > 9 ? 13 : 15 }}>
+        {center}
+      </text>
     </svg>
   );
 }
