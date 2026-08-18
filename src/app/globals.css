@@ -893,7 +893,9 @@ i.s6 { background: var(--s6); }
 .cart-sum .row b { color: var(--ink); font-weight: 700; font-size: 13px; }
 .cart-sum .row b.warn-text { color: var(--bad); }
 .cart-note b { color: var(--ink); font-weight: 700; }
-.cart-sum .row.f > span { flex: 0 0 74px; }
+/* 「담당 트레이너」가 두 줄로 접히던 자리. 이름표는 한 줄로 두고,
+   길면 칸을 조금 넓힌다 — 접히면 아래 칸들과 줄이 어긋나 보인다 */
+.cart-sum .row.f > span { flex: 0 0 86px; white-space: nowrap; }
 .cart-sum .row.f .input { flex: 1; height: 30px; padding: 0 9px; font-size: 12.5px; min-width: 0; }
 .cart-sum .row.total {
   margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
