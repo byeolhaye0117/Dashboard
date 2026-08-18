@@ -13,7 +13,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today, addDays } from "@/lib/time";
 import {
-  JOIN_STATES, STATE_TONE, KIND_PT, KIND_GROUP, addMinutes, toMinutes, lastSlot,
+  JOIN_STATES, STATE_TONE, KIND_PT, KIND_GROUP, addMinutes, toMinutes, lastSlot, fitsKind,
 } from "@/lib/lessonMeta";
 
 type Lesson = {
@@ -1295,7 +1295,9 @@ function AddBox(props: {
 
   const usable = useMemo(() => {
     const codes = new Set(
-      props.products.filter((x) => x.kind === kind).map((x) => x.code)
+      /* 옛 분류 이름(1:1PT)만 보던 것을 고친다. 상품 관리에서 「수강권」으로
+         만든 PT 가 하나도 안 걸려 「쓸 수 있는 이용권이 없습니다」만 떴다 */
+      props.products.filter((x) => fitsKind(x.kind, x.name, kind)).map((x) => x.code)
     );
     return props.tickets
       .filter((t) => codes.has(t.상품코드))
