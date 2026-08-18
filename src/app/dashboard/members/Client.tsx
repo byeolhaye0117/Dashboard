@@ -325,15 +325,42 @@ export default function Client(p: Props) {
     return map;
   }, [mainOf]);
 
+  /** 남에게 넘긴 이용권 — 회원번호로 묶어 둔다 */
+  const 넘긴것 = useMemo(() => {
+    const set = new Set<string>();
+    p.transfers.forEach((t) => t.준회원번호 && set.add(t.준회원번호));
+    return set;
+  }, [p.transfers]);
+
+  /*
+   * 이 회원은 지금 어떤 상태인가
+   *
+   * 보는 차례가 곧 규칙이다. 위에 있는 것이 이긴다.
+   *   이용권 없음 — 산 적이 없다
+   *   홀딩       — 쓸 수 있는 것은 다 정지해 뒀다. 끝난 것이 아니다
+   *   마감임박   — 이번 주 안에 끝난다. 재등록 얘기를 꺼낼 분
+   *   활성       — 지금 쓰고 계신다
+   *   양도       — 남은 것이 없고 남에게 넘긴 기록이 있다
+   *   마감       — 그냥 다 끝났다
+   *
+   * 홀딩을 마감보다 먼저 본다. 정지는 본인이 잠시 멈춘 것이라 「끝난 사람」
+   * 명단에 섞이면 안 된다 — 재등록 전화를 받으실 이유가 없는 분이다.
+   */
   const stateOf = (m: Member) => {
     const list = mainOf[m.id] ?? [];
     if (list.length === 0) return "이용권 없음";
+
     const alive = list.filter((t) => isAlive(t, now));
-    if (alive.length === 0) return "만료";
-    const soonest = alive
+    const 도는것 = alive.filter((t) => t.상태 !== "정지");
+    if (도는것.length === 0) {
+      if (alive.some((t) => t.상태 === "정지")) return "홀딩";
+      return 넘긴것.has(m.id) ? "양도" : "마감";
+    }
+
+    const soonest = 도는것
       .map((t) => (t.종료일 ? daysLeft(t.종료일, now) : Infinity))
       .sort((a, b) => a - b)[0];
-    return soonest <= SOON ? "만료임박" : "이용중";
+    return soonest <= SOON ? "마감임박" : "활성";
   };
 
   /** 고른 지점 회원만 — 숫자도 목록도 전부 이걸 바탕으로 센다 */
@@ -343,9 +370,10 @@ export default function Client(p: Props) {
   );
 
   const newThisMonth = scoped.filter((m) => (m.가입일 ?? "").startsWith(thisMonth)).length;
-  const using = scoped.filter((m) => stateOf(m) === "이용중").length;
-  const soon = scoped.filter((m) => stateOf(m) === "만료임박").length;
-  const expired = scoped.filter((m) => stateOf(m) === "만료").length;
+  const using = scoped.filter((m) => stateOf(m) === "활성").length;
+  const soon = scoped.filter((m) => stateOf(m) === "마감임박").length;
+  /* 양도·홀딩은 재등록 대상이 아니다. 「마감」에 섞으면 전화 명단이 틀어진다 */
+  const expired = scoped.filter((m) => stateOf(m) === "마감").length;
 
   const list = useMemo(() => {
     return scoped
@@ -399,7 +427,7 @@ export default function Client(p: Props) {
         <div className="stat">
           <div className="lb">전체 회원</div>
           <div className="vl num">{scoped.length}</div>
-          <div className="dt">이용중 {using}명</div>
+          <div className="dt">활성 {using}명</div>
         </div>
         <div className="stat">
           <div className="lb">이번 달 신규</div>
@@ -407,12 +435,12 @@ export default function Client(p: Props) {
           <div className="dt">가입일 기준</div>
         </div>
         <div className="stat">
-          <div className="lb">만료 임박</div>
+          <div className="lb">마감 임박</div>
           <div className="vl num">{soon}</div>
           <div className="dt">{SOON}일 안에 끝남</div>
         </div>
         <div className="stat">
-          <div className="lb">만료</div>
+          <div className="lb">마감</div>
           <div className="vl num">{expired}</div>
           <div className="dt">재등록 대상</div>
         </div>
@@ -491,7 +519,7 @@ export default function Client(p: Props) {
 
       <div className="filters">
         <div className="chips">
-          {["전체", "이용중", "만료임박", "만료", "이용권 없음"].map((t) => (
+          {["전체", "활성", "마감임박", "마감", "양도", "홀딩", "이용권 없음"].map((t) => (
             <button key={t} className={`chip${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>
               {t}
               <span className="cnt num">
@@ -582,7 +610,7 @@ export default function Client(p: Props) {
                     <td className="num dim">
                       {startOf[m.id] ? startOf[m.id].slice(2) : "-"}
                     </td>
-                    <td className={st === "만료" ? "late num" : "num dim"}>
+                    <td className={st === "마감" ? "late num" : "num dim"}>
                       {end ? end.slice(2) : "-"}
                     </td>
                     <td>
@@ -639,9 +667,13 @@ export default function Client(p: Props) {
 }
 
 const TONE: Record<string, string> = {
-  이용중: "good",
-  만료임박: "warn",
-  만료: "bad",
+  활성: "good",
+  마감임박: "warn",
+  마감: "bad",
+  /* 넘겨준 것은 잘못된 일이 아니라 그냥 다른 일이다 — 붉게 칠하지 않는다 */
+  양도: "",
+  /* 잠시 멈춘 것이지 끝난 것이 아니다 */
+  홀딩: "warn",
   "이용권 없음": "",
 };
 
@@ -1833,18 +1865,28 @@ function Detail({
   }, 0);
   const unpaid = paid.reduce((s, x) => s + (Number(x.미수금액) || 0), 0);
 
+  /** 이 회원이 남에게 넘긴 이용권이 있는가 */
+  const 넘긴적있음 = transfers.some((t) => t.준회원번호 === item.id);
+
   /** 회원권 · PT · 수업만 놓고 지금 쓸 수 있는 것과 끝난 것을 센다 */
   const live = useMemo(() => {
     const main = tickets.filter((t) => groupOf(productOf(t.상품코드)) === "이용권");
     const rows = main.filter((t) => isAlive(t, now));
+    /* 목록의 상태 딱지와 같은 규칙을 본다. 목록에서는 「홀딩」인데 상세를
+       열면 「마감」이면, 둘 중 어느 쪽을 믿어야 할지 알 수가 없다 */
+    const 도는것 = rows.filter((t) => t.상태 !== "정지");
     const state =
-      rows.length === 0
-        ? main.length === 0
-          ? "이용권 없음"
-          : "만료"
-        : rows.some((t) => t.종료일 && daysLeft(t.종료일, now) <= SOON)
-          ? "만료임박"
-          : "이용중";
+      main.length === 0
+        ? "이용권 없음"
+        : 도는것.length === 0
+          ? rows.some((t) => t.상태 === "정지")
+            ? "홀딩"
+            : 넘긴적있음
+              ? "양도"
+              : "마감"
+          : 도는것.some((t) => t.종료일 && daysLeft(t.종료일, now) <= SOON)
+            ? "마감임박"
+            : "활성";
     const extraRows = tickets.filter((t) => {
       const g = groupOf(productOf(t.상품코드));
       return g === "부가" || g === "옵션";
