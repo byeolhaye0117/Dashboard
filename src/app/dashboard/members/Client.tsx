@@ -490,7 +490,10 @@ export default function Client(p: Props) {
                     </td>
                     <td className="dim">{m.거주동네 || "-"}</td>
                     <td className="dim">{branchName(m.지점코드)}</td>
-                    <td className="dim">{p.staffNames[m.담당직원사번] ?? "-"}</td>
+                    {/* 회원이 아니라 이용권에 붙은 트레이너를 본다 */}
+                    <td className="dim">
+                      {p.staffNames[trainerOf(m.id, p.tickets, productOf, now)] ?? "-"}
+                    </td>
                     <td className="num dim">{(m.가입일 ?? "").slice(2)}</td>
                     <td className={st === "만료" ? "late num" : "num dim"}>
                       {end ? end.slice(2) : "-"}
@@ -708,6 +711,34 @@ const 회원권따라감 = (pr?: ProductMeta) => {
   const c = ticketCat(pr);
   return c === "수강권" || c === "서비스";
 };
+
+/**
+ * 이 회원을 맡고 있는 트레이너
+ *
+ * 회원 줄에 따로 적어 두던 값을 없앴다. 회원 하나에 트레이너 하나를 박아
+ * 두면, PT 를 두 개 끊고 트레이너가 다를 때 어느 쪽인지 알 수가 없다.
+ * 사람이 붙는 것은 회원이 아니라 이용권이다.
+ *
+ * 그래서 지금 살아 있는 수강권 · 케어권에 적힌 트레이너를 본다.
+ * 여럿이면 늦게 끝나는 것부터 — 지금 주로 맡고 있는 사람일 확률이 높다.
+ */
+function trainerOf(
+  memberId: string,
+  tickets: Ticket[],
+  productOf: (code: string) => ProductMeta | undefined,
+  now: string
+): string {
+  const t = tickets
+    .filter(
+      (x) =>
+        x.회원번호 === memberId &&
+        (x.담당트레이너사번 ?? "").trim() &&
+        ["수강권", "케어권"].includes(ticketCat(productOf(x.상품코드))) &&
+        (x.종료일 ?? "") >= now
+    )
+    .sort((a, b) => (b.종료일 ?? "").localeCompare(a.종료일 ?? ""))[0];
+  return t?.담당트레이너사번 ?? "";
+}
 
 const canPickMonths = (pr?: ProductMeta) => {
   const g = groupOf(pr);
@@ -1501,12 +1532,6 @@ function NewForm({
               {branches.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
             </select>
           </L>
-          <L label="담당 트레이너">
-            <select className="input" value={f["담당직원사번"] ?? ""} onChange={(e) => set("담당직원사번", e.target.value)}>
-              <option value="">지정 안 함</option>
-              {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </L>
           <L label="가입일">
             <input className="input" type="date" value={f["가입일"] ?? ""}
                    onChange={(e) => set("가입일", e.target.value)} />
@@ -1718,13 +1743,6 @@ function Detail({
                     placeholder="예) 쌍용동" />
               <Free label="직업" k="직업" f={f} set={setV} opts={options["직업"]}
                     placeholder="예) 간호사 · 3교대 근무" />
-              <L label="담당 트레이너">
-                <select className="input" value={f["담당직원사번"] ?? ""}
-                        onChange={(e) => setV("담당직원사번", e.target.value)}>
-                  <option value="">지정 안 함</option>
-                  {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </L>
               <L label="가입일">
                 <input className="input" type="date" value={(f["가입일"] ?? "").slice(0, 10)}
                        onChange={(e) => setV("가입일", e.target.value)} />
@@ -1808,7 +1826,8 @@ function Detail({
                   <Kv k="직업" v={item.직업} />
                   <Kv k="거주 동네" v={item.거주동네} />
                   <Kv k="등록 지점" v={branchName} />
-                  <Kv k="담당 트레이너" v={staffNames[item.담당직원사번]} />
+                  <Kv k="담당 트레이너"
+                      v={staffNames[trainerOf(item.id, tickets, productOf, now)]} />
                   <Kv k="가입일" v={korDate(item.가입일)} />
                   <Kv k="회원 상태" v={item.회원상태 || "유효"} />
                 </dl>
@@ -1845,6 +1864,7 @@ function Detail({
                     extras={extras}
                     transfers={transfers}
                     productOf={productOf}
+                    staffNames={staffNames}
                     now={now}
                     can={can}
                     onGo={setView}
@@ -1854,7 +1874,8 @@ function Detail({
                 )}
 
                 {view === "이용권" && (
-                  <TicketGroups tickets={tickets} extras={extras} productOf={productOf} now={now}
+                  <TicketGroups tickets={tickets} extras={extras} productOf={productOf}
+                                staffNames={staffNames} now={now}
                                 onEdit={can.update ? setEditTicket : undefined} />
                 )}
 
@@ -1939,7 +1960,7 @@ function Detail({
  */
 function Board({
   item, live, tickets, extras, payments, totalPaid, unpaid,
-  transfers, productOf, now, can,
+  transfers, productOf, staffNames, now, can,
   onGo, onTicket, onMemo,
 }: {
   item: Member;
@@ -1951,6 +1972,8 @@ function Board({
   extras: Extra[];
   transfers: TransferRow[];
   productOf: (code: string) => ProductMeta | undefined;
+  /** 사번 → 이름 */
+  staffNames: Record<string, string>;
   now: string;
   can: { create: boolean; update: boolean; remove: boolean };
   onGo: (v: any) => void;
@@ -2004,7 +2027,7 @@ function Board({
             lines.push({
               key: t.id,
               cat: ticketCat(productOf(t.상품코드)),
-              el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+              el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} who={staffNames}
                              onClick={can.update ? () => onTicket(t) : undefined} />,
             });
           });
@@ -2154,9 +2177,12 @@ function Board({
 }
 
 /** 남은 기간을 막대로 — 「197일 남음」만 있으면 많은 건지 적은 건지 감이 안 온다 */
-function TicketBar({ t, pr, now, free, note, onClick }: {
+function TicketBar({ t, pr, now, free, note, who, onClick }: {
   t: Ticket; pr?: ProductMeta; now: string;
-  free?: boolean; note?: string; onClick?: () => void;
+  free?: boolean; note?: string;
+  /** 사번 → 이름. PT 처럼 사람이 붙는 이용권은 누가 맡는지가 여기 보여야 한다 */
+  who?: Record<string, string>;
+  onClick?: () => void;
 }) {
   const left = t.종료일 ? daysLeft(t.종료일, now) : null;
   const total = t.시작일 && t.종료일 ? Math.max(1, daysBetween(t.시작일, t.종료일)) : 0;
@@ -2177,6 +2203,10 @@ function TicketBar({ t, pr, now, free, note, onClick }: {
       <span className="sub">
         {t.시작일?.slice(2)}{t.종료일 && ` ~ ${t.종료일.slice(2)}`}
         {cnt && ` · ${t.잔여횟수 || t.총횟수}/${t.총횟수}회`}
+        {/* 담당은 회원이 아니라 이 이용권에 붙는다. 같은 회원이 PT 를 둘 끊고
+            트레이너가 다를 수 있어서, 회원 줄 하나에 적으면 답이 안 나온다 */}
+        {who && (t.담당트레이너사번 ?? "").trim() &&
+          ` · ${who[t.담당트레이너사번] ?? t.담당트레이너사번} 트레이너`}
         {note && ` · ${note}`}
       </span>
       <div className={`tbar ${정지 ? "warn" : tone}`}>
@@ -2187,11 +2217,12 @@ function TicketBar({ t, pr, now, free, note, onClick }: {
 }
 
 function TicketGroups({
-  tickets, extras, productOf, now, onEdit,
+  tickets, extras, productOf, staffNames, now, onEdit,
 }: {
   tickets: Ticket[];
   extras: Extra[];
   productOf: (code: string) => ProductMeta | undefined;
+  staffNames: Record<string, string>;
   now: string;
   onEdit?: (t: Ticket) => void;
 }) {
@@ -2244,7 +2275,7 @@ function TicketGroups({
     paid.slice().sort(byEnd).forEach((t) =>
       lines.push({
         cat: ticketCat(productOf(t.상품코드)),
-        el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now}
+        el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} who={staffNames}
                        onClick={onEdit && (() => onEdit(t))} />,
       })
     );
