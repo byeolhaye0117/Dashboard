@@ -133,6 +133,14 @@ type Props = {
   options: Record<string, string[]>;
   branches: Named[];
   staffNames: Record<string, string>;
+  /**
+   * 회원번호 → 가장 최근 수업의 트레이너
+   *
+   * 이용권에 담당이 안 적혀 있어도 실제로 수업을 하고 있으면 그 사람이
+   * 담당이다. 저장이 한 번 성공했는지에 기대지 않으려고 화면을 열 때마다
+   * 수업에서 되짚는다.
+   */
+  lessonTrainer: Record<string, string>;
   /** 이 지점 재직자. pt 가 참인 사람만 「담당 트레이너」로 고를 수 있다 */
   trainers: Staffer[];
   currentBranch: string;
@@ -557,7 +565,9 @@ export default function Client(p: Props) {
                     <td className="dim">{branchName(m.지점코드)}</td>
                     {/* 회원이 아니라 이용권에 붙은 트레이너를 본다 */}
                     <td className="dim">
-                      {p.staffNames[trainerOf(m.id, p.tickets, productOf, now)] ?? "-"}
+                      {p.staffNames[
+                        trainerOf(m.id, p.tickets, productOf, now, p.lessonTrainer)
+                      ] ?? "-"}
                     </td>
                     {/* 옆 칸 만료일과 같은 이용권에서 온 날짜다 */}
                     <td className="num dim">
@@ -605,6 +615,7 @@ export default function Client(p: Props) {
           options={p.options}
           trainers={p.trainers}
           staffNames={p.staffNames}
+          lessonTrainer={p.lessonTrainer}
           branchName={branchName(detail.지점코드)}
           can={p.can}
           members={p.items}
@@ -810,12 +821,23 @@ const 사람붙음 = (pr?: ProductMeta) =>
  *
  * 그래서 지금 살아 있는 수강권 · 케어권에 적힌 트레이너를 본다.
  * 여럿이면 늦게 끝나는 것부터 — 지금 주로 맡고 있는 사람일 확률이 높다.
+ *
+ * ── 이용권에 안 적혀 있으면 수업에서 되짚는다 ──────────────
+ * PT 를 팔 때 트레이너를 안 고르고 나중에 정하는 일이 흔하다. 수업을
+ * 잡을 때 이용권에 채워 넣게 해 뒀지만, 그것은 「앞으로 잡는 수업」에만
+ * 해당한다. 이미 잡아 둔 수업은 그대로라, 실제로 매주 PT 를 하고 있는데도
+ * 목록에는 「-」로 남았다.
+ *
+ * 저장이 한 번 성공했는지에 기대지 않는다. 화면을 열 때마다 수업을 보고
+ * 판단하면, 언제 잡은 수업이든 결과가 늘 같다.
  */
 function trainerOf(
   memberId: string,
   tickets: Ticket[],
   productOf: (code: string) => ProductMeta | undefined,
-  now: string
+  now: string,
+  /** 회원번호 → 가장 최근 수업의 트레이너. 이용권에 안 적혔을 때 쓴다 */
+  fromLesson?: Record<string, string>
 ): string {
   const t = tickets
     .filter(
@@ -826,7 +848,7 @@ function trainerOf(
         (x.종료일 ?? "") >= now
     )
     .sort((a, b) => (b.종료일 ?? "").localeCompare(a.종료일 ?? ""))[0];
-  return t?.담당트레이너사번 ?? "";
+  return t?.담당트레이너사번 || fromLesson?.[memberId] || "";
 }
 
 const canPickMonths = (pr?: ProductMeta) => {
@@ -1757,6 +1779,7 @@ function ProgressLine({ t, pr, now, onEdit }: {
 
 function Detail({
   item, tickets, payments, extras, products, productBranches, productOf, options, trainers, staffNames,
+  lessonTrainer,
   branchName, can, members, transfers, onClose,
 }: {
   item: Member;
@@ -1770,6 +1793,8 @@ function Detail({
   /** 이 지점 재직자. pt 가 참인 사람만 「담당 트레이너」로 고를 수 있다 */
   trainers: Staffer[];
   staffNames: Record<string, string>;
+  /** 이용권에 담당이 없을 때 수업에서 되짚은 트레이너 */
+  lessonTrainer: Record<string, string>;
   branchName: string;
   can: { create: boolean; update: boolean; remove: boolean };
   /** 양도할 때 받을 사람을 고르려면 명단이 있어야 한다 */
@@ -1979,7 +2004,7 @@ function Detail({
                   <Kv k="거주 동네" v={item.거주동네} />
                   <Kv k="등록 지점" v={branchName} />
                   <Kv k="담당 트레이너"
-                      v={staffNames[trainerOf(item.id, tickets, productOf, now)]} />
+                      v={staffNames[trainerOf(item.id, tickets, productOf, now, lessonTrainer)]} />
                   <Kv k="가입일" v={korDate(item.가입일)} />
                   <Kv k="회원 상태" v={item.회원상태 || "유효"} />
                 </dl>

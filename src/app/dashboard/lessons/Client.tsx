@@ -71,7 +71,9 @@ function dayRange(list: Lesson[]): [number, number] {
      있는 시간만 그리면 날마다 표 길이가 달라져, 어제 3시가 있던 자리에
      오늘은 5시가 온다 — 눈이 자리를 못 외운다 */
   let lo = 7;
-  let hi = 23;
+  /* hi 는 「여기 앞까지」다. 23시 줄까지 보이려면 24 여야 한다 —
+     23 으로 뒀더니 22시가 마지막 줄이었다 */
+  let hi = 24;
   list.forEach((l) => {
     const s = toMinutes(l.시작시각);
     const e = toMinutes(l.종료시각 || l.시작시각);
