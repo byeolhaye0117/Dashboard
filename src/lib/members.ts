@@ -397,6 +397,8 @@ export type NewMember = {
   지점코드: string;
   가입일: string;
   담당직원사번?: string;
+  /** 이 판매를 누구 실적으로 다는가 — 회원의 담당 트레이너와 다른 값이다 */
+  결제담당사번?: string;
   메모?: string;
   /** 상담에서 넘어온 경우 그 상담번호 */
   상담번호?: string;
@@ -449,6 +451,8 @@ export type Purchase = {
   미수금액?: string;
   미수금결제예정일?: string;
   매출유형?: string;
+  /** 이 판매를 누구 실적으로 다는가. 비면 저장한 사람이다 */
+  결제담당사번?: string;
   담당직원사번?: string;
   메모?: string;
 };
@@ -500,7 +504,10 @@ async function writePurchase(
           매출유형: input.매출유형 ?? "",
           미수금액: String(won(input.미수금액)),
           미수금결제예정일: input.미수금결제예정일 ?? "",
-          담당직원사번: staffId,
+          /* 데스크에서 대신 넣어 주는 일이 흔하다. 고른 사람이 있으면 그 사람이
+             실적을 가져간다 — 매출 화면의 「직원별 매출」이 이 값을 그대로 센다.
+             안 골랐으면 저장한 사람이다 */
+          담당직원사번: (input.결제담당사번 ?? "").trim() || staffId,
           환불여부: "",
           환불액: "",
           메모: input.메모 ?? "",
