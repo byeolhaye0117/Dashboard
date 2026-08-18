@@ -20,6 +20,7 @@ import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import type { ProductMeta } from "@/lib/productMeta";
 import { stageNow, baseDate } from "@/lib/stage";
+import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 
 type Payment = {
   id: string;
@@ -321,11 +322,26 @@ export default function Client(p: Props) {
   }, [p.payments, p.tickets]);
 
   const bucketOf = useMemo(() => {
-    const where = (kind?: string) => {
-      const k = kind ?? "";
+    /*
+     * 이 상품은 어느 갈래인가
+     *
+     * ── 왜 고쳤나 ──────────────────────────────────────────────
+     * 상품분류에 「PT」라는 글자가 들어 있는지로만 봤다. 그런데 상품 관리의
+     * 분류는 「회원권 · 수강권 · 그룹수강권 · 케어권 · 부가상품권 · 서비스」다.
+     * 수강권으로 만든 PT 상품에는 「PT」라는 글자가 없어서 전부 「기타」로
+     * 몰렸다 — 실제로 PT 매출 463,400원이 통째로 기타에 잡혔다.
+     *
+     * 수업 화면과 같은 규칙(fitsKind)을 쓴다. 두 화면이 다른 규칙으로
+     * 갈래를 정하면 「수업에서는 PT 인데 매출에서는 기타」가 된다.
+     * 그룹을 먼저 본다 — 「수강권」은 이름에 「그룹」이 들어 있으면 그룹이다.
+     */
+    const where = (pr?: ProductMeta) => {
+      const k = (pr?.kind ?? "").replace(/\s/g, "");
+      const n = pr?.name ?? "";
       if (k.includes("회원권")) return "회원권" as const;
-      if (k.includes("PT")) return "PT" as const;
-      if (k.includes("수업")) return "수업" as const;
+      if (fitsKind(k, n, KIND_GROUP)) return "수업" as const;
+      if (fitsKind(k, n, KIND_PT)) return "PT" as const;
+      /* 케어권 · 부가상품권 · 서비스는 여기로 온다 */
       return "기타" as const;
     };
 
@@ -338,12 +354,12 @@ export default function Client(p: Props) {
      * 적힌 말만 믿으면 회원권 13만원이 통째로 기타로 잡힌다 — 실제로 그랬다.
      */
     const 앞선것 = (t: Ticket) => {
-      const k = where(productOf(t.상품코드)?.kind);
+      const k = where(productOf(t.상품코드));
       return p.tickets.some(
         (o) =>
           o.회원번호 === t.회원번호 &&
           o.id !== t.id &&
-          where(productOf(o.상품코드)?.kind) === k &&
+          where(productOf(o.상품코드)) === k &&
           (o.시작일 ?? "") < (t.시작일 ?? "")
       );
     };
@@ -379,7 +395,7 @@ export default function Client(p: Props) {
         ts.forEach((t, i) => {
           const 몫 = i === ts.length - 1 ? amt - 쓴돈 : Math.round((amt * w[i]) / wsum);
           쓴돈 += 몫;
-          const 갈래 = where(productOf(t.상품코드)?.kind);
+          const 갈래 = where(productOf(t.상품코드));
           const type =
             적힌유형 === "신규" || 적힌유형 === "재등록"
               ? 적힌유형
@@ -461,12 +477,16 @@ export default function Client(p: Props) {
    *
    * 상담을 몇 건 맡아 몇 건을 등록시켰고, 그래서 얼마를 만들었는지.
    *
-   * 세는 기준이 둘이다. 상담·등록·실패는 상담 탭의 상담자, 결제 건수와
-   * 매출은 결제 탭의 담당직원이다. 둘은 자주 다르다 — 상담은 한 사람이
-   * 하고 결제는 데스크에서 받는 일이 흔하다.
+   * 세는 기준이 둘이다 — 대표님이 정하신 대로다.
+   *   상담 · 실패 : 상담 탭의 상담자
+   *   등록 · 매출 : 결제 탭의 담당직원
    *
-   * 그래서 결제 건수를 따로 세운다. 예전에는 매출만 보이고 몇 건인지는
-   * 안 보여서, 상담 기록 없이 판 사람은 줄에 「-」만 늘어서 있었다.
+   * 상담은 한 사람이 하고 결제는 데스크에서 받는 일이 흔해서, 상담 탭의
+   * 「등록」으로 세면 실제로 판 사람의 실적이 남에게 간다.
+   *
+   * 성공률은 상담 몇 건을 맡아 몇 건을 팔았는가다. 상담 없이 판 건이 있으면
+   * 100%를 넘을 수 있다 — 그것도 사실이라 그대로 적는다. 막대만 100에서
+   * 멈춘다.
    */
   const champions = useMemo(() => {
     const map: Record<string, { rows: Lead[]; sum: number; count: number }> = {};
@@ -482,7 +502,18 @@ export default function Client(p: Props) {
       v.count += 1;
     });
     return Object.entries(map)
-      .map(([id, v]) => ({ id, name: p.staffNames[id] ?? id, sum: v.sum, count: v.count, ...tally(v.rows) }))
+      .map(([id, v]) => {
+        const t = tally(v.rows);
+        return {
+          id,
+          name: p.staffNames[id] ?? id,
+          sum: v.sum,
+          count: v.count,
+          ...t,
+          /* 맡은 상담 대비 실제로 판 건수. 상담이 없으면 잴 것이 없다 */
+          sellRate: t.base > 0 ? Math.round((v.count / t.base) * 100) : null,
+        };
+      })
       .filter((s) => s.base > 0 || s.sum > 0)
       .sort((a, b) => b.sum - a.sum);
   }, [leadRows, cur.live, p.staffNames, now]);
@@ -1072,7 +1103,7 @@ export default function Client(p: Props) {
       {/* 이 달의 상담왕 */}
       <h2 className="sec-title">이 달의 상담왕</h2>
       <p className="sec-sub">
-        상담 · 등록 · 실패는 <b>상담 탭의 상담자</b>, 결제 건수와 매출은{" "}
+        상담 · 실패는 <b>상담 탭의 상담자</b>, 등록 · 매출은{" "}
         <b>결제 탭의 담당직원</b> 기준입니다
       </p>
       {champions.length === 0 ? (
@@ -1088,8 +1119,6 @@ export default function Client(p: Props) {
                 <th className="r">등록</th>
                 <th className="r">실패</th>
                 <th>성공률</th>
-                {/* 여기부터는 결제 담당 기준이다 */}
-                <th className="r">결제</th>
                 <th className="r">등록 매출</th>
                 <th className="r">건당</th>
               </tr>
@@ -1100,19 +1129,19 @@ export default function Client(p: Props) {
                   <td><i className={`rk${i === 0 ? " one" : ""}`}>{i + 1}</i></td>
                   <td><span className="nm">{s.name}</span></td>
                   <td className="r dim num">{s.base > 0 ? s.base : "-"}</td>
-                  <td className="r big num">{s.done > 0 ? s.done : "-"}</td>
+                  {/* 등록은 결제 담당 기준이다 — 실제로 판 사람의 건수 */}
+                  <td className="r big num">{s.count > 0 ? s.count : "-"}</td>
                   <td className="r bad num">{s.fail > 0 ? s.fail : "-"}</td>
                   <td>
-                    {s.winRate === null ? (
+                    {s.sellRate === null ? (
                       <span className="dim">-</span>
                     ) : (
                       <span className="wbar">
-                        <span><i style={{ width: `${s.winRate}%` }} /></span>
-                        <b className="num">{s.winRate}%</b>
+                        <span><i style={{ width: `${Math.min(100, s.sellRate)}%` }} /></span>
+                        <b className="num">{s.sellRate}%</b>
                       </span>
                     )}
                   </td>
-                  <td className="r num">{s.count > 0 ? `${s.count}건` : "-"}</td>
                   <td className="r big num">{money(s.sum)}</td>
                   <td className="r dim num">
                     {s.count > 0 ? money(Math.round(s.sum / s.count)) : "-"}
