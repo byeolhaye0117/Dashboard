@@ -129,21 +129,24 @@ export const STATE_TONE: Record<string, string> = {
  * 옛 이름과 새 이름을 둘 다 알아듣게 한다. 「수강권」은 PT 와 그룹수업을
  * 같이 담는 이름이라 이름으로 한 번 더 가른다 — 상품 이름에 「그룹」이
  * 들어 있으면 그룹수업으로, 아니면 1:1 로 본다.
+ *
+ * 「케어권」은 여기 안 넣는다. 수업 시간표에 걸어 두고 도는 일이 아니라서
+ * 섞으면 고르는 목록만 길어진다 — 대표님과 정한 것이다.
  */
 export function fitsKind(productKind: string, name: string, kind: string): boolean {
   const k = (productKind ?? "").replace(/\s/g, "");
   const n = (name ?? "").replace(/\s/g, "");
   const 그룹이름 = /그룹|단체|GX/i.test(n);
 
+  /* 케어권은 수업 잡기에 안 띄운다 — 대표님과 정한 것. 케어는 시간표에
+     걸어 두고 도는 일이 아니라서, 여기 섞이면 목록만 길어진다 */
   if (kind === KIND_PT) {
     if (["1:1PT", "PT", "개인레슨", "퍼스널"].includes(k)) return true;
-    /* 케어권도 트레이너가 한 명을 붙잡고 하는 수업이라 여기 넣는다.
-       그룹으로 도는 케어가 생기면 이름에 「그룹」을 넣어 주시면 갈립니다 */
-    return (k === "수강권" || k === "케어권") && !그룹이름;
+    return k === "수강권" && !그룹이름;
   }
   if (kind === KIND_GROUP) {
     if (["그룹수업", "수업", "레슨", "GX"].includes(k)) return true;
-    return (k === "수강권" || k === "케어권") && 그룹이름;
+    return k === "수강권" && 그룹이름;
   }
   return k === kind;
 }
