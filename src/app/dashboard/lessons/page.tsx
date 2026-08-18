@@ -157,6 +157,7 @@ async function body() {
         members={members}
         tickets={tickets}
         products={lessonProducts}
+        branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
         can={{ create: Boolean(mine.create), update: Boolean(mine.update), remove: Boolean(mine.remove) }}
         iAmTrainer={iAmTrainer}
         groupSlots={groupSlots}

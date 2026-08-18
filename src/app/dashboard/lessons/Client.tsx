@@ -35,6 +35,7 @@ type Ticket = {
   잔여횟수: string; 총횟수: string; 종료일: string; 담당트레이너사번: string;
 };
 type Product = { code: string; name: string; kind: string; count: number };
+type Named = { code: string; name: string };
 
 type Props = {
   me: string;
@@ -45,6 +46,8 @@ type Props = {
   members: Person[];
   tickets: Ticket[];
   products: Product[];
+  /** 볼 수 있는 지점 — 시간표에 회원 옆에 지점 이름을 붙이는 데 쓴다 */
+  branches: Named[];
   can: { create: boolean; update: boolean; remove: boolean };
   /** 지금 보는 사람이 수업을 하는 사람인가 — 아니면 보고할 것이 없다 */
   iAmTrainer: boolean;
@@ -64,8 +67,11 @@ const int = (v: string) => {
 
 /** 하루를 몇 시부터 몇 시까지 그릴지 — 수업이 있는 시간대에 맞춘다 */
 function dayRange(list: Lesson[]): [number, number] {
-  let lo = 9;
-  let hi = 22;
+  /* 문 여는 시각부터 닫는 시각까지 늘 같은 눈금이 보여야 한다. 수업이
+     있는 시간만 그리면 날마다 표 길이가 달라져, 어제 3시가 있던 자리에
+     오늘은 5시가 온다 — 눈이 자리를 못 외운다 */
+  let lo = 7;
+  let hi = 23;
   list.forEach((l) => {
     const s = toMinutes(l.시작시각);
     const e = toMinutes(l.종료시각 || l.시작시각);
@@ -181,6 +187,20 @@ export default function Client(p: Props) {
   const productName = useMemo(
     () => new Map(p.products.map((x) => [x.code, x.name])),
     [p.products]
+  );
+  /*
+    회원 이름 옆에 지점을 붙인다
+
+    여러 지점을 함께 보시는 분에게는 「박우미」가 어느 점 회원인지가 안 보인다.
+    회원이 적힌 지점을 먼저 보고, 없으면 수업이 열린 지점으로 적는다.
+  */
+  const branchName = useMemo(() => {
+    const map = new Map(p.branches.map((b) => [b.code, b.name]));
+    return (code?: string) => (code ? map.get(code) ?? code : "");
+  }, [p.branches]);
+  const memberBranch = useMemo(
+    () => new Map(p.members.map((m) => [m.id, m.branch])),
+    [p.members]
   );
   const joinsOf = useMemo(() => {
     const map = new Map<string, Join[]>();
@@ -520,6 +540,11 @@ export default function Client(p: Props) {
                               {group
                                 ? productName.get(l.상품코드) || "그룹수업"
                                 : memberName.get(js[0]?.회원번호) ?? "회원 미지정"}
+                              <span className="br">
+                                {branchName(
+                                  (!group && memberBranch.get(js[0]?.회원번호)) || l.지점코드
+                                )}
+                              </span>
                             </span>
                             {group
                               ? <span className="mk">{l.사진파일 ? "보고 · 사진" : "보고"}</span>
