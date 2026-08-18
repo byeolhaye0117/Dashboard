@@ -460,7 +460,13 @@ export default function Client(p: Props) {
    * 이 달의 상담왕 — 지점 통합
    *
    * 상담을 몇 건 맡아 몇 건을 등록시켰고, 그래서 얼마를 만들었는지.
-   * 상담 건수는 상담 탭의 상담자, 매출은 결제 탭의 담당직원 기준이다.
+   *
+   * 세는 기준이 둘이다. 상담·등록·실패는 상담 탭의 상담자, 결제 건수와
+   * 매출은 결제 탭의 담당직원이다. 둘은 자주 다르다 — 상담은 한 사람이
+   * 하고 결제는 데스크에서 받는 일이 흔하다.
+   *
+   * 그래서 결제 건수를 따로 세운다. 예전에는 매출만 보이고 몇 건인지는
+   * 안 보여서, 상담 기록 없이 판 사람은 줄에 「-」만 늘어서 있었다.
    */
   const champions = useMemo(() => {
     const map: Record<string, { rows: Lead[]; sum: number; count: number }> = {};
@@ -1066,7 +1072,8 @@ export default function Client(p: Props) {
       {/* 이 달의 상담왕 */}
       <h2 className="sec-title">이 달의 상담왕</h2>
       <p className="sec-sub">
-        상담 건수는 상담 탭의 상담자, 매출은 결제 탭의 담당직원 기준입니다
+        상담 · 등록 · 실패는 <b>상담 탭의 상담자</b>, 결제 건수와 매출은{" "}
+        <b>결제 탭의 담당직원</b> 기준입니다
       </p>
       {champions.length === 0 ? (
         <div className="viz"><p className="dim mini-note">이 달에 쌓인 상담·결제가 없습니다.</p></div>
@@ -1081,6 +1088,8 @@ export default function Client(p: Props) {
                 <th className="r">등록</th>
                 <th className="r">실패</th>
                 <th>성공률</th>
+                {/* 여기부터는 결제 담당 기준이다 */}
+                <th className="r">결제</th>
                 <th className="r">등록 매출</th>
                 <th className="r">건당</th>
               </tr>
@@ -1103,6 +1112,7 @@ export default function Client(p: Props) {
                       </span>
                     )}
                   </td>
+                  <td className="r num">{s.count > 0 ? `${s.count}건` : "-"}</td>
                   <td className="r big num">{money(s.sum)}</td>
                   <td className="r dim num">
                     {s.count > 0 ? money(Math.round(s.sum / s.count)) : "-"}
