@@ -101,12 +101,15 @@ const money = (n: number) => n.toLocaleString("ko-KR");
 const num = (v?: string) => Number((v ?? "").replace(/[^0-9-]/g, "")) || 0;
 const isRefund = (x: Payment) => (x.환불여부 ?? "").toUpperCase() === "Y";
 
-/** 큰 금액은 만 단위로 줄여 쓴다 (표 옆 작은 숫자용) */
-function short(n: number): string {
-  if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}억`;
-  if (n >= 10_000) return `${Math.round(n / 10_000)}만`;
-  return money(n);
-}
+/*
+ * 돈은 줄여 쓰지 않는다
+ *
+ * 「23만」처럼 만 단위로 줄여 놓았더니, 실제로 얼마인지 알 수가 없었다.
+ * 232,000원과 234,500원이 화면에서 똑같이 「23만」으로 보인다. 매출은
+ * 눈대중으로 보는 숫자가 아니라 맞춰 봐야 하는 숫자다.
+ *
+ * 세로 눈금(axisLabel)만 줄여 쓴다. 그건 눈금이지 금액이 아니다.
+ */
 
 /** 세로 눈금 — 4000만 대신 4천만처럼 읽히게 */
 function axisLabel(n: number): string {
@@ -575,13 +578,13 @@ export default function Client(p: Props) {
         <div className="bchips">
           <button className={`bchip${branch === "전체" ? " on" : ""}`} onClick={() => setBranch("전체")}>
             <span className="nm">전 지점</span>
-            <span className="am num">{short(cur.sum)}</span>
+            <span className="am num">{money(cur.sum)}</span>
           </button>
           {branchNow.map((b) => (
             <button key={b.code} className={`bchip${branch === b.code ? " on" : ""}`}
                     onClick={() => setBranch(b.code)}>
               <span className="nm">{b.name}</span>
-              <span className="am num">{b.sum > 0 ? short(b.sum) : "-"}</span>
+              <span className="am num">{b.sum > 0 ? money(b.sum) : "-"}</span>
             </button>
           ))}
         </div>
@@ -708,7 +711,7 @@ export default function Client(p: Props) {
                   <li key={k.key} className={k.sum > 0 ? "" : "off"}>
                     <i className={`sw s${i + 1}`} />
                     <span className="nm">{k.key}</span>
-                    <span className="vl num">{short(k.sum)}</span>
+                    <span className="vl num">{money(k.sum)}</span>
                     <span className="pc num">{Math.round((k.sum / cur.sum) * 100)}%</span>
                   </li>
                 ))}
@@ -716,10 +719,10 @@ export default function Client(p: Props) {
             </div>
           )}
           <div className="subtot">
-            <span>회원권 <b className="num">{short(bucket.회원권.total)}</b></span>
-            <span>PT <b className="num">{short(bucket.PT.total)}</b></span>
-            <span>신규 <b className="num">{short(신규합)}</b></span>
-            <span>재등록 <b className="num">{short(재등록합)}</b></span>
+            <span>회원권 <b className="num">{money(bucket.회원권.total)}</b></span>
+            <span>PT <b className="num">{money(bucket.PT.total)}</b></span>
+            <span>신규 <b className="num">{money(신규합)}</b></span>
+            <span>재등록 <b className="num">{money(재등록합)}</b></span>
           </div>
         </div>
 
@@ -740,7 +743,7 @@ export default function Client(p: Props) {
                   <li key={r.key} className={r.sum > 0 ? "" : "off"}>
                     <i className={`sw s${i + 1}`} />
                     <span className="nm">{r.key}</span>
-                    <span className="vl num">{short(r.sum)}</span>
+                    <span className="vl num">{money(r.sum)}</span>
                     <span className="pc num">
                       {Math.round((r.sum / method.named) * 100)}%
                     </span>
@@ -752,10 +755,10 @@ export default function Client(p: Props) {
           <div className="subtot">
             <span>
               묶음 결제 <b className="num">{method.mixed.count}건</b>
-              {method.mixed.count > 0 && ` · ${short(method.mixed.sum)}원`}
+              {method.mixed.count > 0 && ` · ${money(method.mixed.sum)}원`}
             </span>
             {method.unknown > 0 && (
-              <span className="warn-text">수단 미기재 <b className="num">{short(method.unknown)}</b></span>
+              <span className="warn-text">수단 미기재 <b className="num">{money(method.unknown)}</b></span>
             )}
           </div>
         </div>
@@ -788,7 +791,7 @@ export default function Client(p: Props) {
             </div>
             <div className="day-axis">
               <span>1일</span>
-              <span>가장 높은 날 {short(byDay.top)}원</span>
+              <span>가장 높은 날 {money(byDay.top)}원</span>
               <span>{byDay.list.length}일</span>
             </div>
           </>
@@ -837,7 +840,7 @@ export default function Client(p: Props) {
                       </span>
                     </td>
                     <td className="r dim num">{s.count}</td>
-                    <td className="r dim num">{short(Math.round(s.sum / s.count))}</td>
+                    <td className="r dim num">{money(Math.round(s.sum / s.count))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -938,8 +941,8 @@ export default function Client(p: Props) {
                       <span className="norow">이 달 매출 없음</span>
                     )}
                     <span className="am num">
-                      {b.sum > 0 ? short(b.sum) : "-"}
-                      <small>{b.goal > 0 ? `목표 ${short(b.goal)}` : "목표 없음"}</small>
+                      {b.sum > 0 ? money(b.sum) : "-"}
+                      <small>{b.goal > 0 ? `목표 ${money(b.goal)}` : "목표 없음"}</small>
                     </span>
                     <span className="pc num">
                       {b.rate === null ? "-" : `${b.rate}%`}
@@ -968,7 +971,7 @@ export default function Client(p: Props) {
                     <div className="cmp-row" key={b.code}>
                       <span className="nm">{b.name}</span>
                       <Ratio rows={b.six} />
-                      <span className="tot num">{b.sum > 0 ? short(b.sum) : "-"}</span>
+                      <span className="tot num">{b.sum > 0 ? money(b.sum) : "-"}</span>
                     </div>
                   ))}
                 </div>
@@ -1086,7 +1089,7 @@ export default function Client(p: Props) {
                   </td>
                   <td className="r big num">{money(s.sum)}</td>
                   <td className="r dim num">
-                    {s.count > 0 ? short(Math.round(s.sum / s.count)) : "-"}
+                    {s.count > 0 ? money(Math.round(s.sum / s.count)) : "-"}
                   </td>
                 </tr>
               ))}
