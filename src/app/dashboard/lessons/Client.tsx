@@ -25,7 +25,11 @@ type Join = {
   id: string; 수업번호: string; 회원번호: string; 이용권번호: string;
   진행상태: string; 차감회차: number; 메모: string;
 };
-type Person = { id: string; name: string; branch: string };
+type Person = {
+  id: string; name: string; branch: string;
+  /* 회원에게만 있다. 트레이너 목록에는 안 온다 */
+  성별?: string; 전화번호?: string;
+};
 type Ticket = {
   id: string; 회원번호: string; 상품코드: string;
   잔여횟수: string; 총횟수: string; 종료일: string; 담당트레이너사번: string;
@@ -1329,15 +1333,31 @@ function AddBox(props: {
     return { usable: 안만료, why };
   }, [props.tickets, props.products, kind, date]);
 
+  /*
+    ── 찾기 전에는 아무도 안 띄운다 ───────────────────────────────
+    예전에는 쓸 수 있는 이용권을 여덟 개까지 미리 늘어놓았다. 「홍서연 남은 1회」
+    「홍서연 남은 30회」가 나란히 떠서 어느 쪽이 그 사람인지 알 수가 없었다.
+    이름을 쳐서 찾고, 찾은 사람을 성별·전화번호·상품명까지 보고 고른다.
+
+    전화번호로도 찾는다 — 동명이인일 때 이름으로는 갈릴 수가 없다.
+  */
   const hits = useMemo(() => {
     const q = find.trim();
+    if (!q) return [];
+    const 숫자 = q.replace(/\D/g, "");
     const byMember = new Map(props.members.map((m) => [m.id, m]));
-    const rows = usable
-      .map((t) => ({ t, m: byMember.get(t.회원번호) }))
+    const nameOf = new Map(props.products.map((x) => [x.code, x.name]));
+    return usable
+      .map((t) => ({ t, m: byMember.get(t.회원번호), 상품: nameOf.get(t.상품코드) ?? "" }))
       .filter((x) => x.m)
-      .filter((x) => !q || x.m.name.includes(q));
-    return q ? rows.slice(0, 12) : rows.slice(0, 8);
-  }, [usable, props.members, find]);
+      .filter(
+        (x) =>
+          x.m.name.includes(q) ||
+          (숫자.length >= 2 && (x.m.전화번호 ?? "").replace(/\D/g, "").includes(숫자))
+      )
+      .sort((a, b) => a.m.name.localeCompare(b.m.name, "ko"))
+      .slice(0, 20);
+  }, [usable, props.members, props.products, find]);
 
   /* 이용권은 있는데 회원 목록에 그 사람이 없는 경우 — 지점이 다르면 이렇게 된다 */
   const 이름없음 =
@@ -1421,12 +1441,13 @@ function AddBox(props: {
         </div>
 
         <div className="field">
-          <label htmlFor="lf">회원 고르기 {single ? "(한 명)" : `(${picked.length} / ${limit}명)`}</label>
-          <input id="lf" className="input" value={find} placeholder="이름으로 찾기"
+          <label htmlFor="lf">회원 찾기 {single ? "(한 명)" : `(${picked.length} / ${limit}명)`}</label>
+          <input id="lf" className="input" value={find}
+                 placeholder="이름 또는 전화번호로 찾기"
                  onChange={(e) => setFind(e.target.value)} />
         </div>
 
-        <div className="pickbox">
+        <div className="picklist">
           {hits.length === 0 && (
             <div className="dim" style={{ padding: "10px 2px", fontSize: 12.5, lineHeight: 1.6 }}>
               {why ? (
@@ -1437,18 +1458,26 @@ function AddBox(props: {
               ) : find.trim() ? (
                 `「${find.trim()}」으로 찾은 회원 중에 쓸 수 있는 PT 이용권을 가진 분이 없습니다.`
               ) : (
-                "쓸 수 있는 이용권이 없습니다. 남은 회차가 있고 만료되지 않은 이용권만 나옵니다."
+                `이름이나 전화번호를 치면 찾아 드립니다. 지금 쓸 수 있는 PT 이용권은 ${usable.length}건입니다.`
               )}
             </div>
           )}
-          {hits.map(({ t, m }) => {
+          {hits.map(({ t, m, 상품 }) => {
             const on = picked.some((x) => x.이용권번호 === t.id);
+            const 총 = int(t.총횟수);
             return (
-              <button key={t.id} className={`pickone${on ? " on" : ""}`}
+              <button key={t.id} className={`pickrow${on ? " on" : ""}`}
                       onClick={() => toggle(t.회원번호, t.id)}>
-                <span className="nm">{m.name}</span>
-                <span className="dim">남은 {int(t.잔여횟수)}회</span>
-                {t.종료일 && <span className="dim">~{t.종료일.slice(5)}</span>}
+                <span className="who">
+                  <span className="nm">{m.name}</span>
+                  {m.성별 && <span className="pill">{m.성별}</span>}
+                  {m.전화번호 && <span className="tel">{m.전화번호}</span>}
+                </span>
+                <span className="what">
+                  {상품 && <b>{상품}</b>}
+                  <span>남은 {int(t.잔여횟수)}회{총 ? ` / ${총}회` : ""}</span>
+                  {t.종료일 && <span>~{t.종료일}까지</span>}
+                </span>
               </button>
             );
           })}

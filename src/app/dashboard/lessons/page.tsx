@@ -117,9 +117,14 @@ async function body() {
       lessons = got.lessons.filter((l) => seen.has(l.id));
       joins = got.joins.filter((j) => seen.has(j.수업번호));
 
+      /* 성별·전화번호까지 보내는 이유 — 동명이인이 실제로 있다. 이름만
+         늘어놓으면 「홍서연」이 둘 떠도 어느 쪽인지 고를 수가 없었다 */
       members = m.items
         .filter((x) => allowed.has(x.지점코드))
-        .map((x) => ({ id: x.id, name: x.이름, branch: x.지점코드 }));
+        .map((x) => ({
+          id: x.id, name: x.이름, branch: x.지점코드,
+          성별: x.성별 ?? "", 전화번호: x.전화번호 ?? "",
+        }));
 
       // 수업에 쓸 수 있는 이용권만 — 횟수가 있는 것
       const lessonCodes = new Set(lessonProducts.map((p) => p.code));
