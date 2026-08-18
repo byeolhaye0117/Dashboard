@@ -10,6 +10,7 @@ import { myBranchesOf } from "@/lib/scope";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import {
   getBranches, getAllOptions, getStaffNames, getStaffAll, getProducts, getProductBranches,
+  getStaffBranches,
 } from "@/lib/data";
 import { listMembers, listTickets, listPayments, listTicketServices } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
@@ -154,8 +155,18 @@ async function body() {
     waiting = [];
   }
 
+  /*
+   * 지금 보고 있는 지점 사람만 고른다
+   *
+   * 전 지점을 보는 계정이면 목록에 스무 명이 넘게 뜬다. 쌍용점에서 파는데
+   * 두정점 트레이너가 같이 뜨면 잘못 고르기 쉽고, 실제로 고를 일도 없다.
+   * 소속 지점이거나 담당 지점에 그 지점이 들어 있으면 이 지점 사람이다.
+   */
+  const branchMap = await getStaffBranches();
+  const here = session.currentBranch;
   const trainers = staff
     .filter((s) => s.active)
+    .filter((s) => (branchMap.get(s.id) ?? []).includes(here) || s.mainBranch === here)
     .map((s) => ({ id: s.id, name: s.name }))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 

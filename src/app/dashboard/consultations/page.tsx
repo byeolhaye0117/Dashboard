@@ -8,7 +8,9 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { myBranchesOf } from "@/lib/scope";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
-import { getBranches, getAllOptions, getStaffNames, getStaffAll } from "@/lib/data";
+import {
+  getBranches, getAllOptions, getStaffNames, getStaffAll, getStaffBranches,
+} from "@/lib/data";
 import { listConsultations, listActivities } from "@/lib/consultations";
 import Shell from "../Shell";
 import Client from "./Client";
@@ -57,8 +59,13 @@ async function body() {
   const ids = new Set(visible.map((c) => c.id));
   const acts = activities.filter((a) => ids.has(a["상담번호"]));
 
+  /* 지금 보고 있는 지점 사람만 고른다. 다른 지점 사람이 같이 뜨면
+     잘못 고르기 쉽고 고를 일도 없다 (회원 화면과 같은 규칙) */
+  const branchMap = await getStaffBranches();
+  const here = session.currentBranch;
   const counselors = staff
     .filter((s) => s.active)
+    .filter((s) => (branchMap.get(s.id) ?? []).includes(here) || s.mainBranch === here)
     .map((s) => ({ id: s.id, name: s.name }))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
