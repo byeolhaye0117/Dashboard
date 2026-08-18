@@ -941,7 +941,10 @@ function buyPayload(
     // 미수금은 상품마다 적은 것을 더해서 결제 한 줄에 담는다
     미수금액: String(b.lines.reduce((s, l) => s + onlyNum(l.미수금), 0)),
     미수금결제예정일: b.미수금결제예정일,
-    매출유형: matchOption(salesType(b.lines, products, tickets, now), saleOpts),
+    /* 직원이 손대 두었으면 그 값이 먼저다. 안 골랐으면 화면이 계산한 값 */
+    매출유형:
+      (b.매출유형 ?? "").trim() ||
+      matchOption(salesType(b.lines, products, tickets, now), saleOpts),
     suggested,
   };
 }
@@ -980,6 +983,14 @@ function PurchaseFields({
   const pOf = (code: string) => products.find((x) => x.code === code);
   const { suggested } = buyPayload(b, products, tickets, now);
   const sale = salesType(b.lines, products, tickets, now);
+  /* 고를 수 있는 유형 — 목록 관리에서 정한 것이 있으면 그것을 쓴다.
+     계산한 값이 그 목록에 없을 수도 있어서 한 번 더 끼워 넣는다 */
+  const saleTypes = useMemo(() => {
+    const list = options["매출유형"]?.length
+      ? options["매출유형"]
+      : ["신규", "재등록", "기타매출"];
+    return list.includes(sale) ? list : [sale, ...list];
+  }, [options, sale]);
   /** 깎기 전 정가 합계와 깎아준 총액 — 얼마를 빼줬는지 눈에 보여야 한다 */
   const listTotal = b.lines.reduce((s, l) => s + listPrice(l, pOf(l.상품코드)), 0);
   const discount = listTotal - suggested;
@@ -1373,11 +1384,26 @@ function PurchaseFields({
               </label>
             )}
 
+            {/*
+              매출 유형 — 스스로 정하되, 고칠 수 있게
+
+              매번 고르게 하면 사람마다 다르게 찍혀서 재등록률을 믿을 수 없다.
+              그래서 이 화면이 먼저 정한다. 다만 정할 수 없는 사정이 실제로
+              있다 — 다른 지점에서 다니다 옮겨오신 분은 이 지점 기록만 보면
+              「신규」지만 실은 재등록이다. 그럴 때 고칠 자리가 없으면 매출표가
+              틀린 채로 남는다. 손대지 않으면 계산한 값 그대로 간다.
+            */}
             {b.lines.length > 0 && (
-              <div className="row">
+              <label className="row f">
                 <span>매출 유형</span>
-                <b>{sale}</b>
-              </div>
+                <select className="input" value={b.매출유형}
+                        onChange={(e) => setB({ ...b, 매출유형: e.target.value })}>
+                  <option value="">{sale} (계산한 값)</option>
+                  {saleTypes
+                    .filter((m) => m !== sale)
+                    .map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
             )}
 
             {unpaidTotal > 0 && (
