@@ -413,13 +413,22 @@ export default function Client(p: Props) {
         <div className="table-wrap">
           <table className="grid">
             <thead>
+              {/*
+                칸 차례는 대표님이 정하신 순서다
+
+                이름 다음에 성별이 오고, 등록자 옆에 상담자가 붙는다.
+                「누가 넣었나」와 「누가 상담했나」는 나란히 놓고 봐야
+                다른지 같은지가 한눈에 보인다.
+              */}
               <tr>
                 <th>이름</th>
+                <th>성별</th>
                 <th>연락처</th>
                 <th>방문 약속</th>
                 <th>문의</th>
                 <th>채널</th>
                 <th>등록자</th>
+                <th>상담자</th>
                 <th>지점</th>
                 <th>다음 연락</th>
                 <th>상태</th>
@@ -432,6 +441,7 @@ export default function Client(p: Props) {
                 return (
                   <tr key={c.id} onClick={() => setDetail(c)}>
                     <td className="strong">{c["이름"]}</td>
+                    <td className="dim">{c["성별"] || "-"}</td>
                     <td className="num">{showPhone(c["전화번호"])}</td>
                     <td className="num dim">
                       {/* 약속을 잡은 건은 약속 시각, 아직인 건은 문의 들어온 날.
@@ -442,11 +452,12 @@ export default function Client(p: Props) {
                     </td>
                     <td className="dim">{c["문의유형"] || "-"}</td>
                     <td className="dim">{chan(c) || "-"}</td>
-                    {/* 이 줄을 화면에 넣은 사람이다. 실제로 상담을 한 사람은
-                        따로다 — 상세 창의 「상담자」에 있다 */}
+                    {/* 이 줄을 화면에 넣은 사람 */}
                     <td className="dim">
                       {p.staffNames[c["접수자사번"]] ?? p.staffNames[c["상담자사번"]] ?? "-"}
                     </td>
+                    {/* 실제로 상담을 한 사람. 등록으로 넘길 때 다시 물어 고친다 */}
+                    <td className="dim">{p.staffNames[c["상담자사번"]] ?? "-"}</td>
                     <td className="dim">{branchName(c["지점코드"])}</td>
                     <td className={late ? "late num" : "num dim"}>
                       {c["다음연락예정일"] ? (c["다음연락예정일"] ?? "").slice(5) : "-"}

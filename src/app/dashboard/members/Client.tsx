@@ -80,6 +80,8 @@ type Payment = {
 /** 이용권에 얹어준 서비스·옵션 */
 type Extra = {
   id: string;
+  /** 시트에서 몇 번째 줄인지 — 이 서비스를 고치거나 지울 때 쓴다 */
+  줄: number;
   이용권번호: string;
   상품코드: string;
   추가금액: string;
@@ -1727,6 +1729,8 @@ function Detail({
   const [confirmDel, setConfirmDel] = useState(false);
   const [view, setView] = useState<(typeof TABS)[number]>("요약");
   const [editTicket, setEditTicket] = useState<Ticket | null>(null);
+  /** 회원권에 얹어 드린 서비스 — 제 이용권 줄이 없어 창이 따로다 */
+  const [editExtra, setEditExtra] = useState<Extra | null>(null);
   const [editPay, setEditPay] = useState<Payment | null>(null);
   const [adding, setAdding] = useState(false);
   const setV = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
@@ -1962,6 +1966,7 @@ function Detail({
                     can={can}
                     onGo={setView}
                     onTicket={setEditTicket}
+                    onExtra={setEditExtra}
                     onMemo={() => setEditing(true)}
                   />
                 )}
@@ -1969,7 +1974,8 @@ function Detail({
                 {view === "이용권" && (
                   <TicketGroups tickets={tickets} extras={extras} productOf={productOf}
                                 staffNames={staffNames} now={now}
-                                onEdit={can.update ? setEditTicket : undefined} />
+                                onEdit={can.update ? setEditTicket : undefined}
+                                onExtra={can.update ? setEditExtra : undefined} />
                 )}
 
                 {view === "결제" && (
@@ -2010,6 +2016,20 @@ function Detail({
                 )}
                 canRemove={can.remove}
                 onClose={() => setEditTicket(null)}
+              />
+            )}
+            {editExtra && (
+              <ExtraEdit
+                x={editExtra}
+                pr={productOf(editExtra.상품코드)}
+                host={tickets.find((t) => t.id === editExtra.이용권번호)}
+                hostName={
+                  productOf(
+                    tickets.find((t) => t.id === editExtra.이용권번호)?.상품코드 ?? ""
+                  )?.name ?? ""
+                }
+                canRemove={can.remove}
+                onClose={() => setEditExtra(null)}
               />
             )}
             {editPay && (
@@ -2057,7 +2077,7 @@ function Detail({
 function Board({
   item, live, tickets, extras, payments, totalPaid, unpaid,
   transfers, productOf, staffNames, now, can,
-  onGo, onTicket, onMemo,
+  onGo, onTicket, onExtra, onMemo,
 }: {
   item: Member;
   live: { count: number; rows: Ticket[]; extraRows: Ticket[]; serviceRows: Ticket[] };
@@ -2074,6 +2094,8 @@ function Board({
   can: { create: boolean; update: boolean; remove: boolean };
   onGo: (v: any) => void;
   onTicket: (t: Ticket) => void;
+  /** 얹은 서비스를 누르면 — 제 이용권 줄이 없어 따로 다룬다 */
+  onExtra: (x: Extra) => void;
   onMemo: () => void;
 }) {
   const main = tickets.filter((t) => groupOf(productOf(t.상품코드)) === "이용권");
@@ -2147,9 +2169,11 @@ function Board({
               key: x.id,
               cat: ticketCat(pr),
               el: host ? (
+                /* 예전에는 얹은 대상인 회원권 창을 열었다. 「무료 PT 를 눌렀는데
+                   지역주민이 나온다」가 그것이다 — 이제 제 창이 열린다 */
                 <TicketBar key={x.id} t={{ ...host, 상품코드: x.상품코드 }} pr={pr} now={now}
                            free={Number(x.추가금액) <= 0} note={값}
-                           onClick={can.update ? () => onTicket(host) : undefined} />
+                           onClick={can.update ? () => onExtra(x) : undefined} />
               ) : (
                 <div className="mrow" key={x.id}>
                   <div className="t">
@@ -2318,7 +2342,7 @@ function TicketBar({ t, pr, now, free, note, who, onClick }: {
 }
 
 function TicketGroups({
-  tickets, extras, productOf, staffNames, now, onEdit,
+  tickets, extras, productOf, staffNames, now, onEdit, onExtra,
 }: {
   tickets: Ticket[];
   extras: Extra[];
@@ -2326,6 +2350,8 @@ function TicketGroups({
   staffNames: Record<string, string>;
   now: string;
   onEdit?: (t: Ticket) => void;
+  /** 얹은 서비스를 누르면 — 제 이용권 줄이 없어 따로 다룬다 */
+  onExtra?: (x: Extra) => void;
 }) {
   const grp = (t: Ticket) => groupOf(productOf(t.상품코드));
   const ticketOf = (id: string) => tickets.find((t) => t.id === id);
@@ -2397,7 +2423,7 @@ function TicketGroups({
           el: host ? (
             <TicketBar key={x.id} t={{ ...host, 상품코드: x.상품코드 }} pr={pr} now={now}
                        free={Number(x.추가금액) <= 0} note={값}
-                       onClick={onEdit && (() => onEdit(host))} />
+                       onClick={onExtra && (() => onExtra(x))} />
           ) : (
             <div className="mrow" key={x.id}>
               <div className="t">
@@ -2895,6 +2921,113 @@ function linkPayments(tickets: Ticket[], payments: Payment[]): Map<string, strin
     if (same.length === 1) pidOf.set(t.id, same[0].id);
   });
   return pidOf;
+}
+
+/**
+ * 얹은 서비스 고치기
+ *
+ * ── 왜 창이 따로인가 ────────────────────────────────────────
+ * 회원권과 같이 결제한 무료 서비스는 제 이용권 줄이 없다. 회원권에 매달린
+ * 한 줄로만 남는다. 그래서 화면에서 그것을 누르면 고칠 것이 없어 얹은
+ * 대상인 회원권 창이 열렸고, 「무료 PT 를 눌렀는데 지역주민이 나온다」가
+ * 됐다. 누른 것과 열리는 것이 다르면 그건 고장으로 보인다.
+ *
+ * 기간과 회차는 여기서 안 다룬다. 얹은 서비스는 제 기간이 없어 얹힌
+ * 회원권의 기간을 그대로 따른다 — 여기서 날짜를 고칠 수 있게 두면
+ * 고쳐 놓고도 안 바뀌는 칸이 된다. 대신 어느 회원권에 얹혀 있는지 적는다.
+ */
+function ExtraEdit({ x, pr, host, hostName, canRemove, onClose }: {
+  x: Extra;
+  pr?: ProductMeta;
+  host?: Ticket;
+  hostName: string;
+  canRemove: boolean;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState(String(Number(x.추가금액) || ""));
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+
+  async function send(body: any) {
+    setBusy(true);
+    setMsg("");
+    const res = await fetch("/api/members/ticket-service", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 줄: x.줄, ...body }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setBusy(false);
+      return setMsg(data.error ?? "저장하지 못했습니다.");
+    }
+    reloadTo(data.회원번호 ?? "");
+  }
+
+  const 기간 = [
+    (host?.시작일 ?? "").slice(0, 10),
+    (host?.종료일 ?? "").slice(0, 10),
+  ].filter(Boolean).join(" ~ ");
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{pr?.name ?? x.상품코드}</h3>
+        <p className="page-sub" style={{ margin: "2px 0 12px" }}>
+          {hostName ? `「${hostName}」에 얹어 드린 것입니다` : "회원권에 얹어 드린 것입니다"}
+          {기간 ? ` · ${기간}` : ""}
+        </p>
+
+        <div className="form-grid">
+          <L label="금액">
+            <input className="input" inputMode="numeric" value={amount}
+                   onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))} />
+          </L>
+        </div>
+        <p className="stat-note">
+          돈을 안 받고 드린 것이면 <b>0</b> 으로 둡니다. 「무료」 딱지는 이 값이 0일 때 붙습니다.
+          기간은 얹힌 회원권을 그대로 따라가므로 여기서 고치지 않습니다.
+        </p>
+
+        {msg && <div className="alert-bad">{msg}</div>}
+
+        {confirmDel ? (
+          <div className="confirm-box">
+            <b>이 서비스를 지울까요?</b>
+            <p>
+              {pr?.name ?? x.상품코드}
+              <br />
+              회원 화면에서 사라집니다. 시트에는 기록이 남아 있어 되살릴 수 있습니다.
+            </p>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setConfirmDel(false)} disabled={busy}>
+                그만두기
+              </button>
+              <button className="btn-danger" disabled={busy}
+                      onClick={() => send({ remove: true })}>
+                {busy ? "지우는 중…" : "지웁니다"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="modal-actions">
+            {canRemove && (
+              <button className="btn-ghost danger" style={{ marginRight: "auto" }}
+                      onClick={() => setConfirmDel(true)} disabled={busy}>
+                지우기
+              </button>
+            )}
+            <button className="btn-ghost" onClick={onClose} disabled={busy}>닫기</button>
+            <button className="btn-dark" disabled={busy}
+                    onClick={() => send({ 추가금액: amount || "0" })}>
+              {busy ? "저장 중…" : "저장"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* ── 이용권 고치기 ─────────────────────────── */

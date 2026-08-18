@@ -292,6 +292,9 @@ export async function listTickets(): Promise<Ticket[]> {
 
 export type TicketService = {
   id: string;
+  /** 시트에서 몇 번째 줄인지 — 고치거나 지울 때 이걸로 찾는다.
+      「번호」 칸이 비어 있는 옛 줄이 많아 번호만으로는 못 찾는다 */
+  줄: number;
   이용권번호: string;
   상품코드: string;
   추가금액: string;
@@ -304,7 +307,7 @@ export type TicketService = {
  * 기간이나 횟수를 따로 세지 않고 "무엇을 줬는지"만 남긴다.
  */
 export async function listTicketServices(): Promise<TicketService[]> {
-  const { headers, rows } = await readSheet(SHEET_VS);
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_VS);
   const cols = resolve(SHEET_VS, headers, VS_COLS);
   const out: TicketService[] = [];
   rows.forEach((r, i) => {
@@ -314,12 +317,46 @@ export async function listTicketServices(): Promise<TicketService[]> {
     if (!ticket || !code) return;
     out.push({
       id: get(r, cols, "번호") || `${ticket}-${i}`,
+      줄: rowNumbers[i],
       이용권번호: ticket,
       상품코드: code,
       추가금액: get(r, cols, "추가금액"),
     });
   });
   return out;
+}
+
+/**
+ * 얹은 서비스 한 줄을 고친다 — 금액을 바꾸거나 지운다
+ *
+ * ── 왜 필요해졌나 ────────────────────────────────────────────
+ * 회원권과 같이 결제한 무료 서비스는 제 이용권 줄이 없다. 회원권에 매달린
+ * 한 줄로만 남는다. 그래서 화면에서 그것을 누르면 고칠 것이 없어 얹은
+ * 대상인 회원권 창이 열렸고, 「무료 PT 를 눌렀는데 지역주민이 나온다」가
+ * 됐다. 잘못 얹었을 때 되돌릴 길도 시트를 여는 것 말고는 없었다.
+ *
+ * 지우는 것은 줄을 없애지 않고 표시만 남긴다 — 다른 곳과 같은 규칙이다.
+ */
+export async function patchTicketService(
+  줄: number,
+  changes: { 추가금액?: string; 지움?: boolean },
+  staffId: string
+): Promise<void> {
+  if (!줄) throw new Error("고칠 줄을 찾지 못했습니다.");
+
+  const { headers, rows, rowNumbers } = await readSheet(SHEET_VS);
+  const cols = resolve(SHEET_VS, headers, VS_COLS);
+  const i = rowNumbers.indexOf(줄);
+  if (i < 0) throw new Error("해당 줄을 찾지 못했습니다.");
+
+  const fields: Record<string, string> = { 수정일시: now(), 수정자: staffId };
+  if (changes.추가금액 !== undefined) fields.추가금액 = String(won(changes.추가금액));
+  if (changes.지움) fields.삭제여부 = "Y";
+
+  await updateRow(SHEET_VS, 줄, headers, {
+    ...rows[i],
+    ...(toSheetRow(fields, cols) as Row),
+  });
 }
 
 export async function listPayments(): Promise<Payment[]> {
