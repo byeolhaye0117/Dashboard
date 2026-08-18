@@ -164,10 +164,19 @@ async function body() {
    */
   const branchMap = await getStaffBranches();
   const here = session.currentBranch;
+  /*
+   * pt 를 같이 보내는 이유
+   *
+   * 「결제 담당」은 데스크에서 대신 넣어 주는 일이 흔해 전 직원이 후보다.
+   * 「담당 트레이너」는 실제로 PT 를 하는 사람만이어야 한다 — 직원 관리에서
+   * 「트레이너」로 체크한 사람. 두 칸에 같은 목록을 넣었더니 수업을 안 하는
+   * 데스크 직원까지 트레이너 후보로 떴다. 목록은 한 벌만 보내고, 화면에서
+   * 트레이너 칸만 걸러 쓴다.
+   */
   const trainers = staff
     .filter((s) => s.active)
     .filter((s) => (branchMap.get(s.id) ?? []).includes(here) || s.mainBranch === here)
-    .map((s) => ({ id: s.id, name: s.name }))
+    .map((s) => ({ id: s.id, name: s.name, pt: Boolean(s.trainer) }))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
   return (
