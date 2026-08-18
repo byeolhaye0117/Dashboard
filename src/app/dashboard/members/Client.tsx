@@ -2003,7 +2003,9 @@ function Detail({
                 trainers={trainers}
                 members={members}
                 options={options}
-                pay={payments.find((x) => x.id === (editTicket.결제번호 ?? "").trim())}
+                pay={payments.find(
+                  (x) => x.id === linkPayments(tickets, payments).get(editTicket.id)
+                )}
                 canRemove={can.remove}
                 onClose={() => setEditTicket(null)}
               />
@@ -2553,25 +2555,7 @@ function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem
     const put = (pid: string, l: Line) => m.set(pid, [...(m.get(pid) ?? []), l]);
 
     const byTicket = new Map(tickets.map((t) => [t.id, t]));
-    const pidOf = new Map<string, string>();
-
-    const 매인것: Ticket[] = [];
-    const 안매인것: Ticket[] = [];
-    tickets.forEach((t) => ((t.결제번호 ?? "").trim() ? 매인것 : 안매인것).push(t));
-
-    /* 결제번호가 없는 옛 이용권은 같은 날 결제가 하나뿐일 때만 이어 붙인다.
-       여러 건이면 어느 쪽인지 알 수 없어 손대지 않는다 */
-    /* 이 창은 회원 한 명 것만 다루므로 날짜만 봐도 같은 사람이다 */
-    const byDay = new Map<string, Payment[]>();
-    paid.forEach((x) => {
-      const d = (x.결제일시 ?? "").slice(0, 10);
-      if (d) byDay.set(d, [...(byDay.get(d) ?? []), x]);
-    });
-    매인것.forEach((t) => pidOf.set(t.id, (t.결제번호 ?? "").trim()));
-    안매인것.forEach((t) => {
-      const same = byDay.get((t.등록일시 ?? t.시작일 ?? "").slice(0, 10)) ?? [];
-      if (same.length === 1) pidOf.set(t.id, same[0].id);
-    });
+    const pidOf = linkPayments(tickets, paid);
 
     tickets.forEach((t) => {
       const pid = pidOf.get(t.id);
@@ -2882,6 +2866,35 @@ function PaymentLine({ x, lines, onEditItem }: {
   );
 }
 
+/**
+ * 이용권 → 그 이용권이 붙은 결제
+ *
+ * 이용권 줄이 결제번호를 들고 있다. 그런데 이용권 시트에 「결제번호」 칸이
+ * 없던 동안 판 것들은 그 자리가 비어 있다. 그런 옛 줄은 같은 날 결제가
+ * 하나뿐일 때만 이어 붙인다 — 여러 건이면 어느 쪽인지 알 수 없어 손대지
+ * 않는다. 짐작으로 이어 붙이면 엉뚱한 결제를 고치게 된다.
+ *
+ * 결제 탭과 이용권 고치기 창이 같은 셈을 봐야 한다. 한쪽에만 있었더니
+ * 결제 탭에서는 134,000원에 묶여 보이는 이용권이, 창을 열면 결제 담당도
+ * 매출 유형도 없는 채로 떴다.
+ */
+function linkPayments(tickets: Ticket[], payments: Payment[]): Map<string, string> {
+  const byDay = new Map<string, Payment[]>();
+  payments.forEach((x) => {
+    const d = (x.결제일시 ?? "").slice(0, 10);
+    if (d) byDay.set(d, [...(byDay.get(d) ?? []), x]);
+  });
+
+  const pidOf = new Map<string, string>();
+  tickets.forEach((t) => {
+    const pid = (t.결제번호 ?? "").trim();
+    if (pid) return void pidOf.set(t.id, pid);
+    const same = byDay.get((t.등록일시 ?? t.시작일 ?? "").slice(0, 10)) ?? [];
+    if (same.length === 1) pidOf.set(t.id, same[0].id);
+  });
+  return pidOf;
+}
+
 /* ── 이용권 고치기 ─────────────────────────── */
 function TicketEdit({
   t, pr, trainers, members, pay, options, canRemove, onClose,
@@ -3081,7 +3094,7 @@ function TicketEdit({
             같은 결제로 판 다른 상품도 같이 옮겨간다 — 담당은 결제 한 건에
             하나뿐이기 때문이다. 그 말을 칸 옆에 적어 둔다.
           */}
-          {t.결제번호 && (
+          {pay && (
             <L label="결제 담당">
               <select className="input" value={f.결제담당}
                       onChange={(e) => set("결제담당", e.target.value)}>
@@ -3098,7 +3111,7 @@ function TicketEdit({
             실은 재등록이다 — 나중에 알게 되는 일이라 고칠 자리가 여기에도
             있어야 한다. 매출 화면의 신규·재등록 셈이 이 값을 그대로 센다.
           */}
-          {t.결제번호 && (
+          {pay && (
             <L label="매출 유형">
               <select className="input" value={f.매출유형}
                       onChange={(e) => set("매출유형", e.target.value)}>
@@ -3108,9 +3121,21 @@ function TicketEdit({
             </L>
           )}
         </div>
-        {t.결제번호 && (
+        {pay ? (
           <p className="stat-note">
             결제 담당과 매출 유형을 바꾸면 <b>같은 결제로 판 다른 상품도 같이</b> 옮겨갑니다.
+          </p>
+        ) : (
+          /*
+            결제를 못 찾은 경우
+
+            결제 담당·매출 유형은 결제 줄에 적히는 값이라, 이어진 결제가
+            없으면 적을 자리가 없다. 예전에는 그냥 칸이 사라져서 「왜 어떤
+            데는 있고 어떤 데는 없나」가 됐다. 없으면 없다고 적는다.
+          */
+          <p className="stat-note">
+            이 이용권에 이어진 결제를 찾지 못해 <b>결제 담당 · 매출 유형</b>은 여기서 고칠 수
+            없습니다. 결제 탭에서 그 결제를 열어 고쳐 주세요.
           </p>
         )}
 
