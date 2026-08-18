@@ -1102,6 +1102,10 @@ export async function patchPayment(
   changes: Record<string, string>,
   staffId: string
 ): Promise<void> {
+  /* 시트에 그 칸이 없으면 값이 소리 없이 사라진다. 실제로 금액·매출유형이
+     그렇게 여러 번 날아갔다 — 고치기 전에 칸부터 만들어 둔다 */
+  await addColumns(SHEET_P, ["매출유형", "담당직원사번", "미수금액", "미수금결제예정일"]);
+
   const next = { ...changes };
   const total = won(next["결제금액"]);
   const split = won(next["카드액"]) + won(next["현금액"]) + won(next["계좌액"]);
