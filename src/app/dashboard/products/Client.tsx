@@ -11,8 +11,10 @@
  */
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
+import { KINDS as PRODUCT_KINDS } from "@/lib/productMeta";
 
-const KINDS = ["회원권", "수강권", "케어권", "부가상품권", "서비스"];
+/* 목록은 서버와 한 곳을 본다 — 따로 베껴 두었더니 어긋났다 */
+const KINDS: readonly string[] = PRODUCT_KINDS;
 
 type Product = {
   code: string;

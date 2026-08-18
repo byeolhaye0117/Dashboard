@@ -53,11 +53,9 @@ const PRB_COLS: ColumnSpec = {
   삭제여부: { names: [] },
 };
 
-/**
- * 카테고리는 이 다섯뿐이다. 오타 하나로 여섯 개가 되면 안 된다.
- * 적힌 차례가 화면에 나오는 차례다.
- */
-export const KINDS = ["회원권", "수강권", "케어권", "부가상품권", "서비스"] as const;
+/* 카테고리 목록은 화면 쪽도 같이 봐야 해서 productMeta 에 있다 */
+export { KINDS } from "./productMeta";
+import { KINDS } from "./productMeta";
 
 export type AdminProduct = {
   code: string;
