@@ -1141,15 +1141,11 @@ function PurchaseFields({
                     <div className="cart-sub">
                       <span>
                         {[
-                          extra
-                            /* 회원권 기간을 물려받은 얹음 항목은 그 기간을 보여준다.
-                               날짜가 있는데 「기간 없음」이라고 적으면 거짓말이다 */
-                            ? l.시작일 && l.종료일
-                              ? `${l.시작일} ~ ${l.종료일}`
-                              : l.개월 ? `${l.개월}개월치` : "기간 없음"
-                            : l.시작일 && l.종료일
-                              ? `${l.시작일} ~ ${l.종료일}`
-                              : l.시작일 || "기간 없음",
+                          /* 갈래를 가리지 않고 같은 규칙으로 적는다.
+                             날짜가 있는데 「기간 없음」이라고 적으면 거짓말이다 */
+                          l.시작일 && l.종료일
+                            ? `${l.시작일} ~ ${l.종료일}`
+                            : l.시작일 || (extra && l.개월 ? `${l.개월}개월치` : "기간 없음"),
                           !extra && usesCount(pr) && l.총횟수 ? `${l.총횟수}회` : "",
                           extra ? (얹을데없음 ? "따로 등록" : "회원권에 얹음") : l.가격구분 + "가",
                           onlyNum(l.할인) > 0 ? `할인 ${money(onlyNum(l.할인))}원` : "",
@@ -1174,10 +1170,16 @@ function PurchaseFields({
                             <MonthPick value={l.개월} onChange={(v) => setMonths(i, v)} />
                           </label>
                         )}
-                        {!extra && (
-                          <>
-                            <label>
-                              <span>시작일</span>
+                        {/*
+                          날짜는 어느 갈래든 고칠 수 있어야 한다
+
+                          예전에는 회원권·PT 에만 열어 두고 사물함·서비스는
+                          「몇 달치」만 고르게 했다. 그런데 서비스를 회원권보다
+                          늦게 시작하거나 며칠만 드리는 일이 실제로 있다.
+                          고를 수 없으면 시트를 열어야 한다.
+                        */}
+                        <label>
+                          <span>시작일</span>
                               <input className="input" type="date" value={l.시작일}
                                      onChange={(e) => {
                                        const v = e.target.value;
@@ -1200,16 +1202,14 @@ function PurchaseFields({
                                            return x;
                                          }),
                                        });
-                                     }} />
-                            </label>
-                            <label>
-                              <span>종료일</span>
-                              <input className="input" type="date" value={l.종료일}
-                                     onChange={(e) => setLine(i, "종료일", e.target.value)} />
-                            </label>
-                          </>
-                        )}
-                        {!extra && usesCount(pr) && (
+                                 }} />
+                        </label>
+                        <label>
+                          <span>종료일</span>
+                          <input className="input" type="date" value={l.종료일}
+                                 onChange={(e) => setLine(i, "종료일", e.target.value)} />
+                        </label>
+                        {usesCount(pr) && (
                           <label>
                             <span>횟수</span>
                             {/* 상품에 정해진 횟수다. 여기서 바꾸면 상품과 어긋난다 */}
@@ -2053,7 +2053,7 @@ function Board({
             lines.push({
               key: t.id,
               cat: ticketCat(productOf(t.상품코드)),
-              el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free
+              el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} who={staffNames} free
                              onClick={can.update ? () => onTicket(t) : undefined} />,
             });
           });
@@ -2299,7 +2299,7 @@ function TicketGroups({
     svc.slice().sort(byEnd).forEach((t) =>
       lines.push({
         cat: ticketCat(productOf(t.상품코드)),
-        el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} free
+        el: <TicketBar key={t.id} t={t} pr={productOf(t.상품코드)} now={now} who={staffNames} free
                        onClick={onEdit && (() => onEdit(t))} />,
       })
     );
@@ -3434,12 +3434,17 @@ function PaymentEdit({
 }
 
 /* ── 작은 조각들 ───────────────────────────── */
-function L({ label, children, req, full }: {
+function L({ label, children, req, full, aside }: {
   label: string; children: React.ReactNode; req?: boolean; full?: boolean;
+  /** 이름표 오른쪽에 붙는 작은 길 — 「목록 고치기」 같은 것 */
+  aside?: React.ReactNode;
 }) {
   return (
     <div className={`field${full ? " full" : ""}`}>
-      <label>{label}{req && <span className="req">*</span>}</label>
+      <label>
+        {label}{req && <span className="req">*</span>}
+        {aside && <span className="aside">{aside}</span>}
+      </label>
       {children}
     </div>
   );
@@ -3457,8 +3462,10 @@ function Free({ label, k, f, set, opts, placeholder }: {
   set: (k: string, v: string) => void; opts?: string[]; placeholder?: string;
 }) {
   const listId = `opt-${k}`;
+  /* 밑에 뜨는 목록이 틀렸을 때 갈 곳을 그 자리에 놓는다.
+     「관리 메뉴로 가세요」라고 말로만 하면 못 찾는다 */
   return (
-    <L label={label}>
+    <L label={label} aside={<a className="linkish" href="/dashboard/options">목록 고치기</a>}>
       <input className="input" value={f[k] ?? ""} list={listId} placeholder={placeholder}
              onChange={(e) => set(k, e.target.value)} />
       <datalist id={listId}>
