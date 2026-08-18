@@ -484,9 +484,8 @@ export default function Client(p: Props) {
    * 상담은 한 사람이 하고 결제는 데스크에서 받는 일이 흔해서, 상담 탭의
    * 「등록」으로 세면 실제로 판 사람의 실적이 남에게 간다.
    *
-   * 성공률은 상담 몇 건을 맡아 몇 건을 팔았는가다. 상담 없이 판 건이 있으면
-   * 100%를 넘을 수 있다 — 그것도 사실이라 그대로 적는다. 막대만 100에서
-   * 멈춘다.
+   * 성공률은 상담 몇 건을 맡아 몇 건을 팔았는가다. 상담 기록 없이 판 건은
+   * 100%로 본다 — 상담 탭에 안 남았을 뿐 판 것은 판 것이다.
    */
   const champions = useMemo(() => {
     const map: Record<string, { rows: Lead[]; sum: number; count: number }> = {};
@@ -510,8 +509,21 @@ export default function Client(p: Props) {
           sum: v.sum,
           count: v.count,
           ...t,
-          /* 맡은 상담 대비 실제로 판 건수. 상담이 없으면 잴 것이 없다 */
-          sellRate: t.base > 0 ? Math.round((v.count / t.base) * 100) : null,
+          /*
+            맡은 상담 대비 실제로 판 건수
+
+            상담 기록이 없는데 판 건이 있으면 100%로 본다 — 상담 탭에
+            안 남았을 뿐 판 것은 판 것이다. 「-」로 두면 그 사람만 성적이
+            없는 것처럼 보인다.
+            둘 다 없을 때만 잴 것이 없다.
+
+            100 을 넘기지 않는다. 상담 없이 판 건을 100%로 세기로 한 이상,
+            상담 하나에 두 건을 팔았다고 200%가 되면 규칙이 어긋난다.
+          */
+          sellRate:
+            t.base > 0
+              ? Math.min(100, Math.round((v.count / t.base) * 100))
+              : v.count > 0 ? 100 : null,
         };
       })
       .filter((s) => s.base > 0 || s.sum > 0)
@@ -1137,7 +1149,7 @@ export default function Client(p: Props) {
                       <span className="dim">-</span>
                     ) : (
                       <span className="wbar">
-                        <span><i style={{ width: `${Math.min(100, s.sellRate)}%` }} /></span>
+                        <span><i style={{ width: `${s.sellRate}%` }} /></span>
                         <b className="num">{s.sellRate}%</b>
                       </span>
                     )}

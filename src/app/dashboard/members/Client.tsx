@@ -269,6 +269,33 @@ export default function Client(p: Props) {
     return map;
   }, [p.tickets, p.products]);
 
+  /**
+   * 목록에 보여줄 시작일 — 만료일과 짝이 되는 날
+   *
+   * 예전에는 회원 줄의 「가입일」을 보여줬다. 그런데 옆 칸의 만료일은
+   * 이용권에서 오는 값이라, 같은 줄에서 한쪽은 사람의 날짜이고 한쪽은
+   * 이용권의 날짜였다. 「26-08-18 ~ 27-08-17」로 읽히는데 실제로는
+   * 다른 것을 재고 있었다.
+   *
+   * 지금 만료일로 잡힌 그 이용권의 시작일을 쓴다. 이용권이 여럿이면
+   * 가장 늦게 끝나는 것이 만료일이므로, 그것의 시작일이다.
+   */
+  const startOf = useMemo(() => {
+    const map: Record<string, { start: string; end: string }> = {};
+    Object.entries(mainOf).forEach(([id, list]) => {
+      list.forEach((t) => {
+        if (t.상태 === "환불") return;
+        const end = (t.종료일 ?? "").slice(0, 10);
+        if (!map[id] || end > map[id].end) {
+          map[id] = { start: (t.시작일 ?? "").slice(0, 10), end };
+        }
+      });
+    });
+    const out: Record<string, string> = {};
+    Object.entries(map).forEach(([id, v]) => (out[id] = v.start));
+    return out;
+  }, [mainOf]);
+
   /** 목록에 보여줄 만료일 — 살아 있는 이용권 중 가장 늦게 끝나는 날 */
   const endOf = useMemo(() => {
     const map: Record<string, string> = {};
@@ -304,14 +331,19 @@ export default function Client(p: Props) {
   const expired = scoped.filter((m) => stateOf(m) === "만료").length;
 
   const list = useMemo(() => {
-    return scoped.filter((m) => {
-      if (tab !== "전체" && stateOf(m) !== tab) return false;
-      if (q) {
-        const hay = `${m.이름} ${m.전화번호} ${m.거주동네} ${m.직업}`.toLowerCase();
-        if (!hay.includes(q.toLowerCase())) return false;
-      }
-      return true;
-    });
+    return scoped
+      .filter((m) => {
+        if (tab !== "전체" && stateOf(m) !== tab) return false;
+        if (q) {
+          const hay = `${m.이름} ${m.전화번호} ${m.거주동네} ${m.직업}`.toLowerCase();
+          if (!hay.includes(q.toLowerCase())) return false;
+        }
+        return true;
+      })
+      /* 이름 ㄱㄴㄷ 순. 가입한 차례로 두면 스무 명만 넘어도 찾는 이름이
+         어디쯤인지 짐작할 수가 없다. localeCompare 의 "ko" 가 한글 자모
+         차례를 안다 — 그냥 비교하면 유니코드 번호 순이라 어긋난다 */
+      .sort((a, b) => (a.이름 ?? "").localeCompare(b.이름 ?? "", "ko"));
   }, [scoped, p.tickets, tab, q, now]);
 
   if (p.problem) {
@@ -489,7 +521,7 @@ export default function Client(p: Props) {
                 {/* 회원 줄에 적힌 값이 아니라, 지금 살아 있는 수강권·케어권에
                     적힌 트레이너다. 그냥 「담당」이면 결제 담당과 헷갈린다 */}
                 <th>담당 트레이너</th>
-                <th>가입일</th>
+                <th>시작일</th>
                 <th>만료일</th>
                 <th>상태</th>
               </tr>
@@ -527,7 +559,10 @@ export default function Client(p: Props) {
                     <td className="dim">
                       {p.staffNames[trainerOf(m.id, p.tickets, productOf, now)] ?? "-"}
                     </td>
-                    <td className="num dim">{(m.가입일 ?? "").slice(2)}</td>
+                    {/* 옆 칸 만료일과 같은 이용권에서 온 날짜다 */}
+                    <td className="num dim">
+                      {startOf[m.id] ? startOf[m.id].slice(2) : "-"}
+                    </td>
                     <td className={st === "만료" ? "late num" : "num dim"}>
                       {end ? end.slice(2) : "-"}
                     </td>
