@@ -2213,6 +2213,13 @@ function TicketBar({ t, pr, now, free, note, who, onClick }: {
       <div className="t">
         <b>{pr?.name ?? t.상품코드}</b>
         {free && <span className="pill">무료</span>}
+        {/* 누가 맡는지는 기간·횟수보다 먼저 눈에 들어와야 한다.
+            아래 줄에 글로 적으면 날짜에 묻힌다 */}
+        {who && (t.담당트레이너사번 ?? "").trim() && (
+          <span className="pill point">
+            {who[t.담당트레이너사번] ?? t.담당트레이너사번}
+          </span>
+        )}
         <span className="dim">
           {정지 ? "정지 중" : left === null ? "기간 없음" : left < 0 ? `${-left}일 지남` : `${left}일 남음`}
         </span>
@@ -2220,10 +2227,6 @@ function TicketBar({ t, pr, now, free, note, who, onClick }: {
       <span className="sub">
         {t.시작일?.slice(2)}{t.종료일 && ` ~ ${t.종료일.slice(2)}`}
         {cnt && ` · ${t.잔여횟수 || t.총횟수}/${t.총횟수}회`}
-        {/* 담당은 회원이 아니라 이 이용권에 붙는다. 같은 회원이 PT 를 둘 끊고
-            트레이너가 다를 수 있어서, 회원 줄 하나에 적으면 답이 안 나온다 */}
-        {who && (t.담당트레이너사번 ?? "").trim() &&
-          ` · ${who[t.담당트레이너사번] ?? t.담당트레이너사번} 트레이너`}
         {note && ` · ${note}`}
       </span>
       <div className={`tbar ${정지 ? "warn" : tone}`}>
