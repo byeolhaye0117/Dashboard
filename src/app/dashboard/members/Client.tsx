@@ -588,10 +588,19 @@ type Buy = {
   매출유형: string;
   /** 이 판매를 누가 했는가 — 비면 저장하는 사람으로 남는다 */
   담당직원사번: string;
+  /**
+   * PT · 케어를 맡을 트레이너
+   *
+   * 줄마다 물으면 접힌 칸을 하나씩 펴야 해서 손이 많이 간다. 한 번에 여러
+   * PT 를 팔면서 트레이너를 서로 다르게 두는 일은 드물다. 여기서 한 번 고르고,
+   * 다르게 둘 일이 생기면 이용권 창에서 그 줄만 고치면 된다.
+   */
+  담당트레이너사번: string;
 };
 
 const emptyBuy = (): Buy => ({
-  lines: [], 결제수단: "카드", 금액: "", 직접입력: false, 담당직원사번: "",
+  lines: [], 결제수단: "카드", 금액: "", 직접입력: false,
+  담당직원사번: "", 담당트레이너사번: "",
   카드액: "", 계좌액: "", 미수금액: "", 미수금결제예정일: "", 매출유형: "",
 });
 
@@ -866,8 +875,15 @@ function buyPayload(
   const 단독 = 얹을것.length === 0;
 
   return {
-    이용권: (단독 ? b.lines : 얹을것)
-      .map((l) => ({ ...l, 금액: String(linePrice(l, pOf(l.상품코드))) })),
+    이용권: (단독 ? b.lines : 얹을것).map((l) => ({
+      ...l,
+      금액: String(linePrice(l, pOf(l.상품코드))),
+      /* 트레이너는 사람이 붙는 갈래에만 얹는다. 사물함에 트레이너를 적으면
+         나중에 「이 사람이 사물함을 맡았나」가 된다 */
+      담당트레이너사번: ["수강권", "케어권"].includes(ticketCat(pOf(l.상품코드)))
+        ? l.담당트레이너사번 || b.담당트레이너사번
+        : "",
+    })),
     부가서비스: 단독
       ? []
       : b.lines
@@ -1196,26 +1212,6 @@ function PurchaseFields({
                             <input className="input" value={`${l.총횟수}회`} readOnly />
                           </label>
                         )}
-                        {/*
-                          이 이용권을 맡을 트레이너
-
-                          결제 담당과 다른 사람이다. 데스크에서 판 사람이 그 PT 를
-                          맡는 것은 아니다. 예전에는 안 고르면 결제 담당이 그대로
-                          트레이너로 박혔는데, 그래서 실제와 어긋났다.
-                          PT · 케어처럼 사람이 붙는 갈래에서만 묻는다.
-                        */}
-                        {["수강권", "케어권"].includes(ticketCat(pr)) && (
-                          <label>
-                            <span>담당 트레이너</span>
-                            <select className="input" value={l.담당트레이너사번}
-                                    onChange={(e) => setLine(i, "담당트레이너사번", e.target.value)}>
-                              <option value="">지정 안 함</option>
-                              {trainers.map((x) => (
-                                <option key={x.id} value={x.id}>{x.name}</option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
                         {/* 어떤 상품이든 깎아줄 수 있어야 한다 */}
                         <label>
                           <span>할인</span>
@@ -1272,6 +1268,23 @@ function PurchaseFields({
                 {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </label>
+
+            {/*
+              PT · 케어를 맡을 트레이너
+
+              사람이 붙는 상품을 담았을 때만 묻는다. 회원권만 팔면서 트레이너를
+              묻는 것은 대답할 것이 없는 질문이다.
+            */}
+            {b.lines.some((l) => ["수강권", "케어권"].includes(ticketCat(pOf(l.상품코드)))) && (
+              <label className="row f">
+                <span>담당 트레이너</span>
+                <select className="input" value={b.담당트레이너사번}
+                        onChange={(e) => setB({ ...b, 담당트레이너사번: e.target.value })}>
+                  <option value="">지정 안 함</option>
+                  {trainers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                </select>
+              </label>
+            )}
 
             {/*
               누구 실적인가
