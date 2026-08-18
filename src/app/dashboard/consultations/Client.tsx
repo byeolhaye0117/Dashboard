@@ -7,7 +7,9 @@ import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today, now as nowMinute } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
-import { stageOf, baseDate, monthOf, isSettled, stageNow as stageAt } from "@/lib/stage";
+import {
+  stageOf, baseDate, monthOf, isSettled, DONE_STAGE, stageNow as stageAt,
+} from "@/lib/stage";
 
 type Row = Record<string, string>;
 type Item = Row & { id: string };
@@ -417,7 +419,7 @@ export default function Client(p: Props) {
                 <th>방문 약속</th>
                 <th>문의</th>
                 <th>채널</th>
-                <th>담당</th>
+                <th>등록자</th>
                 <th>지점</th>
                 <th>다음 연락</th>
                 <th>상태</th>
@@ -440,7 +442,11 @@ export default function Client(p: Props) {
                     </td>
                     <td className="dim">{c["문의유형"] || "-"}</td>
                     <td className="dim">{chan(c) || "-"}</td>
-                    <td className="dim">{p.staffNames[c["상담자사번"]] ?? "-"}</td>
+                    {/* 이 줄을 화면에 넣은 사람이다. 실제로 상담을 한 사람은
+                        따로다 — 상세 창의 「상담자」에 있다 */}
+                    <td className="dim">
+                      {p.staffNames[c["접수자사번"]] ?? p.staffNames[c["상담자사번"]] ?? "-"}
+                    </td>
                     <td className="dim">{branchName(c["지점코드"])}</td>
                     <td className={late ? "late num" : "num dim"}>
                       {c["다음연락예정일"] ? (c["다음연락예정일"] ?? "").slice(5) : "-"}
@@ -570,7 +576,7 @@ function NewForm({
               {STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
             </select>
           </L>
-          <L label="담당자">
+          <L label="상담자">
             <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => set("상담자사번", e.target.value)}>
               {counselors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -637,6 +643,17 @@ function Detail({
   const [stage, setStage] = useState(stageNow(item));
   const [nextDate, setNextDate] = useState(item["다음연락예정일"] ?? "");
   const [reason, setReason] = useState(item["미등록사유"] ?? "");
+  /*
+    등록으로 넘길 때 상담자를 다시 묻는다
+
+    상담을 화면에 넣는 것은 데스크에서 대신 해 주는 일이 흔하다. 그래서
+    처음 접수할 때 적힌 상담자가 실제로 상담한 사람이 아닐 때가 있다.
+    등록으로 넘어가는 순간이 그것을 바로잡는 유일한 자리다 — 이때 놓치면
+    매출은 붙었는데 누가 상담했는지는 틀린 채로 남는다.
+
+    빈 값은 「그대로 둡니다」다. 손대지 않으면 아무것도 안 바뀐다.
+  */
+  const [newOwner, setNewOwner] = useState("");
   const [reasonMemo, setReasonMemo] = useState("");
   const [kind, setKind] = useState((options["상담활동종류"] ?? ["전화"])[0]);
   const [content, setContent] = useState("");
@@ -694,7 +711,13 @@ function Detail({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: item.id,
-        changes: { 진행상태: stage, 다음연락예정일: nextDate, 미등록사유: stage === "미등록" ? reason : "" },
+        changes: {
+          진행상태: stage,
+          다음연락예정일: nextDate,
+          미등록사유: stage === "미등록" ? reason : "",
+          /* 고른 것이 있을 때만 넣는다. 빈 값을 보내면 적혀 있던 상담자가 지워진다 */
+          ...(newOwner ? { 상담자사번: newOwner } : {}),
+        },
       }),
     });
     const data = await res.json();
@@ -775,7 +798,7 @@ function Detail({
                        value={forInput(f["상담날짜"] ?? "")}
                        onChange={(e) => setV("상담날짜", e.target.value.replace("T", " "))} />
               </L>
-              <L label="담당자">
+              <L label="상담자">
                 <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => setV("상담자사번", e.target.value)}>
                   {Object.entries(staffNames).map(([id, nm]) => (
                     <option key={id} value={id}>{nm}</option>
@@ -831,8 +854,10 @@ function Detail({
           <Kv k="문의 채널" v={chan(item)} />
           <Kv k="문의유형" v={item["문의유형"]} />
           <Kv k="성별 · 나이" v={[item["성별"], item["나이대"]].filter(Boolean).join(" · ")} />
-          <Kv k="담당자" v={staffNames[item["상담자사번"]] ?? "-"} />
-          <Kv k="접수자" v={staffNames[item["접수자사번"]] ?? "-"} />
+          {/* 상담을 한 사람과 화면에 넣은 사람은 다를 수 있다.
+              접수는 데스크에서 대신 해 주는 일이 흔하다 */}
+          <Kv k="상담자" v={staffNames[item["상담자사번"]] ?? "-"} />
+          <Kv k="등록자" v={staffNames[item["접수자사번"]] ?? "-"} />
           <Kv k="방문 약속" v={item["약속일시"]?.replace("T", " ")} />
           <Kv
             k={isNoShowReason(item["미등록사유"]) ? "미방문 사유" : "미등록 사유"}
@@ -886,6 +911,23 @@ function Detail({
               <input className="input" type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} />
               <button className="btn-ghost" onClick={saveStage} disabled={busy}>저장</button>
             </div>
+            {stage === DONE_STAGE && stageNow(item) !== DONE_STAGE && (
+              <div className="ask-box">
+                <b>이 상담을 실제로 진행한 분이 누구입니까?</b>
+                <p>
+                  지금은 <b>{staffNames[item["상담자사번"]] ?? "-"}</b>님으로 적혀 있습니다.
+                  접수는 데스크에서 대신 해 주는 일이 흔해, 적힌 사람과 실제로 상담한 사람이
+                  다를 수 있습니다. 여기서 고른 분이 <b>상담자</b>로 기록됩니다.
+                </p>
+                <select className="input" style={{ maxWidth: 200 }}
+                        value={newOwner} onChange={(e) => setNewOwner(e.target.value)}>
+                  <option value="">그대로 둡니다</option>
+                  {Object.entries(staffNames).map(([id, nm]) => (
+                    <option key={id} value={id}>{nm}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             {stage === "미등록" && (
               <ReasonPick
                 value={reason}

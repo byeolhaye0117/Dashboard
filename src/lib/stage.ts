@@ -8,6 +8,9 @@
 export const STAGES = ["예약", "약속전환", "등록", "미등록"] as const;
 export type Stage = (typeof STAGES)[number];
 
+/** 등록으로 끝난 상태 — 이 값 하나로 「등록인가」를 판단한다 */
+export const DONE_STAGE: Stage = "등록";
+
 /** 예전에 쓰던 7단계 값을 지금 4단계로 맞춘다 */
 const OLD: Record<string, Stage> = {
   신규: "예약", 연락중: "예약", 약속대기: "예약",

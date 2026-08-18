@@ -59,7 +59,8 @@ export function readChannel(r: Row): string {
 }
 
 /** 등록으로 이어진 상태 */
-export const DONE_STAGE: Stage = "등록";
+export { DONE_STAGE } from "./stage";
+import { DONE_STAGE } from "./stage";
 /** 더 이상 진행하지 않는 상태 */
 export const CLOSED: Stage[] = ["등록", "미등록"];
 

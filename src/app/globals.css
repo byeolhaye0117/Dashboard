@@ -1529,6 +1529,24 @@ table.grid .late { color: var(--bad); font-weight: 800; }
 }
 .confirm-box b { display: block; font-size: 14px; color: var(--ink); }
 .confirm-box p { margin: 5px 0 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
+/* 문장 안에서 강조한 말까지 줄바꿈되면 안 된다 — 제목 줄만 블록이다 */
+.confirm-box p b { display: inline; font-size: inherit; }
+
+/*
+  묻는 상자 — 지우기 경고와 같은 얼굴이면 안 된다
+
+  빨간 상자는 「되돌릴 수 없다」는 뜻으로 써 왔다. 그냥 물어보는 자리에
+  같은 색을 쓰면, 정작 위험한 자리에서 색이 안 먹힌다.
+*/
+.ask-box {
+  margin-top: 14px; padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.ask-box > b { display: block; font-size: 13.5px; color: var(--ink); }
+.ask-box p { margin: 5px 0 10px; font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
+.ask-box p b { color: var(--ink); font-weight: 700; }
 
 .modal-lead {
   margin: -8px 0 16px; font-size: 12.5px; color: var(--muted); line-height: 1.6;
