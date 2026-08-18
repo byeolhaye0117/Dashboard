@@ -481,7 +481,9 @@ export default function Client(p: Props) {
                 <th>성별 · 나이</th>
                 <th>동네</th>
                 <th>지점</th>
-                <th>담당</th>
+                {/* 회원 줄에 적힌 값이 아니라, 지금 살아 있는 수강권·케어권에
+                    적힌 트레이너다. 그냥 「담당」이면 결제 담당과 헷갈린다 */}
+                <th>담당 트레이너</th>
                 <th>가입일</th>
                 <th>만료일</th>
                 <th>상태</th>
