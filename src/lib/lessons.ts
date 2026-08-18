@@ -317,6 +317,29 @@ export async function createLesson(input: NewLesson, byId: string): Promise<stri
     }, ac);
   }));
 
+  /*
+   * 이용권에 담당 트레이너를 채워 준다
+   *
+   * 회원 화면의 「담당 트레이너」는 살아 있는 수강권·케어권에 적힌 사람을
+   * 본다. 그런데 PT 를 팔 때 트레이너를 안 고르고 나중에 정하는 일이 흔해서,
+   * 수업을 잡아 놓고도 회원 목록에는 「-」로 남아 있었다.
+   *
+   * 이미 적힌 사람이 있으면 손대지 않는다. 하루 대신 봐 준 수업 때문에
+   * 회원의 담당이 통째로 넘어가면 그게 더 큰 사고다. 바꾸실 일이 있으면
+   * 이용권 고치기에서 직접 고르시면 된다.
+   */
+  for (const m of input.members) {
+    if (!m.이용권번호) continue;
+    const t = byTicket.get(m.이용권번호);
+    if (!t || (t.담당트레이너사번 ?? "").trim()) continue;
+    try {
+      await patchTicket(m.이용권번호, { 담당트레이너사번: input.트레이너사번 }, byId);
+    } catch {
+      /* 여기서 실패해도 수업은 이미 잡혔다. 되돌리지 않는다 —
+         담당을 못 적은 것과 수업이 없는 것은 무게가 다르다 */
+    }
+  }
+
   return id;
 }
 
