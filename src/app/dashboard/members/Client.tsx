@@ -2216,7 +2216,7 @@ function TicketBar({ t, pr, now, free, note, who, onClick }: {
         {/* 누가 맡는지는 기간·횟수보다 먼저 눈에 들어와야 한다.
             아래 줄에 글로 적으면 날짜에 묻힌다 */}
         {who && (t.담당트레이너사번 ?? "").trim() && (
-          <span className="pill point">
+          <span className="pill warn">
             {who[t.담당트레이너사번] ?? t.담당트레이너사번}
           </span>
         )}
