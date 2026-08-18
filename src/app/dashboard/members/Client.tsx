@@ -88,6 +88,27 @@ type Extra = {
 type Waiting = { id: string; 이름: string; 전화번호: string; 지점코드: string };
 type Named = { code: string; name: string };
 
+/**
+ * 이 지점에서 고를 수 있는 직원
+ *
+ * 「결제 담당」은 데스크에서 대신 넣어 주는 일이 흔해 전 직원이 후보다.
+ * 「담당 트레이너」는 실제로 PT 를 하는 사람만이다 — 직원 관리에서
+ * 「트레이너」로 체크한 사람. 두 칸에 같은 목록을 넣었더니 수업을 안 하는
+ * 데스크 직원까지 트레이너 후보로 떠서 잘못 고르기 쉬웠다.
+ */
+type Staffer = { id: string; name: string; pt: boolean };
+
+/**
+ * 트레이너만 남긴다
+ *
+ * 이미 저장돼 있는 사람은 트레이너 체크가 풀렸더라도 남긴다. 목록에서 빠지면
+ * 고르는 칸이 빈 값으로 되돌아가, 저장만 눌러도 적혀 있던 담당이 조용히
+ * 지워진다. 지난 기록을 화면이 마음대로 지우면 안 된다.
+ */
+function ptOnly(all: Staffer[], keep?: string): Staffer[] {
+  return all.filter((x) => x.pt || (keep && x.id === keep));
+}
+
 type TransferRow = {
   id: string; 이용권번호: string; 준회원번호: string; 받은회원번호: string;
   양도일: string; 수수료: string;
@@ -109,7 +130,8 @@ type Props = {
   options: Record<string, string[]>;
   branches: Named[];
   staffNames: Record<string, string>;
-  trainers: { id: string; name: string }[];
+  /** 이 지점 재직자. pt 가 참인 사람만 「담당 트레이너」로 고를 수 있다 */
+  trainers: Staffer[];
   currentBranch: string;
   problem: string;
   can: { create: boolean; update: boolean; remove: boolean };
@@ -935,7 +957,8 @@ function PurchaseFields({
   /** 이 회원이 지금까지 끊은 이용권 — 신규인지 재등록인지 가리는 데 쓴다 */
   tickets: Ticket[];
   /** 결제를 누구 실적으로 달지 고른다 */
-  trainers: { id: string; name: string }[];
+  /** 이 지점 재직자. pt 가 참인 사람만 「담당 트레이너」로 고를 수 있다 */
+  trainers: Staffer[];
   b: Buy;
   setB: (next: Buy) => void;
 }) {
@@ -1280,14 +1303,22 @@ function PurchaseFields({
               묻는 것은 대답할 것이 없는 질문이다.
             */}
             {b.lines.some((l) => ["수강권", "케어권"].includes(ticketCat(pOf(l.상품코드)))) && (
-              <label className="row f">
-                <span>담당 트레이너</span>
-                <select className="input" value={b.담당트레이너사번}
-                        onChange={(e) => setB({ ...b, 담당트레이너사번: e.target.value })}>
-                  <option value="">지정 안 함</option>
-                  {trainers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                </select>
-              </label>
+              <>
+                <label className="row f">
+                  <span>담당 트레이너</span>
+                  <select className="input" value={b.담당트레이너사번}
+                          onChange={(e) => setB({ ...b, 담당트레이너사번: e.target.value })}>
+                    <option value="">지정 안 함</option>
+                    {ptOnly(trainers).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                  </select>
+                </label>
+                {ptOnly(trainers).length === 0 && (
+                  <p className="stat-note">
+                    이 지점에 트레이너로 체크된 직원이 없습니다. 직원 관리에서 그 직원의
+                    <b> 「트레이너」</b>를 켜 주시면 여기에 뜹니다.
+                  </p>
+                )}
+              </>
             )}
 
             {/*
@@ -1384,7 +1415,8 @@ function AddPurchase({
   productBranches: Record<string, string[]>;
   options: Record<string, string[]>;
   /** 결제를 누구 실적으로 달지 고르는 데 쓴다 */
-  trainers: { id: string; name: string }[];
+  /** 이 지점 재직자. pt 가 참인 사람만 「담당 트레이너」로 고를 수 있다 */
+  trainers: Staffer[];
   onClose: () => void;
 }) {
   /*
@@ -1458,7 +1490,8 @@ function NewForm({
   waiting: Waiting[];
   options: Record<string, string[]>;
   branches: Named[];
-  trainers: { id: string; name: string }[];
+  /** 이 지점 재직자. pt 가 참인 사람만 「담당 트레이너」로 고를 수 있다 */
+  trainers: Staffer[];
   defaultBranch: string;
   onClose: () => void;
 }) {
@@ -1635,7 +1668,8 @@ function Detail({
   productBranches: Record<string, string[]>;
   productOf: (code: string) => ProductMeta | undefined;
   options: Record<string, string[]>;
-  trainers: { id: string; name: string }[];
+  /** 이 지점 재직자. pt 가 참인 사람만 「담당 트레이너」로 고를 수 있다 */
+  trainers: Staffer[];
   staffNames: Record<string, string>;
   branchName: string;
   can: { create: boolean; update: boolean; remove: boolean };
@@ -2813,7 +2847,8 @@ function TicketEdit({
 }: {
   t: Ticket;
   pr?: ProductMeta;
-  trainers: { id: string; name: string }[];
+  /** 이 지점 재직자. pt 가 참인 사람만 「담당 트레이너」로 고를 수 있다 */
+  trainers: Staffer[];
   members: Member[];
   /** 이 이용권이 붙은 결제 — 담당을 고치려면 이쪽 줄을 고쳐야 한다 */
   pay?: Payment;
@@ -2952,7 +2987,9 @@ function TicketEdit({
             <select className="input" value={f.담당트레이너사번}
                     onChange={(e) => set("담당트레이너사번", e.target.value)}>
               <option value="">지정 안 함</option>
-              {trainers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              {ptOnly(trainers, f.담당트레이너사번).map((x) => (
+                <option key={x.id} value={x.id}>{x.name}</option>
+              ))}
             </select>
           </L>
           <L label="상태">
@@ -3272,7 +3309,8 @@ function PaymentEdit({
   x: Payment;
   options: Record<string, string[]>;
   /** 결제 담당을 고르는 데 쓴다 */
-  trainers: { id: string; name: string }[];
+  /** 이 지점 재직자. pt 가 참인 사람만 「담당 트레이너」로 고를 수 있다 */
+  trainers: Staffer[];
   onClose: () => void;
 }) {
   const [f, setF] = useState({
