@@ -15,6 +15,7 @@ import {
 import { listMembers, listTickets, listPayments, listTicketServices } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
 import { listConsultations } from "@/lib/consultations";
+import { listLessons } from "@/lib/lessons";
 import { listOptions } from "@/lib/options";
 import { SALE_TYPES } from "@/lib/saleTypes";
 import { stageNow } from "@/lib/stage";
@@ -158,6 +159,41 @@ async function body() {
   }
 
   /*
+   * 회원별 담당 트레이너를 수업에서 되짚는다
+   *
+   * PT 를 팔 때 트레이너를 안 고르고 나중에 정하는 일이 흔하다. 수업을 잡을
+   * 때 이용권에 채워 넣게 해 뒀지만 그것은 앞으로 잡는 수업 얘기고, 이미
+   * 잡아 둔 수업은 그대로다 — 매주 PT 를 하고 있는데도 목록에는 「-」였다.
+   *
+   * 저장이 한 번 성공했는지에 기대지 않는다. 화면을 열 때마다 수업을 보고
+   * 판단하면 언제 잡은 수업이든 결과가 늘 같다. 「상담이 등록이 아닌 사람은
+   * 회원 목록에 두지 않는다」를 세 번 헛짚고 배운 것과 같은 규칙이다.
+   *
+   * 수업 탭이 아직 없을 수 있다. 없으면 그냥 빈 손이다.
+   */
+  let lessonTrainer: Record<string, string> = {};
+  try {
+    const { lessons, joins } = await listLessons();
+    const byId = new Map(lessons.map((l) => [l.id, l]));
+    const when = (수업번호: string) => {
+      const l = byId.get(수업번호);
+      return (l?.날짜 ?? "") + (l?.시작시각 ?? "");
+    };
+    /* 늦은 수업이 먼저 오게 — 가장 최근에 맡은 사람이 지금 담당이다 */
+    joins
+      .slice()
+      .sort((a, b) => when(b.수업번호).localeCompare(when(a.수업번호)))
+      .forEach((j) => {
+        if (!j.회원번호 || lessonTrainer[j.회원번호]) return;
+        const l = byId.get(j.수업번호);
+        if (!l || l.진행상태 === "취소" || !l.트레이너사번) return;
+        lessonTrainer[j.회원번호] = l.트레이너사번;
+      });
+  } catch {
+    lessonTrainer = {};
+  }
+
+  /*
    * 매출 유형 — 새로 만든 기본값이 화면에 닿게 한다
    *
    * 고르는 목록은 「선택목록」 시트가 먼저다. 그런데 그 시트에 이미 매출유형이
@@ -223,6 +259,7 @@ async function body() {
         options={options2}
         branches={myBranches}
         staffNames={staffNames}
+        lessonTrainer={lessonTrainer}
         trainers={trainers}
         currentBranch={session.currentBranch}
         problem={problem}

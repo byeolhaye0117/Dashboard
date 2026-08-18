@@ -801,6 +801,9 @@ export async function patchTicket(
   if (["금액", "할인", "미수금"].some((k) => changes[k] !== undefined)) {
     await addColumns(SHEET_V, ["금액", "할인", "미수금"]);
   }
+  if (changes["담당트레이너사번"] !== undefined) {
+    await addColumns(SHEET_V, ["담당트레이너사번"]);
+  }
   await patchOne(SHEET_V, V_COLS, "이용권번호", id, changes, staffId);
 }
 
