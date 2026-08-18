@@ -2060,14 +2060,16 @@ function Board({
 
           extras.forEach((x) => {
             const host = tickets.find((t) => t.id === x.이용권번호);
-            const 값 = Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "무료";
+            /* 「회원권에 얹음」은 이 줄이 서비스 묶음 안에 있으니 두 번 말하는 것이고,
+               「무료」는 이름 옆 딱지가 이미 말하고 있다. 값이 있을 때만 적는다 */
+            const 값 = Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "";
             const pr = productOf(x.상품코드);
             lines.push({
               key: x.id,
               cat: ticketCat(pr),
               el: host ? (
                 <TicketBar key={x.id} t={{ ...host, 상품코드: x.상품코드 }} pr={pr} now={now}
-                           free={Number(x.추가금액) <= 0} note={`회원권에 얹음 · ${값}`}
+                           free={Number(x.추가금액) <= 0} note={값}
                            onClick={can.update ? () => onTicket(host) : undefined} />
               ) : (
                 <div className="mrow" key={x.id}>
@@ -2309,13 +2311,13 @@ function TicketGroups({
     if (withExtras) {
       extras.forEach((x) => {
         const host = ticketOf(x.이용권번호);
-        const 값 = Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "무료";
+        const 값 = Number(x.추가금액) > 0 ? `${money(Number(x.추가금액))}원` : "";
         const pr = productOf(x.상품코드);
         lines.push({
           cat: ticketCat(pr),
           el: host ? (
             <TicketBar key={x.id} t={{ ...host, 상품코드: x.상품코드 }} pr={pr} now={now}
-                       free={Number(x.추가금액) <= 0} note={`회원권에 얹음 · ${값}`}
+                       free={Number(x.추가금액) <= 0} note={값}
                        onClick={onEdit && (() => onEdit(host))} />
           ) : (
             <div className="mrow" key={x.id}>
