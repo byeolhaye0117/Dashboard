@@ -15,6 +15,8 @@ import {
 import { listMembers, listTickets, listPayments, listTicketServices } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
 import { listConsultations } from "@/lib/consultations";
+import { listOptions } from "@/lib/options";
+import { SALE_TYPES } from "@/lib/saleTypes";
 import { stageNow } from "@/lib/stage";
 import { today } from "@/lib/time";
 import { listTransfers } from "@/lib/members";
@@ -156,23 +158,49 @@ async function body() {
   }
 
   /*
+   * 매출 유형 — 새로 만든 기본값이 화면에 닿게 한다
+   *
+   * 고르는 목록은 「선택목록」 시트가 먼저다. 그런데 그 시트에 이미 매출유형이
+   * 적혀 있으면 화면은 그것만 보므로, 코드에 값을 더해도 아무 데도 안 나온다.
+   * 실제로 「PT」를 더했는데 목록에 안 떴다.
+   *
+   * 그래서 시트에 아예 없는 기본값만 뒤에 붙인다. 「안 쓰기」로 돌려 둔 값은
+   * 되살리지 않는다 — 그건 대표님이 일부러 끄신 것이다.
+   */
+  let options2 = options;
+  try {
+    const rows = await listOptions();
+    const 납작 = (v: string) => (v ?? "").replace(/\s/g, "");
+    const 아는값 = new Set(
+      rows.filter((r) => r.구분 === "매출유형").map((r) => 납작(r.값))
+    );
+    const 지금 = options["매출유형"] ?? [];
+    const 더할것 = SALE_TYPES.filter(
+      (v) => !아는값.has(납작(v)) && !지금.some((x) => 납작(x) === 납작(v))
+    );
+    if (더할것.length > 0) {
+      options2 = { ...options, 매출유형: [...지금, ...더할것] };
+    }
+  } catch {
+    /* 선택목록 탭이 없어도 화면은 떠야 한다 — 기본값이 그대로 쓰인다 */
+  }
+
+  /*
    * 지금 보고 있는 지점 사람만 고른다
    *
    * 전 지점을 보는 계정이면 목록에 스무 명이 넘게 뜬다. 쌍용점에서 파는데
    * 두정점 트레이너가 같이 뜨면 잘못 고르기 쉽고, 실제로 고를 일도 없다.
    * 소속 지점이거나 담당 지점에 그 지점이 들어 있으면 이 지점 사람이다.
-   */
-  const branchMap = await getStaffBranches();
-  const here = session.currentBranch;
-  /*
-   * pt 를 같이 보내는 이유
    *
-   * 「결제 담당」은 데스크에서 대신 넣어 주는 일이 흔해 전 직원이 후보다.
+   * pt 를 같이 보내는 까닭 — 「결제 담당」은 데스크에서 대신 넣어 주는 일이
+   * 흔해 전 직원이 후보다.
    * 「담당 트레이너」는 실제로 PT 를 하는 사람만이어야 한다 — 직원 관리에서
    * 「트레이너」로 체크한 사람. 두 칸에 같은 목록을 넣었더니 수업을 안 하는
    * 데스크 직원까지 트레이너 후보로 떴다. 목록은 한 벌만 보내고, 화면에서
    * 트레이너 칸만 걸러 쓴다.
    */
+  const branchMap = await getStaffBranches();
+  const here = session.currentBranch;
   const trainers = staff
     .filter((s) => s.active)
     .filter((s) => (branchMap.get(s.id) ?? []).includes(here) || s.mainBranch === here)
@@ -192,7 +220,7 @@ async function body() {
         waiting={waiting}
         hidden={hidden}
         transfers={transfers}
-        options={options}
+        options={options2}
         branches={myBranches}
         staffNames={staffNames}
         trainers={trainers}
