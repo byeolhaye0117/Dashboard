@@ -82,21 +82,25 @@ type Part = { total: number; 신규: number; 재등록: number };
 type Bucket = { 회원권: Part; PT: Part; 수업: Part; 기타: Part; 미분류: Part };
 
 /**
- * 매출 여섯 갈래 — 상품군을 신규·재등록으로 쪼갠 것
+ * 매출 다섯 갈래
  *
- * 마지막 "기타"는 총액에서 앞의 다섯을 뺀 나머지다.
- * 그래야 여섯을 더한 값이 총매출과 어긋나지 않는다.
+ * 회원권만 신규·재등록으로 쪼갠다. PT 는 한 덩어리다 — 대표님이 정하신
+ * 것이다. PT 를 둘로 갈라 놓으니 도넛에 0원짜리 조각이 둘 붙어 자리만
+ * 차지했고, 정작 「PT 가 얼마나 팔렸나」는 두 줄을 더해야 알 수 있었다.
+ * 신규·재등록을 따로 보실 일이 생기면 그때 다시 가르면 된다.
+ *
+ * 마지막 「기타」는 총액에서 앞의 넷을 뺀 나머지다. 그래야 다섯을 더한
+ * 값이 총매출과 어긋나지 않는다.
  */
 function sixOf(b: Bucket, total: number) {
-  const five = [
+  const four = [
     { key: "회원권 · 신규", sum: b.회원권.신규 },
     { key: "회원권 · 재등록", sum: b.회원권.재등록 },
-    { key: "PT · 신규", sum: b.PT.신규 },
-    { key: "PT · 재등록", sum: b.PT.재등록 },
+    { key: "PT", sum: b.PT.total },
     { key: "그룹수업", sum: b.수업.total },
   ];
-  const rest = Math.max(0, total - five.reduce((s, x) => s + x.sum, 0));
-  return [...five, { key: "기타", sum: rest }];
+  const rest = Math.max(0, total - four.reduce((s, x) => s + x.sum, 0));
+  return [...four, { key: "기타", sum: rest }];
 }
 
 const money = (n: number) => n.toLocaleString("ko-KR");
@@ -396,10 +400,10 @@ export default function Client(p: Props) {
   const 신규합 = parts.reduce((s, k) => s + k.신규, 0);
   const 재등록합 = parts.reduce((s, k) => s + k.재등록, 0);
 
-  /** 전 지점 여섯 갈래 */
+  /** 전 지점 다섯 갈래 */
   const six = sixOf(bucket, cur.sum);
 
-  /** 지점별 여섯 갈래 · 결제수단 — 지점 비교 두 자리가 같이 쓴다 */
+  /** 지점별 다섯 갈래 · 결제수단 — 지점 비교 두 자리가 같이 쓴다 */
   const branchMix = useMemo(
     () =>
       p.branches.map((b) => {
@@ -709,7 +713,7 @@ export default function Client(p: Props) {
         {/* 매출 구성 — 전체를 나눠 갖는 비중이라 도넛 */}
         <div className="viz">
           <h3 className="viz-title">무엇을 팔았나</h3>
-          <p className="viz-sub">회원권 · PT는 신규 · 재등록으로 갈라서 여섯 갈래</p>
+          <p className="viz-sub">회원권만 신규 · 재등록으로 가른 다섯 갈래</p>
           {cur.sum <= 0 ? (
             <p className="dim mini-note">이 달에 잡힌 매출이 없습니다.</p>
           ) : (
