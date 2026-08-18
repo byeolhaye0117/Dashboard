@@ -9,6 +9,7 @@ import { korDate, today, daysBetween, weekdayIndex } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
 import { termOf, type ProductMeta } from "@/lib/productMeta";
+import { SALE_TYPES } from "@/lib/saleTypes";
 import { REFUND_STAGES, REFUND_REASONS } from "@/lib/refund";
 
 type Member = {
@@ -141,18 +142,7 @@ type Props = {
 
 const PAY_METHODS = ["카드", "현금", "계좌", "카드+계좌"];
 
-/**
- * 매출 유형 — 목록 관리에 아무것도 없을 때 쓰는 기본값
- *
- * 세 화면(상품 담기 · 이용권 고치기 · 결제 고치기)이 같은 목록을 봐야 한다.
- * 따로 적어 두었더니 한 곳에만 값이 늘어 화면마다 고를 수 있는 것이 달랐다.
- *
- * 「PT」는 대표님이 넣으라 하신 것이다. 신규·재등록을 가르는 값이 아니라서
- * 매출 화면은 이 값을 신규/재등록 판단에 쓰지 않는다 — 대신 그 회원이 전에
- * 같은 갈래를 끊었는지 보고 알아서 가른다. 그러니 PT 로 두어도 재등록률에서
- * 빠지지 않는다. 목록 관리 「매출유형」에 값을 넣으시면 그쪽이 먼저다.
- */
-const SALE_TYPES = ["신규", "재등록", "PT", "기타매출"];
+/* 매출 유형 기본값은 서버(page)도 같이 봐야 해서 lib 에 있다 */
 /** 만료 임박으로 볼 기간 */
 const SOON = 30;
 
