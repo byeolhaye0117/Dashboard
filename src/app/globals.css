@@ -442,12 +442,15 @@ button { font-family: inherit; }
 .dn-lb { fill: var(--muted); font-size: 11px; font-weight: 700; }
 .dn-vl { fill: var(--ink); font-size: 15px; font-weight: 800; letter-spacing: -.4px; }
 
-.dlist { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 160px; }
+/* 금액을 다 적으니 옆자리가 좁아 「회원권 · 재등록」이 석 줄로 접혔다.
+   이만큼도 안 되면 도넛 아래로 내려가 한 줄에 여유 있게 눕는다 */
+.dlist { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 208px; }
 .dlist.mt { margin-top: 12px; }
 .dlist li { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; }
 .dlist .sw { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 2px; }
-.dlist .nm { flex: 1; color: var(--ink-2); font-weight: 600; }
-.dlist .vl { font-weight: 700; }
+.dlist .nm { flex: 1; min-width: 0; color: var(--ink-2); font-weight: 600; }
+/* 금액을 줄여 쓰지 않기로 해서 자리가 늘었다. 줄바꿈은 막고 오른쪽에 맞춘다 */
+.dlist .vl { font-weight: 700; white-space: nowrap; text-align: right; }
 .dlist .pc { min-width: 36px; text-align: right; font-size: 11px; color: var(--muted); }
 
 /* 도넛 옆 목록에서 값이 0인 갈래 — 자리는 지키되 눈에 덜 띄게 */
@@ -464,9 +467,12 @@ button { font-family: inherit; }
 
 /* ── 지점 비교 100% 띠 ────────────────────── */
 .cmp-rows { display: flex; flex-direction: column; gap: 11px; }
-.cmp-row { display: grid; grid-template-columns: 56px 1fr 62px; gap: 10px; align-items: center; }
+.cmp-row { display: grid; grid-template-columns: 56px 1fr 86px; gap: 10px; align-items: center; }
 .cmp-row .nm { font-size: 12px; color: var(--ink-2); font-weight: 700; }
-.cmp-row .tot { text-align: right; font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.cmp-row .tot {
+  text-align: right; font-size: 11.5px; color: var(--muted); font-weight: 700;
+  white-space: nowrap;
+}
 .ratio {
   display: flex; gap: 2px; height: 15px; border-radius: 4px; overflow: hidden;
   background: var(--surface-3);
@@ -637,7 +643,8 @@ table.cal thead .sticky { background: var(--surface); }
 
 /* ── 지점 줄 ──────────────────────────────── */
 .brow {
-  display: grid; grid-template-columns: 58px 1fr 92px 74px 60px; gap: 12px; align-items: center;
+  /* 금액 칸은 줄여 쓰지 않은 숫자가 들어간다 — 1,245,000 이 안 접히게 */
+  display: grid; grid-template-columns: 58px 1fr 110px 74px 60px; gap: 12px; align-items: center;
   width: 100%; padding: 12px 0; border: 0; border-bottom: 1px solid var(--line-soft);
   background: none; color: var(--ink); font-family: inherit; text-align: left; cursor: pointer;
 }
@@ -653,7 +660,7 @@ table.cal thead .sticky { background: var(--surface); }
   position: absolute; top: -3px; width: 2px; height: 22px;
   background: var(--ink-2); border-radius: 1px;
 }
-.brow .am { text-align: right; font-size: 13px; font-weight: 700; }
+.brow .am { text-align: right; font-size: 13px; font-weight: 700; white-space: nowrap; }
 .brow .am small { display: block; font-size: 10.5px; color: var(--muted); font-weight: 600; }
 .brow .pc { text-align: right; font-size: 14.5px; font-weight: 800; }
 .brow .pc .miss {
