@@ -568,6 +568,8 @@ type Line = {
   할인: string;
   /** 이 상품에서 아직 못 받은 금액 */
   미수금: string;
+  /** 이 이용권을 맡는 트레이너 — 결제 담당과는 다른 사람일 수 있다 */
+  담당트레이너사번: string;
 };
 
 type Buy = {
@@ -961,6 +963,7 @@ function PurchaseFields({
               가격구분: defaultKind(b.결제수단),
               할인: "",
               미수금: "",
+              담당트레이너사번: "",
             },
           ],
         });
@@ -984,6 +987,7 @@ function PurchaseFields({
           가격구분: defaultKind(b.결제수단),
           할인: "",
           미수금: "",
+          담당트레이너사번: "",
         },
       ],
     });
@@ -1159,6 +1163,26 @@ function PurchaseFields({
                             <span>횟수</span>
                             {/* 상품에 정해진 횟수다. 여기서 바꾸면 상품과 어긋난다 */}
                             <input className="input" value={`${l.총횟수}회`} readOnly />
+                          </label>
+                        )}
+                        {/*
+                          이 이용권을 맡을 트레이너
+
+                          결제 담당과 다른 사람이다. 데스크에서 판 사람이 그 PT 를
+                          맡는 것은 아니다. 예전에는 안 고르면 결제 담당이 그대로
+                          트레이너로 박혔는데, 그래서 실제와 어긋났다.
+                          PT · 케어처럼 사람이 붙는 갈래에서만 묻는다.
+                        */}
+                        {["수강권", "케어권"].includes(ticketCat(pr)) && (
+                          <label>
+                            <span>담당 트레이너</span>
+                            <select className="input" value={l.담당트레이너사번}
+                                    onChange={(e) => setLine(i, "담당트레이너사번", e.target.value)}>
+                              <option value="">지정 안 함</option>
+                              {trainers.map((x) => (
+                                <option key={x.id} value={x.id}>{x.name}</option>
+                              ))}
+                            </select>
                           </label>
                         )}
                         {/* 어떤 상품이든 깎아줄 수 있어야 한다 */}
@@ -1872,7 +1896,8 @@ function Detail({
               />
             )}
             {editPay && (
-              <PaymentEdit x={editPay} options={options} onClose={() => setEditPay(null)} />
+              <PaymentEdit x={editPay} options={options} trainers={trainers}
+                           onClose={() => setEditPay(null)} />
             )}
             {adding && (
               <AddPurchase member={item} tickets={tickets} products={products}
@@ -3189,13 +3214,16 @@ function MoveBox({ me, members, busy, onRun }: {
 
 /* ── 결제 고치기 ───────────────────────────── */
 function PaymentEdit({
-  x, options, onClose,
+  x, options, trainers, onClose,
 }: {
   x: Payment;
   options: Record<string, string[]>;
+  /** 결제 담당을 고르는 데 쓴다 */
+  trainers: { id: string; name: string }[];
   onClose: () => void;
 }) {
   const [f, setF] = useState({
+    담당직원사번: x.담당직원사번 ?? "",
     결제일시: (x.결제일시 ?? "").slice(0, 10),
     결제수단: x.결제수단 || "카드",
     결제금액: x.결제금액 ?? "",
@@ -3249,6 +3277,15 @@ function PaymentEdit({
           <L label="결제 수단">
             <select className="input" value={f.결제수단} onChange={(e) => set("결제수단", e.target.value)}>
               {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </L>
+          {/* 매출 화면의 「결제 담당별 매출」이 이 값을 센다.
+              상담을 받은 사람과 실제로 판 사람은 다를 수 있다 */}
+          <L label="결제 담당">
+            <select className="input" value={f.담당직원사번 ?? ""}
+                    onChange={(e) => set("담당직원사번", e.target.value)}>
+              <option value="">지정 안 함</option>
+              {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </L>
           {split ? (

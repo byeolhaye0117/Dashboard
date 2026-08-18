@@ -797,7 +797,17 @@ export default function Client(p: Props) {
 
       {byStaff.length > 0 && (
         <>
-          <h3 className="viz-title mt">담당 직원별 매출</h3>
+          <h3 className="viz-title mt">결제 담당별 매출</h3>
+          {/*
+            상담 담당과 다른 값이다
+
+            상담을 정예진이 받았어도 실제로 판 사람은 다를 수 있다. 여기 세는
+            것은 상품을 팔 때 고른 「결제 담당」이지 상담 담당이 아니다.
+            이름만 「담당」이라고 적어 두면 그 둘을 같은 것으로 읽는다.
+          */}
+          <p className="viz-sub">
+            상품을 팔 때 고른 <b>결제 담당</b> 기준입니다. 상담을 받은 사람과 다를 수 있습니다.
+          </p>
           <div className="table-wrap t2wrap">
             <table className="grid t2">
               <thead>
@@ -853,7 +863,7 @@ export default function Client(p: Props) {
                 <th>지점</th>
                 <th>유형</th>
                 <th>수단</th>
-                <th>담당</th>
+                <th>결제 담당</th>
                 {/* 「이 결제 누가 넣었지」는 시트를 열지 않고도 답할 수 있어야 한다 */}
                 <th>넣은 사람</th>
                 <th className="r">금액</th>
