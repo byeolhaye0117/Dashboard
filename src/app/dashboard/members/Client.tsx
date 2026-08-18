@@ -140,6 +140,19 @@ type Props = {
 };
 
 const PAY_METHODS = ["카드", "현금", "계좌", "카드+계좌"];
+
+/**
+ * 매출 유형 — 목록 관리에 아무것도 없을 때 쓰는 기본값
+ *
+ * 세 화면(상품 담기 · 이용권 고치기 · 결제 고치기)이 같은 목록을 봐야 한다.
+ * 따로 적어 두었더니 한 곳에만 값이 늘어 화면마다 고를 수 있는 것이 달랐다.
+ *
+ * 「PT」는 대표님이 넣으라 하신 것이다. 신규·재등록을 가르는 값이 아니라서
+ * 매출 화면은 이 값을 신규/재등록 판단에 쓰지 않는다 — 대신 그 회원이 전에
+ * 같은 갈래를 끊었는지 보고 알아서 가른다. 그러니 PT 로 두어도 재등록률에서
+ * 빠지지 않는다. 목록 관리 「매출유형」에 값을 넣으시면 그쪽이 먼저다.
+ */
+const SALE_TYPES = ["신규", "재등록", "PT", "기타매출"];
 /** 만료 임박으로 볼 기간 */
 const SOON = 30;
 
@@ -992,7 +1005,7 @@ function PurchaseFields({
   const saleTypes = useMemo(() => {
     const list = options["매출유형"]?.length
       ? options["매출유형"]
-      : ["신규", "재등록", "기타매출"];
+      : SALE_TYPES;
     return list.includes(sale) ? list : [sale, ...list];
   }, [options, sale]);
   /** 깎기 전 정가 합계와 깎아준 총액 — 얼마를 빼줬는지 눈에 보여야 한다 */
@@ -3079,7 +3092,7 @@ function TicketEdit({
   const saleTypes = useMemo(() => {
     const list = options["매출유형"]?.length
       ? options["매출유형"]
-      : ["신규", "재등록", "기타매출"];
+      : SALE_TYPES;
     const 지금 = (pay?.매출유형 ?? "").trim();
     return 지금 && !list.includes(지금) ? [지금, ...list] : list;
   }, [options, pay]);
@@ -3648,7 +3661,7 @@ function PaymentEdit({
             <select className="input" value={f.매출유형}
                     onChange={(e) => set("매출유형", e.target.value)}>
               <option value="">선택</option>
-              {(options["매출유형"] ?? ["신규", "재등록", "기타매출"]).map((m) => (
+              {(options["매출유형"]?.length ? options["매출유형"] : SALE_TYPES).map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
