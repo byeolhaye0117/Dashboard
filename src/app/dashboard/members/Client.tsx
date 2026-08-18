@@ -2002,6 +2002,7 @@ function Detail({
                 pr={productOf(editTicket.상품코드)}
                 trainers={trainers}
                 members={members}
+                options={options}
                 pay={payments.find((x) => x.id === (editTicket.결제번호 ?? "").trim())}
                 canRemove={can.remove}
                 onClose={() => setEditTicket(null)}
@@ -2883,10 +2884,12 @@ function PaymentLine({ x, lines, onEditItem }: {
 
 /* ── 이용권 고치기 ─────────────────────────── */
 function TicketEdit({
-  t, pr, trainers, members, pay, canRemove, onClose,
+  t, pr, trainers, members, pay, options, canRemove, onClose,
 }: {
   t: Ticket;
   pr?: ProductMeta;
+  /** 고르는 목록 — 매출 유형을 여기서 가져온다 */
+  options: Record<string, string[]>;
   /** 이 지점 재직자. pt 가 참인 사람만 「담당 트레이너」로 고를 수 있다 */
   trainers: Staffer[];
   members: Member[];
@@ -2908,6 +2911,9 @@ function TicketEdit({
     금액: t.금액 ?? "",
     할인: t.할인 ?? "",
     결제담당: pay?.담당직원사번 ?? "",
+    /* 결제 줄에 적힌 값이다. 이용권이 아니라 결제 한 건의 성격이라
+       같은 결제로 판 다른 상품도 같이 옮겨간다 */
+    매출유형: pay?.매출유형 ?? "",
   });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2918,6 +2924,17 @@ function TicketEdit({
 
   /** 개월로 파는 회원권에는 횟수 칸을 보여주지 않는다 */
   const byCount = usesCount(pr, t);
+
+  /* 고를 수 있는 매출 유형 — 목록 관리에서 정한 것을 따른다.
+     지금 적힌 값이 그 목록에 없으면(옛 표기) 그것도 남긴다. 안 그러면
+     열기만 해도 값이 딴 것으로 바뀐다 */
+  const saleTypes = useMemo(() => {
+    const list = options["매출유형"]?.length
+      ? options["매출유형"]
+      : ["신규", "재등록", "기타매출"];
+    const 지금 = (pay?.매출유형 ?? "").trim();
+    return 지금 && !list.includes(지금) ? [지금, ...list] : list;
+  }, [options, pay]);
 
   /** 지금 카테고리 — 고르면 상품 원장이 바뀐다 */
   const [cat, setCat] = useState(ticketCat(pr));
@@ -2953,19 +2970,29 @@ function TicketEdit({
   async function send(body: any) {
     setBusy(true);
 
-    /* 결제 담당은 이용권이 아니라 결제 줄에 적힌다. 바뀌었으면 그쪽도 같이 고친다 */
-    const 담당바뀜 =
-      body?.changes && pay && (f.결제담당 ?? "") !== (pay.담당직원사번 ?? "");
-    if (담당바뀜) {
+    /*
+      결제 담당과 매출 유형은 이용권이 아니라 결제 줄에 적힌다
+
+      한 결제로 여러 상품을 팔면 결제 줄은 하나뿐이라, 여기서 고치면 같은
+      결제로 판 다른 상품도 같이 옮겨간다. 그 말은 칸 아래에 적어 두었다.
+    */
+    const payChanges: Record<string, string> = {};
+    if (pay && (f.결제담당 ?? "") !== (pay.담당직원사번 ?? "")) {
+      payChanges.담당직원사번 = f.결제담당;
+    }
+    if (pay && (f.매출유형 ?? "") !== (pay.매출유형 ?? "")) {
+      payChanges.매출유형 = f.매출유형;
+    }
+    if (body?.changes && Object.keys(payChanges).length > 0) {
       const r = await fetch("/api/members/payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: pay!.id, changes: { 담당직원사번: f.결제담당 } }),
+        body: JSON.stringify({ id: pay!.id, changes: payChanges }),
       });
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
         setBusy(false);
-        return setMsg(d.error ?? "결제 담당을 바꾸지 못했습니다.");
+        return setMsg(d.error ?? "결제 줄을 고치지 못했습니다.");
       }
     }
 
@@ -3063,10 +3090,27 @@ function TicketEdit({
               </select>
             </L>
           )}
+          {/*
+            매출 유형
+
+            팔 때 화면이 스스로 정한 값이 여기 그대로 들어와 있다. 다른
+            지점에서 다니다 옮겨오신 분은 이 지점 기록만 보면 「신규」지만
+            실은 재등록이다 — 나중에 알게 되는 일이라 고칠 자리가 여기에도
+            있어야 한다. 매출 화면의 신규·재등록 셈이 이 값을 그대로 센다.
+          */}
+          {t.결제번호 && (
+            <L label="매출 유형">
+              <select className="input" value={f.매출유형}
+                      onChange={(e) => set("매출유형", e.target.value)}>
+                <option value="">정하지 않음</option>
+                {saleTypes.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </L>
+          )}
         </div>
         {t.결제번호 && (
           <p className="stat-note">
-            결제 담당을 바꾸면 <b>같은 결제로 판 다른 상품도 같이</b> 옮겨갑니다.
+            결제 담당과 매출 유형을 바꾸면 <b>같은 결제로 판 다른 상품도 같이</b> 옮겨갑니다.
           </p>
         )}
 
