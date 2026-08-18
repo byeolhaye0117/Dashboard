@@ -116,3 +116,32 @@ export function addMinutes(hhmm: string, add: number): string {
 export const STATE_TONE: Record<string, string> = {
   예정: "wait", 완료: "done", 노쇼: "miss", 취소: "gone",
 };
+
+/**
+ * 이 상품이 이 수업에 쓸 수 있는가
+ *
+ * ── 왜 필요해졌나 ────────────────────────────────────────────
+ * 수업 화면은 상품분류가 「1:1PT」 「그룹수업」이라고 적혀 있을 때만 알아봤다.
+ * 그런데 상품 관리 화면의 카테고리는 「회원권 · 수강권 · 케어권 · 부가상품권 ·
+ * 서비스」다. 그래서 수강권으로 만든 PT 상품이 수업 잡기에서 하나도 안 걸렸고,
+ * 「쓸 수 있는 이용권이 없습니다」만 떴다.
+ *
+ * 옛 이름과 새 이름을 둘 다 알아듣게 한다. 「수강권」은 PT 와 그룹수업을
+ * 같이 담는 이름이라 이름으로 한 번 더 가른다 — 상품 이름에 「그룹」이
+ * 들어 있으면 그룹수업으로, 아니면 1:1 로 본다.
+ */
+export function fitsKind(productKind: string, name: string, kind: string): boolean {
+  const k = (productKind ?? "").replace(/\s/g, "");
+  const n = (name ?? "").replace(/\s/g, "");
+  const 그룹이름 = /그룹|단체|GX/i.test(n);
+
+  if (kind === KIND_PT) {
+    if (["1:1PT", "PT", "개인레슨", "퍼스널"].includes(k)) return true;
+    return k === "수강권" && !그룹이름;
+  }
+  if (kind === KIND_GROUP) {
+    if (["그룹수업", "수업", "레슨", "GX"].includes(k)) return true;
+    return k === "수강권" && 그룹이름;
+  }
+  return k === kind;
+}
