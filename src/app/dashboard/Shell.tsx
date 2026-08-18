@@ -11,6 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
+import NoticePop from "@/components/NoticePop";
 import { GROUP_ORDER, PHONE_TABS, MENUS, type MenuItem } from "@/lib/menuItems";
 import type { Session } from "@/lib/session";
 
@@ -292,6 +293,15 @@ export default function Shell({
       )}
 
       {pwOpen && <PasswordDialog onClose={() => setPwOpen(false)} />}
+
+      {/*
+        안 읽은 공지
+
+        어느 화면을 열든 여기서 먼저 알린다. 공지 화면에 들어가야만 보이면
+        안 들어가는 사람은 평생 못 본다. 화면을 다 그린 뒤에 따로 물어보므로
+        이것 때문에 화면이 늦게 뜨지는 않는다.
+      */}
+      <NoticePop />
     </div>
   );
 }

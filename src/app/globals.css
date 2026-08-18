@@ -1550,6 +1550,26 @@ table.grid .late { color: var(--bad); font-weight: 800; }
 .ask-box p { margin: 5px 0 10px; font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
 .ask-box p b { color: var(--ink); font-weight: 700; }
 
+/* ── 공지 팝업 ───────────────────────────── */
+.np-top {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px; min-height: 20px;
+}
+.np-count { margin-left: auto; font-size: 11.5px; color: var(--muted); font-weight: 700; }
+/*
+  공지 본문 — 줄바꿈을 그대로 살린다
+
+  공지는 문단으로 적히는 글이다. 줄바꿈을 죽이면 「1. … 2. …」로 적어 둔
+  것이 한 줄로 붙어 읽을 수가 없다. 긴 공지는 상자 안에서 굴린다.
+*/
+.np-body {
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 46dvh; overflow-y: auto;
+  padding: 13px 14px; border-radius: var(--r);
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 13.5px; line-height: 1.75; color: var(--ink);
+}
+
 .modal-lead {
   margin: -8px 0 16px; font-size: 12.5px; color: var(--muted); line-height: 1.6;
 }
