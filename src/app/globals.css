@@ -1115,6 +1115,34 @@ table.grid tr.is-picked > td { background: color-mix(in srgb, var(--s1) 9%, tran
 .pickone:hover { border-color: var(--ink-2); }
 .pickone.on { border-color: var(--point); background: color-mix(in srgb, var(--point) 12%, var(--surface)); }
 
+/*
+  이름으로 찾아 고르기 (PT 잡기)
+
+  알약 모양으로 늘어놓았더니 「홍서연 남은 1회」와 「홍서연 남은 30회」가
+  나란히 떠서 어느 쪽이 그 사람인지 알 수가 없었다. 한 줄에 한 사람씩,
+  성별·전화번호·상품명까지 같이 보여야 고를 수 있다.
+*/
+.picklist {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 232px; overflow-y: auto;
+  padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg);
+}
+.pickrow {
+  display: block; width: 100%; text-align: left; cursor: pointer; font: inherit;
+  padding: 9px 11px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--surface);
+}
+.pickrow:hover { border-color: var(--ink-2); }
+.pickrow.on { border-color: var(--point); background: color-mix(in srgb, var(--point) 12%, var(--surface)); }
+.pickrow .who { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.pickrow .nm { font-size: 13px; font-weight: 700; color: var(--ink); }
+.pickrow .tel { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.pickrow .what {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin-top: 3px; font-size: 11.5px; color: var(--muted);
+}
+.pickrow .what b { color: var(--ink-2); font-weight: 600; }
+
 /* ── 만드는 중인 메뉴 ─────────────────────── */
 .plan { list-style: none; margin: 0 0 14px; padding: 0; }
 .plan li {
