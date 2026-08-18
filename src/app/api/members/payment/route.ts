@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
 const ALLOWED = new Set([
   "결제일시", "결제금액", "결제수단", "현금액", "카드액", "계좌액",
   "미수금액", "미수금결제예정일", "환불여부", "환불액", "매출유형", "메모",
+  /* 누구 실적인가 — 매출 화면의 「직원별 매출」이 이 값을 센다 */
+  "담당직원사번",
 ]);
 
 export async function POST(req: Request) {

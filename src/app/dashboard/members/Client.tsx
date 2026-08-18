@@ -1866,6 +1866,7 @@ function Detail({
                 pr={productOf(editTicket.상품코드)}
                 trainers={trainers}
                 members={members}
+                pay={payments.find((x) => x.id === (editTicket.결제번호 ?? "").trim())}
                 canRemove={can.remove}
                 onClose={() => setEditTicket(null)}
               />
@@ -2730,12 +2731,14 @@ function PaymentLine({ x, lines, onEditItem }: {
 
 /* ── 이용권 고치기 ─────────────────────────── */
 function TicketEdit({
-  t, pr, trainers, members, canRemove, onClose,
+  t, pr, trainers, members, pay, canRemove, onClose,
 }: {
   t: Ticket;
   pr?: ProductMeta;
   trainers: { id: string; name: string }[];
   members: Member[];
+  /** 이 이용권이 붙은 결제 — 담당을 고치려면 이쪽 줄을 고쳐야 한다 */
+  pay?: Payment;
   canRemove: boolean;
   onClose: () => void;
 }) {
@@ -2751,6 +2754,7 @@ function TicketEdit({
        금액을 고쳐도 결제 줄의 합계는 따라가지 않는다 — 그건 결제 창에서 고친다 */
     금액: t.금액 ?? "",
     할인: t.할인 ?? "",
+    결제담당: pay?.담당직원사번 ?? "",
   });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2795,6 +2799,23 @@ function TicketEdit({
 
   async function send(body: any) {
     setBusy(true);
+
+    /* 결제 담당은 이용권이 아니라 결제 줄에 적힌다. 바뀌었으면 그쪽도 같이 고친다 */
+    const 담당바뀜 =
+      body?.changes && pay && (f.결제담당 ?? "") !== (pay.담당직원사번 ?? "");
+    if (담당바뀜) {
+      const r = await fetch("/api/members/payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: pay!.id, changes: { 담당직원사번: f.결제담당 } }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setBusy(false);
+        return setMsg(d.error ?? "결제 담당을 바꾸지 못했습니다.");
+      }
+    }
+
     const res = await fetch("/api/members/ticket", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2805,6 +2826,7 @@ function TicketEdit({
     if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
     reloadTo(t.회원번호);
   }
+
 
   /** 정지 · 재개 · 양도는 계산이 붙는 일이라 서버가 맡는다 */
   async function op(body: any) {
@@ -2861,19 +2883,37 @@ function TicketEdit({
             </select>
           </L>
           {/* 결제 화면에서 「이 상품이 얼마였지」를 물으면 답할 자리 */}
-          <L label="판 금액">
+          <L label="결제금액">
             <input className="input" inputMode="numeric" value={f.금액}
                    onChange={(e) => set("금액", e.target.value.replace(/[^0-9]/g, ""))} />
           </L>
-          <L label="깎아 드린 금액">
+          <L label="할인금액">
             <input className="input" inputMode="numeric" value={f.할인}
                    onChange={(e) => set("할인", e.target.value.replace(/[^0-9]/g, ""))} />
           </L>
+          {/*
+            결제 담당
+
+            이 이용권이 붙은 결제 줄의 담당이다. 데스크에서 대신 넣어 준 뒤
+            실적을 옮겨야 할 때가 있는데, 지금까지는 고칠 자리가 없었다.
+            같은 결제로 판 다른 상품도 같이 옮겨간다 — 담당은 결제 한 건에
+            하나뿐이기 때문이다. 그 말을 칸 옆에 적어 둔다.
+          */}
+          {t.결제번호 && (
+            <L label="결제 담당">
+              <select className="input" value={f.결제담당}
+                      onChange={(e) => set("결제담당", e.target.value)}>
+                <option value="">지정 안 함</option>
+                {trainers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              </select>
+            </L>
+          )}
         </div>
-        <p className="stat-note">
-          여기서 금액을 고쳐도 <b>결제 줄의 합계는 따라가지 않습니다.</b>
-          받은 돈 자체가 달랐다면 결제 탭에서 그 결제를 고쳐주세요.
-        </p>
+        {t.결제번호 && (
+          <p className="stat-note">
+            결제 담당을 바꾸면 <b>같은 결제로 판 다른 상품도 같이</b> 옮겨갑니다.
+          </p>
+        )}
 
         {/*
           카테고리 고치기
@@ -2892,10 +2932,6 @@ function TicketEdit({
             「{pr?.name ?? t.상품코드}」 상품 전체에 적용됩니다
           </span>
         </div>
-        <p className="stat-note">
-          이 상품으로 판 이용권이 <b>모두 같이</b> 옮겨갑니다. 한 사람만 바꾸는 것이
-          아니라 상품의 성격을 정하는 자리입니다.
-        </p>
 
         <h4 className="mini-title">정지 · 양도</h4>
 
