@@ -451,6 +451,8 @@ export type NewMember = {
   미수금액?: string;
   미수금결제예정일?: string;
   매출유형?: string;
+  /** 실제로 돈을 받은 날. 비면 지금이다 */
+  결제일?: string;
 };
 
 /** "550,000원" 같은 글자에서 숫자만 남긴다 */
@@ -488,6 +490,15 @@ export type Purchase = {
   미수금액?: string;
   미수금결제예정일?: string;
   매출유형?: string;
+  /**
+   * 실제로 돈을 받은 날 (YYYY-MM-DD)
+   *
+   * 비면 지금이다. 데스크에서 며칠 지나 넣는 일이 있는데, 그러면 넣은 날로
+   * 박혀서 매출이 엉뚱한 달에 잡힌다 — 월말 결제가 다음 달로 넘어간다.
+   * 시각은 지금 것을 그대로 쓴다. 같은 날 여러 건이면 넣은 차례가 곧
+   * 받은 차례라 그게 맞다.
+   */
+  결제일?: string;
   /** 이 판매를 누구 실적으로 다는가. 비면 저장한 사람이다 */
   결제담당사번?: string;
   담당직원사번?: string;
@@ -512,6 +523,11 @@ async function writePurchase(
   await addColumns(SHEET_V, ["결제번호", "금액", "할인", "미수금"]);
 
   const stamp = now();
+  /* 받은 날을 골랐으면 그 날로 적는다. 시각은 지금 것을 그대로 둔다 —
+     같은 날 여러 건이면 넣은 차례가 곧 받은 차례다 */
+  const 받은때 = (input.결제일 ?? "").trim()
+    ? input.결제일!.trim() + stamp.slice(10)
+    : stamp;
 
   // 1) 결제 — 돈을 받은 건에 한해서만 한 줄 만든다
   const amount =
@@ -532,7 +548,7 @@ async function writePurchase(
           회원번호: memberId,
           이용권번호: "",
           지점코드: branch,
-          결제일시: stamp,
+          결제일시: 받은때,
           결제금액: String(amount),
           결제수단: input.결제수단,
           현금액: String(cash),

@@ -78,6 +78,8 @@ export async function POST(req: Request) {
         미수금액: String(b.미수금액 ?? ""),
         미수금결제예정일: String(b.미수금결제예정일 ?? ""),
         매출유형: String(b.매출유형 ?? ""),
+        /* 실제로 받은 날. 비면 서버가 지금으로 적는다 */
+        결제일: String(b.결제일 ?? ""),
       },
       session.staffId
     );

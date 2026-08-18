@@ -168,7 +168,6 @@ async function body() {
         <div className="stat">
           <div className="lb">서비스 상품</div>
           <div className="vl num">{service}</div>
-          <div className="dt">등록 시 얹어주는 항목</div>
         </div>
       </div>
 
