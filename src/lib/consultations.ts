@@ -72,18 +72,32 @@ export async function listConsultations(): Promise<{
   items: Consultation[];
   /** 상담번호 → 시트에서 몇 번째 줄인지 */
   rowOf: Record<string, number>;
+  /** 두 번 넘게 쓰인 상담번호 — 손대면 엉뚱한 줄이 바뀐다 */
+  dupes: Set<string>;
 }> {
   const { headers, rows, rowNumbers } = await readSheet(SHEET_C);
   const items: Consultation[] = [];
   const rowOf: Record<string, number> = {};
+  const dupes = new Set<string>();
+  /*
+   * 번호가 겹치면 마지막 줄만 남아 앞줄은 손댈 수가 없다
+   *
+   * 예전에 지운 번호를 다시 내주던 탓에 시트에 겹친 번호가 남아 있다.
+   * 겹친 것을 표시해 두고, 고치거나 지울 때 조용히 엉뚱한 줄을 바꾸는 대신
+   * 무엇이 잘못됐는지 말하게 한다.
+   */
+  const seen = new Set<string>();
   rows.forEach((r, i) => {
     if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
     const id = r["상담번호"];
+    if (!id) return;
+    if (seen.has(id)) dupes.add(id);
+    seen.add(id);
     items.push({ ...r, id });
     rowOf[id] = rowNumbers[i];
   });
   items.sort((a, b) => (b["접수일시"] ?? "").localeCompare(a["접수일시"] ?? ""));
-  return { headers, items, rowOf };
+  return { headers, items, rowOf, dupes };
 }
 
 export async function listActivities(): Promise<Activity[]> {
@@ -103,6 +117,21 @@ export async function listActivities(): Promise<Activity[]> {
  */
 export async function ensureLinkColumns(): Promise<void> {
   await addColumns(SHEET_C, ["전환회원번호", "등록여부"]);
+}
+
+/**
+ * 이미 쓴 번호는 다시 내주지 않는다
+ *
+ * 지금까지 다음 번호를 매길 때 「지운 상담」을 빼고 셌다. 그래서 C00001 을
+ * 지우면 다음 상담이 다시 C00001 을 받았다. 번호가 겹치면 고칠 때 엉뚱한
+ * 줄이 바뀌고, 회원과 이어 붙인 자국도 어느 상담 것인지 알 수 없게 된다.
+ * 실제로 시트에 C00001 이 셋, C00002 가 둘 있었다.
+ *
+ * 지운 줄도 세야 한다. 번호는 아껴 쓸 이유가 없다.
+ */
+async function usedIds(sheet: string, key: string): Promise<string[]> {
+  const { rows } = await readSheet(sheet);
+  return rows.map((r) => r[key] ?? "").filter(Boolean);
 }
 
 /** 다음 번호를 만든다 (C00001 형태) */
@@ -137,8 +166,9 @@ export async function createConsultation(
   input: NewConsultation,
   staffId: string
 ): Promise<string> {
-  const { headers, items } = await listConsultations();
-  const id = nextId(items.map((i) => i.id), "C", 5);
+  const { headers } = await listConsultations();
+  /* 지운 상담이 쓰던 번호도 센다 — 다시 내주면 번호가 겹친다 */
+  const id = nextId(await usedIds(SHEET_C, "상담번호"), "C", 5);
   const stamp = now();
 
   const picked = (input.진행상태 ?? "").trim();
@@ -189,9 +219,17 @@ export async function patchConsultation(
   changes: Row,
   staffId: string
 ): Promise<void> {
-  const { headers, items, rowOf } = await listConsultations();
+  const { headers, items, rowOf, dupes } = await listConsultations();
   const target = items.find((i) => i.id === id);
   if (!target || !rowOf[id]) throw new Error("해당 상담을 찾지 못했습니다.");
+  /* 겹친 번호를 고치면 엉뚱한 줄이 바뀐다. 조용히 넘어가지 않는다 */
+  if (dupes.has(id)) {
+    throw new Error(
+      `상담번호 ${id} 이(가) 시트에 두 줄 넘게 있습니다. ` +
+        `겹친 번호를 고치면 엉뚱한 줄이 바뀌므로 손대지 않았습니다. ` +
+        `구글 시트 「상담」 탭에서 겹친 번호부터 정리해주세요.`
+    );
+  }
 
   const stamp = now();
   const merged: Row = { ...target, ...changes, 수정일시: stamp, 수정자: staffId };
@@ -219,9 +257,15 @@ export async function patchConsultation(
  * 실수로 지워도 시트에서 삭제여부 칸을 비우면 되살아난다.
  */
 export async function softDeleteConsultation(id: string, staffId: string): Promise<void> {
-  const { headers, items, rowOf } = await listConsultations();
+  const { headers, items, rowOf, dupes } = await listConsultations();
   const target = items.find((i) => i.id === id);
   if (!target || !rowOf[id]) throw new Error("해당 상담을 찾지 못했습니다.");
+  if (dupes.has(id)) {
+    throw new Error(
+      `상담번호 ${id} 이(가) 시트에 두 줄 넘게 있습니다. ` +
+        `겹친 번호를 지우면 엉뚱한 줄이 지워지므로 손대지 않았습니다.`
+    );
+  }
 
   const stamp = now();
   await updateRow(SHEET_C, rowOf[id], headers, {
@@ -239,8 +283,7 @@ export async function addActivity(
   staffId: string
 ): Promise<void> {
   const { headers } = await readSheet(SHEET_A);
-  const existing = await listActivities();
-  const id = nextId(existing.map((a) => a.id), "CA", 4);
+  const id = nextId(await usedIds(SHEET_A, "활동번호"), "CA", 4);
   const stamp = now();
 
   await appendRow(SHEET_A, headers, {
