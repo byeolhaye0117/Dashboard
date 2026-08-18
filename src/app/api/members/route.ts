@@ -64,6 +64,8 @@ export async function POST(req: Request) {
         지점코드,
         가입일: String(b.가입일 ?? ""),
         담당직원사번: String(b.담당직원사번 ?? ""),
+        /* 회원의 담당 트레이너와 다른 값이다 — 결제 실적을 누가 가져가는가 */
+        결제담당사번: String(b.결제담당사번 ?? ""),
         메모: String(b.메모 ?? ""),
         상담번호: String(b.상담번호 ?? ""),
         이용권,

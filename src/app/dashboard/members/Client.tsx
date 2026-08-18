@@ -581,10 +581,12 @@ type Buy = {
   미수금액: string;
   미수금결제예정일: string;
   매출유형: string;
+  /** 이 판매를 누가 했는가 — 비면 저장하는 사람으로 남는다 */
+  담당직원사번: string;
 };
 
 const emptyBuy = (): Buy => ({
-  lines: [], 결제수단: "카드", 금액: "", 직접입력: false,
+  lines: [], 결제수단: "카드", 금액: "", 직접입력: false, 담당직원사번: "",
   카드액: "", 계좌액: "", 미수금액: "", 미수금결제예정일: "", 매출유형: "",
 });
 
@@ -843,6 +845,9 @@ function buyPayload(
             추가금액: String(linePrice(l, pOf(l.상품코드))),
           })),
     결제수단: b.결제수단,
+    /* 회원의 「담당 트레이너」와 이름이 겹치면 서로 덮어쓴다. 결제 실적은
+       따로 부른다 — 데스크에서 대신 넣어 주는 일이 흔해 둘이 다를 수 있다 */
+    결제담당사번: b.담당직원사번,
     결제금액: split
       ? String(onlyNum(b.카드액) + onlyNum(b.계좌액))
       : b.직접입력 ? b.금액 : String(suggested),
@@ -873,13 +878,15 @@ const catOf = (pr: ProductMeta) => ticketCat(pr);
  * 화면이라, 무엇을 골랐고 얼마인지가 항상 같이 보여야 한다.
  */
 function PurchaseFields({
-  products, options, baseDate, tickets, b, setB,
+  products, options, baseDate, tickets, trainers, b, setB,
 }: {
   products: ProductMeta[];
   options: Record<string, string[]>;
   baseDate: string;
   /** 이 회원이 지금까지 끊은 이용권 — 신규인지 재등록인지 가리는 데 쓴다 */
   tickets: Ticket[];
+  /** 결제를 누구 실적으로 달지 고른다 */
+  trainers: { id: string; name: string }[];
   b: Buy;
   setB: (next: Buy) => void;
 }) {
@@ -1211,6 +1218,22 @@ function PurchaseFields({
               </select>
             </label>
 
+            {/*
+              누구 실적인가
+
+              지금까지는 저장한 사람이 무조건 담당으로 박혔다. 데스크에서 대신
+              넣어 주는 일이 흔해서, 실제로 판 사람과 적힌 사람이 어긋났다.
+              매출 화면의 「직원별 매출」이 그 값을 그대로 세므로 그냥 넘길 수 없다.
+            */}
+            <label className="row f">
+              <span>결제 담당</span>
+              <select className="input" value={b.담당직원사번}
+                      onChange={(e) => setB({ ...b, 담당직원사번: e.target.value })}>
+                <option value="">저장하는 사람 (나)</option>
+                {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </label>
+
             {split ? (
               <>
                 <label className="row f">
@@ -1281,13 +1304,15 @@ function PurchaseFields({
 
 /* ── 이미 있는 회원에게 상품 더하기 ────────── */
 function AddPurchase({
-  member, tickets, products, productBranches, options, onClose,
+  member, tickets, products, productBranches, options, trainers, onClose,
 }: {
   member: Member;
   tickets: Ticket[];
   products: ProductMeta[];
   productBranches: Record<string, string[]>;
   options: Record<string, string[]>;
+  /** 결제를 누구 실적으로 달지 고르는 데 쓴다 */
+  trainers: { id: string; name: string }[];
   onClose: () => void;
 }) {
   /*
@@ -1337,6 +1362,7 @@ function AddPurchase({
         )}
 
         <PurchaseFields products={sellable} options={options} tickets={tickets}
+                        trainers={trainers}
                         baseDate={today()} b={b} setB={setB} />
 
         {msg && <div className="alert-bad">{msg}</div>}
@@ -1470,6 +1496,7 @@ function NewForm({
           </p>
         )}
         <PurchaseFields products={sellable} options={options} tickets={[]}
+                        trainers={trainers}
                         baseDate={f["가입일"] ?? today()} b={b} setB={setB} />
 
         <div className="form-grid" style={{ marginTop: 10 }}>
@@ -1849,6 +1876,7 @@ function Detail({
             {adding && (
               <AddPurchase member={item} tickets={tickets} products={products}
                            productBranches={productBranches} options={options}
+                           trainers={trainers}
                            onClose={() => setAdding(false)} />
             )}
 

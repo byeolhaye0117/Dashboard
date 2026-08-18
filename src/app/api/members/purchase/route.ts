@@ -64,6 +64,8 @@ export async function POST(req: Request) {
         미수금액: String(b.미수금액 ?? ""),
         미수금결제예정일: String(b.미수금결제예정일 ?? ""),
         매출유형: String(b.매출유형 ?? ""),
+        /* 화면에서 고른 결제 담당이 먼저다. 안 골랐으면 회원의 담당 트레이너 */
+        결제담당사번: String(b.결제담당사번 ?? ""),
         담당직원사번: target.담당직원사번,
         메모: String(b.메모 ?? ""),
       },
