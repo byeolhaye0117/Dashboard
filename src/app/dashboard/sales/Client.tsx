@@ -1334,7 +1334,6 @@ function PayDetail({
   onClose: () => void;
 }) {
   const 합 = num(x.결제금액);
-  const 적힌합 = items.reduce((s, t) => s + num(t.금액), 0);
   const 미수 = num(x.미수금액);
   const ways = [
     { k: "현금", v: num(x.현금액) },
@@ -1425,22 +1424,6 @@ function PayDetail({
               </tbody>
             </table>
           </div>
-        )}
-
-        {/*
-          합이 안 맞을 수 있다
-
-          이용권 줄에 금액이 안 적혀 있던 때 판 것이 섞이면 상품 합계가
-          결제 금액보다 작다. 그걸 조용히 맞추면 없는 기록을 지어내는 것이라,
-          안 맞으면 안 맞는다고 적는다.
-        */}
-        {items.length > 0 && 적힌합 !== 합 && (
-          <p className="stat-note">
-            상품에 적힌 금액을 더하면 <b className="num">{money(적힌합)}원</b>으로, 결제
-            금액 <b className="num">{money(합)}원</b>과 <b>{money(Math.abs(합 - 적힌합))}원</b>{" "}
-            차이가 납니다. 이용권에 금액을 안 적던 때 판 것이 섞여 있으면 이렇게 됩니다 —
-            회원 화면의 이용권 고치기에서 그 상품의 결제금액을 넣어 주시면 맞아떨어집니다.
-          </p>
         )}
 
         <div className="modal-actions">

@@ -649,6 +649,8 @@ type Buy = {
   /** 직접 고쳤을 때만 채운다. 비어 있으면 상품값 합계를 쓴다 */
   금액: string;
   직접입력: boolean;
+  /** 실제로 돈을 받은 날. 데스크에서 며칠 지나 넣는 일이 있다 */
+  결제일: string;
   카드액: string;
   계좌액: string;
   미수금액: string;
@@ -668,7 +670,7 @@ type Buy = {
 
 const emptyBuy = (): Buy => ({
   lines: [], 결제수단: "카드", 금액: "", 직접입력: false,
-  담당직원사번: "", 담당트레이너사번: "",
+  담당직원사번: "", 담당트레이너사번: "", 결제일: today(),
   카드액: "", 계좌액: "", 미수금액: "", 미수금결제예정일: "", 매출유형: "",
 });
 
@@ -983,6 +985,8 @@ function buyPayload(
     // 미수금은 상품마다 적은 것을 더해서 결제 한 줄에 담는다
     미수금액: String(b.lines.reduce((s, l) => s + onlyNum(l.미수금), 0)),
     미수금결제예정일: b.미수금결제예정일,
+    /* 실제로 받은 날. 비면 서버가 지금으로 적는다 */
+    결제일: b.결제일,
     /* 직원이 손대 두었으면 그 값이 먼저다. 안 골랐으면 화면이 계산한 값 */
     매출유형:
       (b.매출유형 ?? "").trim() ||
@@ -1361,6 +1365,19 @@ function PurchaseFields({
                       }}>
                 {(options["결제유형"] ?? PAY_METHODS).map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
+            </label>
+
+            {/*
+              돈을 받은 날
+
+              데스크에서 며칠 지나 넣는 일이 있다. 그러면 넣은 날로 박혀서
+              매출이 엉뚱한 달에 잡힌다 — 월말 결제가 다음 달로 넘어간다.
+              기본은 오늘이라, 그날 바로 넣으시면 손댈 것이 없다.
+            */}
+            <label className="row f">
+              <span>결제일</span>
+              <input className="input" type="date" value={b.결제일}
+                     onChange={(e) => setB({ ...b, 결제일: e.target.value })} />
             </label>
 
             {/*
@@ -3097,6 +3114,9 @@ function TicketEdit({
     금액: t.금액 ?? "",
     할인: t.할인 ?? "",
     결제담당: pay?.담당직원사번 ?? "",
+    /* 결제 줄에 적힌 날이다. 뒤늦게 넣은 결제는 넣은 날로 박혀 있어서
+       실제로 받은 날과 다르다 — 매출이 엉뚱한 달에 잡힌다 */
+    결제일: (pay?.결제일시 ?? "").slice(0, 10),
     /* 결제 줄에 적힌 값이다. 이용권이 아니라 결제 한 건의 성격이라
        같은 결제로 판 다른 상품도 같이 옮겨간다 */
     매출유형: pay?.매출유형 ?? "",
@@ -3168,6 +3188,11 @@ function TicketEdit({
     }
     if (pay && (f.매출유형 ?? "") !== (pay.매출유형 ?? "")) {
       payChanges.매출유형 = f.매출유형;
+    }
+    if (pay && f.결제일 && f.결제일 !== (pay.결제일시 ?? "").slice(0, 10)) {
+      /* 시각은 원래 것을 그대로 둔다. 날짜만 고치겠다는 뜻인데 시각까지
+         00:00 으로 밀면, 같은 날 결제 차례가 뒤바뀐다 */
+      payChanges.결제일시 = f.결제일 + (pay.결제일시 ?? "").slice(10);
     }
     if (body?.changes && Object.keys(payChanges).length > 0) {
       const r = await fetch("/api/members/payment", {
@@ -3268,6 +3293,12 @@ function TicketEdit({
             하나뿐이기 때문이다. 그 말을 칸 옆에 적어 둔다.
           */}
           {pay && (
+            <L label="결제일">
+              <input className="input" type="date" value={f.결제일}
+                     onChange={(e) => set("결제일", e.target.value)} />
+            </L>
+          )}
+          {pay && (
             <L label="결제 담당">
               <select className="input" value={f.결제담당}
                       onChange={(e) => set("결제담당", e.target.value)}>
@@ -3296,7 +3327,8 @@ function TicketEdit({
         </div>
         {pay ? (
           <p className="stat-note">
-            결제 담당과 매출 유형을 바꾸면 <b>같은 결제로 판 다른 상품도 같이</b> 옮겨갑니다.
+            결제일 · 결제 담당 · 매출 유형을 바꾸면 <b>같은 결제로 판 다른 상품도 같이</b>{" "}
+            옮겨갑니다. 결제일을 바꾸면 그 매출이 잡히는 달도 바뀝니다.
           </p>
         ) : (
           /*
@@ -3307,8 +3339,8 @@ function TicketEdit({
             데는 있고 어떤 데는 없나」가 됐다. 없으면 없다고 적는다.
           */
           <p className="stat-note">
-            이 이용권에 이어진 결제를 찾지 못해 <b>결제 담당 · 매출 유형</b>은 여기서 고칠 수
-            없습니다. 결제 탭에서 그 결제를 열어 고쳐 주세요.
+            이 이용권에 이어진 결제를 찾지 못해 <b>결제일 · 결제 담당 · 매출 유형</b>은 여기서
+            고칠 수 없습니다. 결제 탭에서 그 결제를 열어 고쳐 주세요.
           </p>
         )}
 
