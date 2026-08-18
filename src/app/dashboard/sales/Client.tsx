@@ -49,6 +49,8 @@ type Ticket = {
   id: string; 상품코드: string; 결제번호: string; 금액: string;
   /* 결제번호가 없던 옛 줄을 날짜로 잇고, 신규·재등록을 가르는 데 쓴다 */
   회원번호?: string; 시작일?: string; 등록일시?: string; 지점코드?: string;
+  /* 결제 상세에서 「이 36만원이 무엇이었나」를 답하는 값들 */
+  종료일?: string; 할인?: string; 미수금?: string; 총횟수?: string;
 };
 type Named = { code: string; name: string };
 type Goal = { 지점코드: string; 연월: string; 목표금액: number };
@@ -153,6 +155,8 @@ export default function Client(p: Props) {
   const [branch, setBranch] = useState("전체");
   /* 지우기는 한 번 더 묻는다. 돈이 오간 기록이라 되돌리기가 번거롭다 */
   const [wipe, setWipe] = useState<Payment | null>(null);
+  /** 결제 한 줄을 눌러 여는 상세 — 무엇을 얼마에 팔았는지 */
+  const [detail, setDetail] = useState<Payment | null>(null);
   const [wiping, setWiping] = useState(false);
   const [wipeErr, setWipeErr] = useState("");
 
@@ -281,16 +285,19 @@ export default function Client(p: Props) {
    * 이용권에 적힌 금액이 있으면 그대로 쓰고, 없으면 상품 정가로 나눈다.
    * 결제 한 건에 회원권과 사물함이 같이 들어 있어도 각각 얼마인지 알 수 있다.
    */
-  const bucketOf = useMemo(() => {
-    /*
-     * 이용권을 결제에 잇는다
-     *
-     * 이용권 줄이 결제번호를 들고 있으면 그대로 쓴다. 「결제번호」 칸이 없던
-     * 동안 판 줄은 자국이 없어서, 같은 날 결제가 하나뿐일 때만 그 결제 것으로
-     * 본다. 여러 건이면 어느 쪽인지 알 수 없어 손대지 않는다 —
-     * 틀리게 붙이는 것보다 낫다.
-     */
-    const byPay: Record<string, Ticket[]> = {};
+  /*
+   * 이용권을 결제에 잇는다
+   *
+   * 이용권 줄이 결제번호를 들고 있으면 그대로 쓴다. 「결제번호」 칸이 없던
+   * 동안 판 줄은 자국이 없어서, 같은 날 결제가 하나뿐일 때만 그 결제 것으로
+   * 본다. 여러 건이면 어느 쪽인지 알 수 없어 손대지 않는다 —
+   * 틀리게 붙이는 것보다 낫다.
+   *
+   * 갈래를 세는 셈과 결제 상세 창이 같은 것을 봐야 한다. 한쪽에만 두었다가
+   * 화면마다 다른 답이 나오는 일을 이미 겪었다.
+   */
+  const byPay = useMemo(() => {
+    const out: Record<string, Ticket[]> = {};
     /* 회원과 날짜로 함께 찾는다. 날짜만 보면 같은 날 다른 회원이 결제했을 때
        그 결제가 여러 건이라는 이유로 이어 붙이기를 포기하게 된다 —
        실제로 13만원이 그것 때문에 계속 기타로 남았다 */
@@ -301,12 +308,15 @@ export default function Client(p: Props) {
     });
     p.tickets.forEach((t) => {
       const pid = (t.결제번호 ?? "").trim();
-      if (pid) return (byPay[pid] ??= []).push(t);
+      if (pid) return void ((out[pid] ??= []).push(t));
       const d = (t.등록일시 ?? t.시작일 ?? "").slice(0, 10);
       const same = byWho[`${t.회원번호 ?? ""}|${d}`] ?? [];
-      if (same.length === 1) (byPay[same[0].id] ??= []).push(t);
+      if (same.length === 1) (out[same[0].id] ??= []).push(t);
     });
+    return out;
+  }, [p.payments, p.tickets]);
 
+  const bucketOf = useMemo(() => {
     const where = (kind?: string) => {
       const k = kind ?? "";
       if (k.includes("회원권")) return "회원권" as const;
@@ -377,7 +387,7 @@ export default function Client(p: Props) {
       });
       return out;
     };
-  }, [p.tickets, p.payments, p.products]);
+  }, [byPay, p.tickets, p.products]);
 
   const bucket = bucketOf(cur.live);
 
@@ -868,7 +878,7 @@ export default function Client(p: Props) {
                 <th>수단</th>
                 <th>결제 담당</th>
                 {/* 「이 결제 누가 넣었지」는 시트를 열지 않고도 답할 수 있어야 한다 */}
-                <th>넣은 사람</th>
+                <th>등록자</th>
                 <th className="r">금액</th>
                 <th className="r">미수금</th>
                 {p.canWipePay && <th />}
@@ -879,7 +889,9 @@ export default function Client(p: Props) {
                 .slice()
                 .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
                 .map((x) => (
-                  <tr key={x.id}>
+                  /* 줄을 누르면 「이 36만원이 무엇이었나」가 열린다.
+                     지우기 단추는 눌러도 상세가 안 열리게 따로 막는다 */
+                  <tr key={x.id} onClick={() => setDetail(x)}>
                     <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
                     <td>{p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"}</td>
                     <td className="dim">{branchName(x.지점코드)}</td>
@@ -900,7 +912,7 @@ export default function Client(p: Props) {
                     {p.canWipePay && (
                       <td className="r">
                         <button type="button" className="linkish"
-                                onClick={() => setWipe(x)}>
+                                onClick={(e) => { e.stopPropagation(); setWipe(x); }}>
                           지우기
                         </button>
                       </td>
@@ -1195,6 +1207,18 @@ export default function Client(p: Props) {
       </>
 
 
+      {detail && (
+        <PayDetail
+          x={detail}
+          items={byPay[detail.id] ?? []}
+          productOf={productOf}
+          memberName={p.memberNames[detail.회원번호] ?? detail.회원번호 ?? "-"}
+          branch={branchName(detail.지점코드)}
+          staffNames={p.staffNames}
+          onClose={() => setDetail(null)}
+        />
+      )}
+
       {wipe && (
         <div className="modal-back" onClick={() => !wiping && setWipe(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -1207,7 +1231,7 @@ export default function Client(p: Props) {
               </div>
               <div className="kv-row"><span>금액</span><b className="num">{money(num(wipe.결제금액))}</b></div>
               <div className="kv-row">
-                <span>넣은 사람</span>
+                <span>등록자</span>
                 <b>{p.staffNames[wipe.등록자] ?? wipe.등록자 ?? "-"}
                   {wipe.등록일시 ? ` · ${wipe.등록일시.slice(0, 16)}` : ""}</b>
               </div>
@@ -1230,6 +1254,148 @@ export default function Client(p: Props) {
 }
 
 /* ── 조각들 ────────────────────────────────── */
+
+/**
+ * 결제 한 건의 상세
+ *
+ * 표에는 합계 하나만 있다. 「이 363,000원이 무엇이었나」는 표만 봐서는
+ * 답이 안 나오고, 그때마다 회원 화면으로 건너가야 했다. 매출을 맞춰 보는
+ * 자리에서 그 걸음이 제일 잦다.
+ *
+ * 상품마다 정가 · 할인 · 결제 · 미수를 나눠 적는다. 이용권 줄에 적힌 값만
+ * 쓰고 짐작해서 채우지 않는다 — 안 적힌 것은 안 적혔다고 둔다. 예전에
+ * 비율로 나눠 채웠다가 실제 결제와 전혀 안 맞았다.
+ */
+function PayDetail({
+  x, items, productOf, memberName, branch, staffNames, onClose,
+}: {
+  x: Payment;
+  /** 이 결제에 딸린 이용권 줄 */
+  items: Ticket[];
+  productOf: (code: string) => ProductMeta | undefined;
+  memberName: string;
+  branch: string;
+  staffNames: Record<string, string>;
+  onClose: () => void;
+}) {
+  const 합 = num(x.결제금액);
+  const 적힌합 = items.reduce((s, t) => s + num(t.금액), 0);
+  const 미수 = num(x.미수금액);
+  const ways = [
+    { k: "현금", v: num(x.현금액) },
+    { k: "카드", v: num(x.카드액) },
+    { k: "계좌", v: num(x.계좌액) },
+  ].filter((w) => w.v > 0);
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{memberName} · {money(합)}원</h3>
+        <p className="page-sub" style={{ margin: "2px 0 12px" }}>
+          {(x.결제일시 ?? "").slice(0, 16).replace("T", " ")} · {branch} · {x.id}
+        </p>
+
+        <div className="kv">
+          <div className="kv-row"><span>유형</span>
+            <b>{isRefund(x) ? "환불" : typeOf(x.매출유형)}</b></div>
+          <div className="kv-row"><span>수단</span><b>{x.결제수단 || "-"}</b></div>
+          <div className="kv-row"><span>결제 담당</span>
+            <b>{staffNames[x.담당직원사번] ?? "-"}</b></div>
+          <div className="kv-row"><span>등록자</span>
+            <b>{staffNames[x.등록자] ?? x.등록자 ?? "-"}
+              {x.등록일시 ? ` · ${x.등록일시.slice(0, 16).replace("T", " ")}` : ""}</b></div>
+          {ways.length > 0 && (
+            <div className="kv-row"><span>나눠 받음</span>
+              <b className="num">{ways.map((w) => `${w.k} ${money(w.v)}`).join(" · ")}</b></div>
+          )}
+          {미수 > 0 && (
+            <div className="kv-row"><span>미수금</span>
+              <b className="num bad">{money(미수)}
+                {x.미수금결제예정일 ? ` · ${x.미수금결제예정일.slice(0, 10)}까지` : ""}</b></div>
+          )}
+          {isRefund(x) && (
+            <div className="kv-row"><span>환불</span>
+              <b className="num bad">{money(num(x.환불액))}
+                {x.환불사유 ? ` · ${x.환불사유}` : ""}</b></div>
+          )}
+        </div>
+
+        <h4 className="viz-title mt">무엇을 팔았나</h4>
+        {items.length === 0 ? (
+          /* 이어 붙일 이용권을 못 찾은 경우. 짐작해서 채우지 않는다 */
+          <p className="stat-note">
+            이 결제에 이어진 이용권을 찾지 못했습니다. 이용권 시트에 「결제번호」 칸이 없던
+            동안 판 것이고, 같은 날 같은 회원의 결제가 여러 건이면 어느 쪽인지 알 수 없어
+            잇지 않습니다.
+          </p>
+        ) : (
+          <div className="table-wrap">
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th>상품</th>
+                  <th className="r">결제</th>
+                  <th className="r">할인</th>
+                  <th className="r">미수</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((t) => {
+                  const pr = productOf(t.상품코드);
+                  const 적힘 = (t.금액 ?? "").trim() !== "";
+                  const 기간 = [
+                    (t.시작일 ?? "").slice(0, 10),
+                    (t.종료일 ?? "").slice(0, 10),
+                  ].filter(Boolean).join(" ~ ");
+                  return (
+                    <tr key={t.id}>
+                      <td>
+                        <b>{pr?.name || t.상품코드}</b>
+                        {(기간 || t.총횟수) && (
+                          <div className="dim" style={{ fontSize: 11.5, marginTop: 2 }}>
+                            {[기간, t.총횟수 ? `${t.총횟수}회` : ""].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
+                      </td>
+                      <td className="r num">
+                        {적힘 ? money(num(t.금액)) : <span className="dim">기록 없음</span>}
+                      </td>
+                      <td className="r num dim">{num(t.할인) > 0 ? money(num(t.할인)) : "-"}</td>
+                      <td className={`r num ${num(t.미수금) > 0 ? "bad" : "dim"}`}>
+                        {num(t.미수금) > 0 ? money(num(t.미수금)) : "-"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/*
+          합이 안 맞을 수 있다
+
+          이용권 줄에 금액이 안 적혀 있던 때 판 것이 섞이면 상품 합계가
+          결제 금액보다 작다. 그걸 조용히 맞추면 없는 기록을 지어내는 것이라,
+          안 맞으면 안 맞는다고 적는다.
+        */}
+        {items.length > 0 && 적힌합 !== 합 && (
+          <p className="stat-note">
+            상품에 적힌 금액을 더하면 <b className="num">{money(적힌합)}원</b>으로, 결제
+            금액 <b className="num">{money(합)}원</b>과 <b>{money(Math.abs(합 - 적힌합))}원</b>{" "}
+            차이가 납니다. 이용권에 금액을 안 적던 때 판 것이 섞여 있으면 이렇게 됩니다 —
+            회원 화면의 이용권 고치기에서 그 상품의 결제금액을 넣어 주시면 맞아떨어집니다.
+          </p>
+        )}
+
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onClose}>닫기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 /**
  * 환불 칸 만들기
