@@ -137,11 +137,13 @@ export function fitsKind(productKind: string, name: string, kind: string): boole
 
   if (kind === KIND_PT) {
     if (["1:1PT", "PT", "개인레슨", "퍼스널"].includes(k)) return true;
-    return k === "수강권" && !그룹이름;
+    /* 케어권도 트레이너가 한 명을 붙잡고 하는 수업이라 여기 넣는다.
+       그룹으로 도는 케어가 생기면 이름에 「그룹」을 넣어 주시면 갈립니다 */
+    return (k === "수강권" || k === "케어권") && !그룹이름;
   }
   if (kind === KIND_GROUP) {
     if (["그룹수업", "수업", "레슨", "GX"].includes(k)) return true;
-    return k === "수강권" && 그룹이름;
+    return (k === "수강권" || k === "케어권") && 그룹이름;
   }
   return k === kind;
 }

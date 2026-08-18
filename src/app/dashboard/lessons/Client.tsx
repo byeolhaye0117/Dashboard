@@ -1293,16 +1293,40 @@ function AddBox(props: {
   const [picked, setPicked] = useState<{ 회원번호: string; 이용권번호: string }[]>([]);
   const [err, setErr] = useState("");
 
-  const usable = useMemo(() => {
-    const codes = new Set(
-      /* 옛 분류 이름(1:1PT)만 보던 것을 고친다. 상품 관리에서 「수강권」으로
-         만든 PT 가 하나도 안 걸려 「쓸 수 있는 이용권이 없습니다」만 떴다 */
-      props.products.filter((x) => fitsKind(x.kind, x.name, kind)).map((x) => x.code)
-    );
-    return props.tickets
-      .filter((t) => codes.has(t.상품코드))
-      .filter((t) => int(t.잔여횟수) > 0)
-      .filter((t) => !t.종료일 || t.종료일 >= date);
+  /*
+    ── 왜 거르는 이유까지 같이 내보내는가 ─────────────────────────
+    지금까지는 회원이 안 나오면 「쓸 수 있는 이용권이 없습니다」 한 줄뿐이었다.
+    그 한 줄로는 상품 분류가 안 맞는 건지, 회차가 0인 건지, 만료된 건지를
+    알 수가 없어서 고칠 자리를 세 번이나 헛짚었다. 어디서 걸렸는지 화면이
+    직접 말하게 둔다 — 대표님이 화면만 보고 어디를 손보면 되는지 아셔야 한다.
+  */
+  const { usable, why } = useMemo(() => {
+    /* 옛 분류 이름(1:1PT)만 보던 것을 고친다. 상품 관리에서 「수강권」으로
+       만든 PT 가 하나도 안 걸려 「쓸 수 있는 이용권이 없습니다」만 떴다 */
+    const 수업상품 = props.products.filter((x) => fitsKind(x.kind, x.name, kind));
+    const codes = new Set(수업상품.map((x) => x.code));
+
+    const 내상품 = props.tickets.filter((t) => codes.has(t.상품코드));
+    const 회차있음 = 내상품.filter((t) => int(t.잔여횟수) > 0);
+    const 안만료 = 회차있음.filter((t) => !t.종료일 || t.종료일 >= date);
+
+    let why = "";
+    if (수업상품.length === 0) {
+      why =
+        "상품 관리에 PT 로 쓸 상품이 없습니다. 상품 관리에서 분류를 「수강권」이나 " +
+        "「케어권」으로 만들어 주세요.";
+    } else if (내상품.length === 0) {
+      why =
+        `PT 상품은 ${수업상품.length}개 있는데, 그 상품으로 팔린 이용권이 없습니다. ` +
+        "회원 화면에서 PT 를 결제해 주세요.";
+    } else if (회차있음.length === 0) {
+      why =
+        `PT 이용권 ${내상품.length}건이 있는데 남은 회차가 모두 0입니다. ` +
+        "상품 관리에서 그 상품의 「총횟수」가 비어 있으면 이렇게 됩니다.";
+    } else if (안만료.length === 0) {
+      why = `PT 이용권 ${회차있음.length}건이 모두 ${date} 이전에 끝났습니다.`;
+    }
+    return { usable: 안만료, why };
   }, [props.tickets, props.products, kind, date]);
 
   const hits = useMemo(() => {
@@ -1314,6 +1338,11 @@ function AddBox(props: {
       .filter((x) => !q || x.m.name.includes(q));
     return q ? rows.slice(0, 12) : rows.slice(0, 8);
   }, [usable, props.members, find]);
+
+  /* 이용권은 있는데 회원 목록에 그 사람이 없는 경우 — 지점이 다르면 이렇게 된다 */
+  const 이름없음 =
+    usable.length > 0 &&
+    usable.every((t) => !props.members.some((m) => m.id === t.회원번호));
 
   // 1:1 PT 는 한 명이다. 그룹수업은 여기서 잡지 않고 「그룹수업 보고」에서 다룬다
   const single = true;
@@ -1399,8 +1428,17 @@ function AddBox(props: {
 
         <div className="pickbox">
           {hits.length === 0 && (
-            <div className="dim" style={{ padding: "10px 2px", fontSize: 12.5 }}>
-              쓸 수 있는 이용권이 없습니다. 남은 회차가 있고 만료되지 않은 이용권만 나옵니다.
+            <div className="dim" style={{ padding: "10px 2px", fontSize: 12.5, lineHeight: 1.6 }}>
+              {why ? (
+                why
+              ) : 이름없음 ? (
+                "PT 이용권은 있는데, 그 회원이 지금 보고 계신 지점 명단에 없습니다. " +
+                "위쪽에서 지점을 바꿔 보세요."
+              ) : find.trim() ? (
+                `「${find.trim()}」으로 찾은 회원 중에 쓸 수 있는 PT 이용권을 가진 분이 없습니다.`
+              ) : (
+                "쓸 수 있는 이용권이 없습니다. 남은 회차가 있고 만료되지 않은 이용권만 나옵니다."
+              )}
             </div>
           )}
           {hits.map(({ t, m }) => {

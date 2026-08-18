@@ -13,7 +13,7 @@ import { listMembers, listTickets } from "@/lib/members";
 import { readProduct } from "@/lib/productMeta";
 import { listLessons, SHEET_L } from "@/lib/lessons";
 import { listSheetNames } from "@/lib/sheets";
-import { KIND_PT, KIND_GROUP, parseSlots } from "@/lib/lessonMeta";
+import { KIND_PT, KIND_GROUP, parseSlots, fitsKind } from "@/lib/lessonMeta";
 import { photoStoreReady } from "@/lib/photos";
 import Shell from "../Shell";
 import Client from "./Client";
@@ -85,10 +85,20 @@ async function body() {
   const canSetup = Boolean(ab.get("직원관리")?.update);
   const photoProblem = iAmTrainer || canSetup ? photoStoreReady() : "";
 
-  /** 수업으로 팔 수 있는 상품만 — 회원권·락커는 여기 안 온다 */
+  /**
+   * 수업으로 팔 수 있는 상품만 — 회원권·락커는 여기 안 온다
+   *
+   * ── 왜 fitsKind 인가 ──────────────────────────────────────
+   * 여기서 상품분류가 딱 「1:1PT」 「그룹수업」인 것만 골랐다. 그런데 상품 관리
+   * 화면의 분류는 「회원권 · 수강권 · 케어권 · 부가상품권 · 서비스」다.
+   * 그래서 수강권으로 만든 PT 상품이 이 목록에 한 줄도 안 들어왔고, 그 뒤의
+   * 이용권 거르기(lessonCodes)까지 통째로 비어 화면에서는 회원을 찾아도
+   * 아무도 안 나왔다. 화면 쪽만 고쳐서는 소용이 없었다 — 애초에 서버에서
+   * 안 보내주고 있었다.
+   */
   const lessonProducts = products
     .map(readProduct)
-    .filter((p) => p.kind === KIND_PT || p.kind === KIND_GROUP)
+    .filter((p) => fitsKind(p.kind, p.name, KIND_PT) || fitsKind(p.kind, p.name, KIND_GROUP))
     .map((p) => ({ code: p.code, name: p.name, kind: p.kind, count: p.count }));
 
   // 수업 탭이 아직 없을 수 있다. 없으면 화면에서 만들 수 있게 알려준다
