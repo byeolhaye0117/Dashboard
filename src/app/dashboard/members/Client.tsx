@@ -1724,12 +1724,24 @@ function AddPurchase({
     때인데, 지금까지는 창을 닫고 「고치기」로 다시 들어가야 했다.
     두 번 걸음 하게 만들면 그냥 안 적게 된다.
   */
+  /*
+    빈 칸으로 연다
+
+    적혀 있는 값을 미리 채워 두었더니, 방금 이 자리에서 물어보고 적은 것처럼
+    보였다. 실은 예전에 적어 둔 값이다. 사람이 화면을 믿고 그냥 넘기면
+    「확인한 것」과 「확인 안 한 것」이 뒤섞인다.
+
+    빈 칸으로 두고, 지금 뭐라고 적혀 있는지는 회색 글씨로만 알려준다.
+    손대지 않으면 그 값은 그대로 남는다 — 빈 칸이 곧 「그대로 두기」다.
+  */
   const [info, setInfo] = useState<Record<string, string>>({
-    방문경로: member.방문경로 ?? "",
-    거주동네: member.거주동네 ?? "",
-    직업: member.직업 ?? "",
+    방문경로: "", 거주동네: "", 직업: "",
   });
   const setI = (k: string, v: string) => setInfo((o) => ({ ...o, [k]: v }));
+
+  /** 지금 적혀 있는 값을 회색 글씨로 알려준다 */
+  const 안내 = (k: "방문경로" | "거주동네" | "직업", 예: string) =>
+    (member[k] ?? "").trim() ? `지금: ${member[k]}` : 예;
   /** 안 적힌 칸이 있어 한 번 물어보는 중인가 */
   const [gate, setGate] = useState<string[] | null>(null);
 
@@ -1738,17 +1750,25 @@ function AddPurchase({
     if (payload.이용권.length === 0 && payload.부가서비스.length === 0) {
       return setMsg("더할 상품을 하나 이상 골라주세요.");
     }
-    /* 안 적힌 칸이 있으면 한 번 묻는다. 까닭을 들고 다시 오면 그대로 저장한다 */
-    const 빈칸 = 빠진칸(info);
+    /* 이미 적혀 있는 값도 채워진 것으로 본다. 여기서 손대지 않았을 뿐이지
+       빈 것이 아니다 — 그것까지 물으면 매번 같은 창이 뜬다 */
+    const 지금 = {
+      방문경로: (info.방문경로 || member.방문경로) ?? "",
+      거주동네: (info.거주동네 || member.거주동네) ?? "",
+      직업: (info.직업 || member.직업) ?? "",
+    };
+    const 빈칸 = 빠진칸(지금);
     if (빈칸.length > 0 && !사유) return setGate(빈칸);
 
     setBusy(true);
 
     /* 손댄 칸만 보낸다. 안 고친 값을 같이 보내면 다른 사람이 그 사이 고쳐
        둔 것을 덮어쓴다 */
+    /* 적은 것만 보낸다. 빈 칸을 보내면 예전에 적어 둔 값이 지워진다 */
     const 바뀐것: Record<string, string> = {};
     (["방문경로", "거주동네", "직업"] as const).forEach((k) => {
-      if ((info[k] ?? "") !== ((member as any)[k] ?? "")) 바뀐것[k] = info[k] ?? "";
+      const v = (info[k] ?? "").trim();
+      if (v && v !== ((member as any)[k] ?? "")) 바뀐것[k] = v;
     });
     if (사유) 바뀐것.미입력사유 = 사유;
     if (Object.keys(바뀐것).length > 0) {
@@ -1786,12 +1806,15 @@ function AddPurchase({
         <div className="form-grid" style={{ marginBottom: 14 }}>
           <Free label="방문 경로" k="방문경로" f={info} set={setI}
                 opts={options["문의채널"] ?? options["방문경로"]}
-                placeholder="예) 네이버플레이스 · 지인소개" />
+                placeholder={안내("방문경로", "예) 네이버플레이스 · 지인소개")} />
           <Free label="거주 동네" k="거주동네" f={info} set={setI} opts={options["거주동네"]}
-                placeholder="예) 쌍용동" />
+                placeholder={안내("거주동네", "예) 쌍용동")} />
           <Free label="직업" k="직업" f={info} set={setI} opts={options["직업"]}
-                placeholder="예) 간호사 · 3교대 근무" />
+                placeholder={안내("직업", "예) 간호사 · 3교대 근무")} />
         </div>
+        <p className="stat-note" style={{ marginTop: -6, marginBottom: 12 }}>
+          비워 두면 <b>지금 적혀 있는 값이 그대로</b> 남습니다. 바뀐 것만 적어 주세요.
+        </p>
 
         <PurchaseFields products={sellable} options={options} tickets={tickets}
                         trainers={trainers}
