@@ -1732,9 +1732,7 @@ function AddPurchase({
   });
   const setI = (k: string, v: string) => setInfo((o) => ({ ...o, [k]: v }));
 
-  /** 지금 적혀 있는 값을 회색 글씨로 알려준다 */
-  const 안내 = (k: "방문경로" | "거주동네" | "직업", 예: string) =>
-    (member[k] ?? "").trim() ? `지금: ${member[k]}` : 예;
+
   /** 안 적힌 칸이 있어 한 번 물어보는 중인가 */
   const [gate, setGate] = useState<string[] | null>(null);
 
@@ -1797,17 +1795,13 @@ function AddPurchase({
         {/* 다시 마주 앉는 자리다. 빠진 것을 여기서 채워 두면 다음에 또
             묻지 않아도 된다 — 안 고치면 아무것도 안 바뀐다 */}
         <div className="form-grid" style={{ marginBottom: 14 }}>
+          {/* 빈 칸으로 둔다. 예시도 지금 값도 안 적는다 — 읽을 것이 없어야
+              방금 들은 것을 그대로 치게 된다. 안 적으면 예전 값은 그대로다 */}
           <Free label="방문 경로" k="방문경로" f={info} set={setI}
-                opts={options["문의채널"] ?? options["방문경로"]}
-                placeholder={안내("방문경로", "예) 네이버플레이스 · 지인소개")} />
-          <Free label="거주 동네" k="거주동네" f={info} set={setI} opts={options["거주동네"]}
-                placeholder={안내("거주동네", "예) 쌍용동")} />
-          <Free label="직업" k="직업" f={info} set={setI} opts={options["직업"]}
-                placeholder={안내("직업", "예) 간호사 · 3교대 근무")} />
+                opts={options["문의채널"] ?? options["방문경로"]} />
+          <Free label="거주 동네" k="거주동네" f={info} set={setI} opts={options["거주동네"]} />
+          <Free label="직업" k="직업" f={info} set={setI} opts={options["직업"]} />
         </div>
-        <p className="stat-note" style={{ marginTop: -6, marginBottom: 12 }}>
-          비워 두면 <b>지금 적혀 있는 값이 그대로</b> 남습니다. 바뀐 것만 적어 주세요.
-        </p>
 
         <PurchaseFields products={sellable} options={options} tickets={tickets}
                         trainers={trainers}
