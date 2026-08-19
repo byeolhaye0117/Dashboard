@@ -508,6 +508,10 @@ button { font-family: inherit; }
 }
 .sec-head .sec-title { margin-top: 0; }
 
+/* 한 줄에 선 카드끼리는 높이를 맞춘다. 갈래 수가 달라 들쭉날쭉하면
+   자료가 아니라 배치가 먼저 눈에 들어온다 */
+.viz-dist { align-items: stretch; }
+
 .dist { display: flex; flex-direction: column; gap: 8px; }
 .drow {
   display: grid; grid-template-columns: 92px 1fr 52px 40px;
