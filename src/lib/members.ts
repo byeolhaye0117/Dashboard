@@ -1386,11 +1386,25 @@ export async function enrollFromConsultation(
   const m = await readSheet(SHEET_M);
   const mCols = resolve(SHEET_M, m.headers, M_COLS);
 
-  /* 이미 있는 사람인가 — 지운 회원은 세지 않는다 */
+  /*
+   * 이미 있는 사람인가
+   *
+   * ── 지점을 같이 보는 이유 ────────────────────────────────
+   * 전화번호만 보고 「같은 사람」으로 판단했다. 그래서 두정점에서 접수한
+   * 분이 쌍용점에 같은 번호로 이미 있으면 새 회원이 안 만들어지고 조용히
+   * 그 사람으로 이어졌다 — 두정점 회원 목록에는 아무도 안 늘었다.
+   *
+   * 지점이 다르면 다른 등록이다. 가족이 번호를 같이 쓰는 일도 있고,
+   * 지점을 옮기신 분은 옮긴 지점에서 새로 등록하는 것이 맞다.
+   * 같은 지점 · 같은 번호일 때만 같은 사람으로 본다.
+   *
+   * 지운 회원은 세지 않는다.
+   */
   const hit = m.rows.find(
     (r) =>
       (r["삭제여부"] ?? "").toUpperCase() !== "Y" &&
-      phoneKey(get(r, mCols, "전화번호")) === key
+      phoneKey(get(r, mCols, "전화번호")) === key &&
+      get(r, mCols, "지점코드") === c.지점코드
   );
   if (hit) {
     return {

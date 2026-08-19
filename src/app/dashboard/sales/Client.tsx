@@ -77,6 +77,8 @@ type Props = {
   goals: Goal[];
   leads: Lead[];
   branches: Named[];
+  /** 머리 위에서 고른 지점 — 이 화면의 기본 지점이 된다 */
+  currentBranch: string;
   staffNames: Record<string, string>;
   memberNames: Record<string, string>;
   /** 결제 탭에 아직 없는 환불 칸 이름 */
@@ -235,7 +237,9 @@ export default function Client(p: Props) {
   const now = today();
   const thisMonth = now.slice(0, 7);
   const [month, setMonth] = useState(thisMonth);
-  const [branch, setBranch] = useState("전체");
+  /* 머리 위에서 고른 지점을 기본으로 본다. 지점을 골라 놓고도 전 지점
+     숫자가 뜨면, 무엇을 보고 있는지 화면이 두 가지로 말하는 셈이다 */
+  const [branch, setBranch] = useState(p.currentBranch || "전체");
   /* 지우기는 한 번 더 묻는다. 돈이 오간 기록이라 되돌리기가 번거롭다 */
   const [wipe, setWipe] = useState<Payment | null>(null);
   /** 결제 한 줄을 눌러 여는 상세 — 무엇을 얼마에 팔았는지 */
