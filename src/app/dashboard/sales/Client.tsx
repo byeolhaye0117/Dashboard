@@ -922,7 +922,9 @@ export default function Client(p: Props) {
       <p className="sec-sub">일별 · 직원별 매출 · 결제 내역</p>
 
       <h3 className="viz-title mt">일별</h3>
-      <p className="viz-sub">갈래마다 선이 하나입니다. 점이 없는 날은 그 갈래로 받은 돈이 없던 날입니다</p>
+      <p className="viz-sub">
+            월요일부터 일요일까지 한 주씩입니다. 점이 없는 주는 그 갈래로 받은 돈이 없던 주입니다
+          </p>
       <div className="viz">
         {cur.count === 0 ? (
           <p className="dim mini-note">이 달에 등록된 결제가 없습니다.</p>
@@ -1766,23 +1768,48 @@ function WeekLines({ list, month }: {
 }) {
   const keys = list[0]?.six.map((k) => k.key) ?? [];
 
-  /* 1~7 · 8~14 · 15~21 · 22~28 · 29~말일. 달마다 자리가 같아야 견주기 쉽다 */
+  /*
+   * 진짜 한 주 — 월요일부터 일요일까지
+   *
+   * 처음에는 1~7 · 8~14 처럼 일곱씩 잘랐다. 달마다 자리가 같아 견주기는
+   * 쉬웠지만, 그건 한 주가 아니다. 8월 8일이 금요일이면 「8~14일」 안에
+   * 금·토·일과 다음 주 월~목이 섞인다. 「이번 주 얼마 했나」를 물으면
+   * 아무도 그 칸을 못 쓴다.
+   *
+   * 달력 그대로 자른다. 첫 주와 끝 주는 며칠만 걸릴 수 있는데, 그것도
+   * 사실이라 그대로 둔다 — 없는 날을 채워 넣으면 그 주가 부풀어 보인다.
+   */
   const weeks = useMemo(() => {
-    const last = list.length;
-    const cuts = [1, 8, 15, 22, 29];
-    return cuts.map((from, i) => {
-      const to = i === cuts.length - 1 ? last : cuts[i + 1] - 1;
-      const days = list.filter((d) => d.day >= from && d.day <= to);
-      const sums = keys.map((_, si) => days.reduce((a, d) => a + (d.six[si]?.sum ?? 0), 0));
+    const y = Number(month.slice(0, 4));
+    const m = Number(month.slice(5, 7));
+    /* 월요일을 0 으로 센다. 자바스크립트는 일요일이 0 이라 그대로 쓰면
+       일요일이 그 주의 첫날이 된다 */
+    const mon0 = (day: number) => (new Date(Date.UTC(y, m - 1, day)).getUTCDay() + 6) % 7;
+
+    const groups: { days: typeof list }[] = [];
+    list.forEach((d) => {
+      const 첫날 = d.day - mon0(d.day);
+      const 앞 = groups[groups.length - 1];
+      if (앞 && 앞.days[0].day - mon0(앞.days[0].day) === 첫날) 앞.days.push(d);
+      else groups.push({ days: [d] });
+    });
+
+    const 요일 = ["월", "화", "수", "목", "금", "토", "일"];
+    return groups.map((g) => {
+      const from = g.days[0].day;
+      const to = g.days[g.days.length - 1].day;
+      const sums = keys.map((_, si) => g.days.reduce((a, d) => a + (d.six[si]?.sum ?? 0), 0));
       return {
-        key: `${from}`,
-        label: `${from}~${to}일`,
-        sum: days.reduce((a, d) => a + d.sum, 0),
-        count: days.reduce((a, d) => a + d.count, 0),
+        key: `w${from}`,
+        label: from === to ? `${from}일` : `${from}~${to}일`,
+        /* 창에는 무슨 요일부터 무슨 요일까지인지 그대로 적는다 */
+        full: `${m}월 ${from}일(${요일[mon0(from)]}) ~ ${m}월 ${to}일(${요일[mon0(to)]})`,
+        sum: g.days.reduce((a, d) => a + d.sum, 0),
+        count: g.days.reduce((a, d) => a + d.count, 0),
         sums,
       };
     });
-  }, [list, keys.length]);
+  }, [list, keys.length, month]);
 
   const [hi, setHi] = useState<number | null>(null);
   if (keys.length === 0 || weeks.length < 2) return null;
@@ -1881,7 +1908,7 @@ function WeekLines({ list, month }: {
         {cur ? (
           <>
             <b className="dt">
-              {Number(month.slice(5, 7))}월 {cur.label} · {money(cur.sum)}원 · {cur.count}건
+              {cur.full} · {money(cur.sum)}원 · {cur.count}건
             </b>
             <ul>
               {keys.map((k, i) => (
