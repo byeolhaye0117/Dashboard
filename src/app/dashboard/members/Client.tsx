@@ -1633,12 +1633,47 @@ function AddPurchase({
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
+  /*
+    재등록하는 자리에서 회원 정보도 손볼 수 있게
+
+    처음 등록할 때 방문 경로 · 거주 동네 · 직업을 안 적고 넘어가는 일이
+    흔하다. 재등록은 그 분과 다시 마주 앉는 자리라 물어보기 제일 좋은
+    때인데, 지금까지는 창을 닫고 「고치기」로 다시 들어가야 했다.
+    두 번 걸음 하게 만들면 그냥 안 적게 된다.
+  */
+  const [info, setInfo] = useState<Record<string, string>>({
+    방문경로: member.방문경로 ?? "",
+    거주동네: member.거주동네 ?? "",
+    직업: member.직업 ?? "",
+  });
+  const setI = (k: string, v: string) => setInfo((o) => ({ ...o, [k]: v }));
+
   async function save() {
     const payload = buyPayload(b, sellable, tickets, today(), options["매출유형"]);
     if (payload.이용권.length === 0 && payload.부가서비스.length === 0) {
       return setMsg("더할 상품을 하나 이상 골라주세요.");
     }
     setBusy(true);
+
+    /* 손댄 칸만 보낸다. 안 고친 값을 같이 보내면 다른 사람이 그 사이 고쳐
+       둔 것을 덮어쓴다 */
+    const 바뀐것: Record<string, string> = {};
+    (["방문경로", "거주동네", "직업"] as const).forEach((k) => {
+      if ((info[k] ?? "") !== ((member as any)[k] ?? "")) 바뀐것[k] = info[k] ?? "";
+    });
+    if (Object.keys(바뀐것).length > 0) {
+      const r = await fetch("/api/members/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: member.id, changes: 바뀐것 }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setBusy(false);
+        return setMsg(d.error ?? "회원 정보를 고치지 못했습니다.");
+      }
+    }
+
     const res = await fetch("/api/members/purchase", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1654,6 +1689,18 @@ function AddPurchase({
     <div className="modal-back top" onClick={onClose}>
       <div className="modal xl" onClick={(e) => e.stopPropagation()}>
         <h3>{member.이름}님 상품 추가</h3>
+
+        {/* 다시 마주 앉는 자리다. 빠진 것을 여기서 채워 두면 다음에 또
+            묻지 않아도 된다 — 안 고치면 아무것도 안 바뀐다 */}
+        <div className="form-grid" style={{ marginBottom: 14 }}>
+          <Free label="방문 경로" k="방문경로" f={info} set={setI}
+                opts={options["문의채널"] ?? options["방문경로"]}
+                placeholder="예) 네이버플레이스 · 지인소개" />
+          <Free label="거주 동네" k="거주동네" f={info} set={setI} opts={options["거주동네"]}
+                placeholder="예) 쌍용동" />
+          <Free label="직업" k="직업" f={info} set={setI} opts={options["직업"]}
+                placeholder="예) 간호사 · 3교대 근무" />
+        </div>
 
         <PurchaseFields products={sellable} options={options} tickets={tickets}
                         trainers={trainers}

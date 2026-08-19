@@ -928,66 +928,8 @@ export default function Client(p: Props) {
           <p className="dim mini-note">이 달에 등록된 결제가 없습니다.</p>
         ) : (
           <>
-            <DayLines list={byDay.list} month={month} />
+            <WeekLines list={byDay.list} month={month} />
 
-            {/*
-              날짜별 금액 — 갈래까지 나눠서
-
-              31칸 막대 위에 숫자를 얹으면 글자끼리 겹친다. 한 칸이 20px
-              남짓인데 「549,000」은 그 두 배다. 그래서 돈이 오간 날만 아래에
-              표로 적는다. 없는 날은 위 막대가 이미 말하고 있다.
-
-              갈래는 도넛과 같은 것을 쓴다. 위에서는 「기타」인데 아래에서는
-              「부가상품」이면, 같은 화면에서 두 가지 말을 하는 셈이다.
-            */}
-            <div className="table-wrap t2wrap" style={{ marginTop: 14 }}>
-              <table className="grid t2 daytab">
-                <thead>
-                  <tr>
-                    <th>날짜</th>
-                    {byDay.list[0]?.six.map((k, i) => (
-                      <th className="r" key={k.key}>
-                        <i className={`sw s${i + 1}`} />
-                        {k.key}
-                      </th>
-                    ))}
-                    <th className="r">합계</th>
-                    <th className="r">건수</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {byDay.list
-                    .filter((d) => d.sum > 0)
-                    .map((d) => (
-                      <tr key={d.key}>
-                        <td className="strong num">
-                          {Number(month.slice(5, 7))}/{d.day}
-                        </td>
-                        {d.six.map((k) => (
-                          <td className={`r num ${k.sum > 0 ? "" : "dim"}`} key={k.key}>
-                            {k.sum > 0 ? money(k.sum) : "-"}
-                          </td>
-                        ))}
-                        <td className="r big num">{money(d.sum)}</td>
-                        <td className="r dim num">{d.count}</td>
-                      </tr>
-                    ))}
-                </tbody>
-                {/* 아래 합계는 위 도넛과 같은 값이어야 한다 — 다르면 셈이 틀린 것이다 */}
-                <tfoot>
-                  <tr>
-                    <td className="strong">합계</td>
-                    {six.map((k) => (
-                      <td className="r num strong" key={k.key}>
-                        {k.sum > 0 ? money(k.sum) : "-"}
-                      </td>
-                    ))}
-                    <td className="r big num">{money(cur.sum)}</td>
-                    <td className="r dim num">{cur.count}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
           </>
         )}
       </div>
@@ -1798,57 +1740,90 @@ function niceTop(v: number): number {
 }
 
 /**
- * 날짜별 갈래 꺾은선
+ * 주별 갈래 꺾은선
  *
- * ── 왜 막대에서 꺾은선으로 바꿨나 ───────────────────────────
- * 막대 하나에는 그 날 합계밖에 안 담긴다. 「8월 14일에 회원권이 팔린 건지
- * PT가 팔린 건지」는 막대만 봐서는 알 수 없었다. 갈래마다 선을 하나씩 그으면
- * 다섯 갈래가 한 자리에서 같이 흐른다.
+ * ── 왜 날마다가 아니라 주마다인가 ───────────────────────────
+ * 서른한 점을 찍으면 돈이 오간 예닐곱 날만 뾰족하게 솟고 나머지는 바닥에
+ * 깔린다. 모양은 요란한데 읽히는 것은 없었다. 게다가 점 위에 금액을 적으면
+ * 서른한 칸에 글자가 겹쳐 아무것도 안 보인다.
+ *
+ * 주로 묶으면 다섯 점이다. 점마다 금액을 적어도 자리가 남고, 「이 달 둘째
+ * 주에 회원권이 몰렸다」처럼 사람이 실제로 하는 말과 눈금이 맞는다.
  *
  * ── 지킨 것 ─────────────────────────────────────────────────
  * 세로 눈금은 하나다. 갈래마다 눈금을 따로 두면 같은 높이가 다른 금액이
- * 되어, 눈으로 견주는 일이 아예 불가능해진다.
+ * 되어 눈으로 견주는 일이 아예 불가능해진다.
  *
- * 값이 0인 날에도 점을 안 찍는다. 31일 내내 바닥에 점이 깔리면 정작 돈이
- * 오간 날이 안 보인다. 선은 그대로 이어져 「그 날은 0이었다」를 말한다.
+ * 값이 0인 주에는 점도 글자도 안 붙인다. 0을 다섯 번 적으면 정작 돈이
+ * 오간 주가 안 보인다.
  *
- * 색은 도넛 · 아래 표와 같은 차례다. 같은 갈래가 화면마다 다른 색이면
- * 색으로 알아보는 일을 포기하게 된다.
+ * 색은 도넛과 같은 차례다. 같은 갈래가 화면마다 다른 색이면 색으로
+ * 알아보는 일을 포기하게 된다.
  */
-function DayLines({ list, month }: {
+function WeekLines({ list, month }: {
   list: { day: number; key: string; sum: number; count: number; six: { key: string; sum: number }[] }[];
   month: string;
 }) {
-  const [hi, setHi] = useState<number | null>(null);
   const keys = list[0]?.six.map((k) => k.key) ?? [];
-  if (keys.length === 0 || list.length < 2) return null;
 
-  const W = 760, H = 230, PL = 62, PR = 16, PTop = 14, PB = 28;
-  const top = niceTop(Math.max(1, ...list.flatMap((d) => d.six.map((k) => k.sum))));
-  const x = (i: number) => PL + (i * (W - PL - PR)) / (list.length - 1);
+  /* 1~7 · 8~14 · 15~21 · 22~28 · 29~말일. 달마다 자리가 같아야 견주기 쉽다 */
+  const weeks = useMemo(() => {
+    const last = list.length;
+    const cuts = [1, 8, 15, 22, 29];
+    return cuts.map((from, i) => {
+      const to = i === cuts.length - 1 ? last : cuts[i + 1] - 1;
+      const days = list.filter((d) => d.day >= from && d.day <= to);
+      const sums = keys.map((_, si) => days.reduce((a, d) => a + (d.six[si]?.sum ?? 0), 0));
+      return {
+        key: `${from}`,
+        label: `${from}~${to}일`,
+        sum: days.reduce((a, d) => a + d.sum, 0),
+        count: days.reduce((a, d) => a + d.count, 0),
+        sums,
+      };
+    });
+  }, [list, keys.length]);
+
+  const [hi, setHi] = useState<number | null>(null);
+  if (keys.length === 0 || weeks.length < 2) return null;
+
+  const W = 760, H = 250, PL = 62, PR = 20, PTop = 26, PB = 30;
+  const top = niceTop(Math.max(1, ...weeks.flatMap((w) => w.sums)));
+  const x = (i: number) => PL + (i * (W - PL - PR)) / (weeks.length - 1);
   const y = (v: number) => PTop + (1 - v / top) * (H - PTop - PB);
 
-  /*
-    가로줄은 다섯으로 나눈다
-
-    넷으로 나누면 50만짜리 눈금이 12.5만 · 37.5만이 되어 「13만 · 38만」으로
-    적힌다. 다섯이면 윗값이 1 · 2 · 5 의 배수라 눈금이 늘 딱 떨어진다 —
-    10만 · 20만 · 30만 · 40만 · 50만.
-  */
+  /* 가로줄을 다섯으로 나눈다. 넷이면 50만 눈금이 「13만 · 38만」이 된다 */
   const steps = [0, 0.2, 0.4, 0.6, 0.8, 1].map((r) => r * top);
-  /* 날짜 눈금 — 1일과 5일 간격, 그리고 마지막 날.
-     마지막 날에 붙은 눈금은 뺀다. 30 과 31 이 겹쳐 읽히지 않는다 */
-  const last = list.length - 1;
-  const dayTicks = list
-    .map((d, i) => ({ d, i }))
-    .filter(({ d, i }) => i === last || ((d.day === 1 || d.day % 5 === 0) && last - i > 2));
 
-  const cur = hi === null ? null : list[hi];
+  /*
+   * 점 위 글자가 겹치지 않게 밀어 올린다
+   *
+   * 한 주에 값이 비슷한 갈래가 둘이면 글자가 정확히 포개진다. 아래에서부터
+   * 훑으며 앞 글자와 13px 이 안 되면 그만큼 올린다. 다섯 개뿐이라 이 정도
+   * 셈으로 충분하다.
+   */
+  const labelsAt = (wi: number) => {
+    const rows = keys
+      .map((k, si) => ({ si, v: weeks[wi].sums[si] }))
+      .filter((r) => r.v > 0)
+      .map((r) => ({ ...r, y: y(r.v) }))
+      .sort((a, b) => b.y - a.y);
+    let 아래 = Infinity;
+    return rows
+      .map((r) => {
+        const ny = Math.min(r.y - 8, 아래 - 13);
+        아래 = ny;
+        return { ...r, ly: Math.max(11, ny) };
+      })
+      .reverse();
+  };
+
+  const cur = hi === null ? null : weeks[hi];
 
   return (
     <div className="dlwrap">
       <svg className="lc dl" viewBox={`0 0 ${W} ${H}`} role="img"
-           aria-label="날짜별 갈래 매출 꺾은선 그래프">
+           aria-label="주별 갈래 매출 꺾은선 그래프">
         {steps.map((v, i) => (
           <g key={i}>
             <line className="grid" x1={PL} x2={W - PR} y1={y(v)} y2={y(v)} />
@@ -1859,66 +1834,67 @@ function DayLines({ list, month }: {
         ))}
         <line className="axis" x1={PL} x2={W - PR} y1={y(0)} y2={y(0)} />
 
-        {dayTicks.map(({ d, i }) => (
-          <text className="tick" key={d.key} x={x(i)} y={H - 9} textAnchor="middle">
-            {d.day}
+        {weeks.map((w, i) => (
+          <text className="tick" key={w.key} x={x(i)} y={H - 10} textAnchor="middle">
+            {w.label}
           </text>
         ))}
 
-        {/* 짚어 둔 날 — 선보다 뒤에 그려 세로줄이 선을 가리지 않게 한다 */}
         {hi !== null && (
           <line className="cross" x1={x(hi)} x2={x(hi)} y1={PTop} y2={y(0)} />
         )}
 
-        {keys.map((key, si) => {
-          const pts = list.map((d, i) => `${x(i).toFixed(1)} ${y(d.six[si]?.sum ?? 0).toFixed(1)}`);
-          return (
-            <g key={key}>
-              <path className={`ln s${si + 1}`} d={`M${pts.join(" L")}`} />
-              {list.map((d, i) =>
-                (d.six[si]?.sum ?? 0) > 0 ? (
-                  <circle className={`dot s${si + 1}`} key={d.key}
-                          cx={x(i)} cy={y(d.six[si].sum)} r={4} />
-                ) : null
-              )}
-            </g>
-          );
-        })}
+        {keys.map((key, si) => (
+          <g key={key}>
+            <path className={`ln s${si + 1}`}
+                  d={`M${weeks.map((w, i) => `${x(i).toFixed(1)} ${y(w.sums[si]).toFixed(1)}`).join(" L")}`} />
+            {weeks.map((w, i) =>
+              w.sums[si] > 0 ? (
+                <circle className={`dot s${si + 1}`} key={w.key}
+                        cx={x(i)} cy={y(w.sums[si])} r={4} />
+              ) : null
+            )}
+          </g>
+        ))}
 
-        {/* 짚기 — 눈에 안 보이는 넓은 칸이라야 손가락으로도 짚힌다 */}
-        {list.map((d, i) => (
-          <rect key={d.key} className="hit"
-                x={x(i) - (W - PL - PR) / (list.length - 1) / 2}
-                y={PTop} width={(W - PL - PR) / (list.length - 1)} height={H - PTop - PB}
+        {/* 점 위 금액 — 선보다 나중에 그려야 선에 안 가린다 */}
+        {weeks.map((w, i) =>
+          labelsAt(i).map((r) => (
+            <text className="ptlb" key={`${w.key}-${r.si}`}
+                  x={x(i)} y={r.ly}
+                  textAnchor={i === 0 ? "start" : i === weeks.length - 1 ? "end" : "middle"}>
+              {money(r.v)}
+            </text>
+          ))
+        )}
+
+        {weeks.map((w, i) => (
+          <rect key={w.key} className="hit"
+                x={x(i) - (W - PL - PR) / (weeks.length - 1) / 2}
+                y={0} width={(W - PL - PR) / (weeks.length - 1)} height={H - PB}
                 onMouseEnter={() => setHi(i)}
                 onMouseLeave={() => setHi(null)} />
         ))}
       </svg>
 
-      {/*
-        짚은 날의 값
-
-        선 위에 숫자를 다 적으면 서른한 날이 겹친다. 짚은 날만 옆에 적는다.
-        아래 표가 이미 다 적고 있으므로, 여기서는 「지금 짚은 것」만 말하면 된다.
-      */}
       <div className={`dl-tip${cur ? " on" : ""}`}>
         {cur ? (
           <>
             <b className="dt">
-              {Number(month.slice(5, 7))}월 {cur.day}일 · {money(cur.sum)}원
+              {Number(month.slice(5, 7))}월 {cur.label} · {money(cur.sum)}원 · {cur.count}건
             </b>
             <ul>
-              {cur.six.map((k, i) => (
-                <li key={k.key} className={k.sum > 0 ? "" : "off"}>
+              {keys.map((k, i) => (
+                <li key={k} className={cur.sums[i] > 0 ? "" : "off"}>
                   <i className={`sw s${i + 1}`} />
-                  <span className="nm">{k.key}</span>
-                  <span className="vl num">{k.sum > 0 ? money(k.sum) : "-"}</span>
+                  <span className="nm">{k}</span>
+                  <span className="vl num">{cur.sums[i] > 0 ? money(cur.sums[i]) : "-"}</span>
                 </li>
               ))}
             </ul>
           </>
         ) : (
-          <span className="dim">그래프 위에 손을 올리면 그 날 값이 나옵니다</span>
+          <span className="dim">그래프 위에 손을 올리면 그 주 값이 나옵니다</span>
         )}
       </div>
 
