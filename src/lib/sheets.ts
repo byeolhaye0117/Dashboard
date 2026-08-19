@@ -135,6 +135,59 @@ function findHeaderRow(values: string[][]): number {
 const memo = cache(() => new Map<string, SheetData>());
 
 /**
+ * 요청이 끝나도 잠깐 남는 기억 (선반)
+ *
+ * ── 왜 필요한가 ──────────────────────────────────────────────
+ * 지금까지 기억은 요청 하나 안에서만 살았다. 화면을 열 때마다 시트를 처음부터
+ * 다시 읽는다는 뜻이다. 한 사람이 쓸 때는 버텼지만, 여러 대에서 같이 쓰면
+ * 1분 한도에 금방 걸려 「화면을 열지 못했습니다」가 뜬다.
+ *
+ * 그래서 읽은 것을 잠깐 선반에 올려 둔다. 같은 탭을 몇 초 안에 또 찾으면
+ * 구글에 안 묻고 선반에서 꺼낸다.
+ *
+ * ── 얼마나 오래 두는가 ──────────────────────────────────────
+ * 지점 · 직급 · 권한 · 상품처럼 하루에 몇 번 바뀔까 말까 한 것은 넉넉히 둔다.
+ * 회원 · 결제처럼 방금 저장한 것이 바로 보여야 하는 것은 아주 짧게 둔다.
+ * 저장하면 그 탭의 선반은 바로 비운다(forget) — 내가 방금 넣은 것이 안 보이는
+ * 일은 없어야 한다.
+ *
+ * ── 구글이 안 받아줄 때 ─────────────────────────────────────
+ * 선반에 오래된 값이라도 있으면 그것을 내준다. 몇 초 낡은 숫자를 보는 것과
+ * 화면이 아예 안 열리는 것은 무게가 다르다. 낡았다는 사실은 화면 위에
+ * 적어 준다(staleAt).
+ */
+type Shelf = { at: number; data: SheetData };
+const shelf = new Map<string, Shelf>();
+
+/** 이 탭들은 하루에 몇 번 바뀔까 말까다 */
+const 오래두기 = new Set([
+  "지점", "직급", "권한", "상품", "상품판매지점", "선택목록", "직원담당지점",
+]);
+const LONG_MS = 45_000;
+const SHORT_MS = 6_000;
+/* 구글이 안 받아줄 때 대신 내줄 수 있는 한계. 이보다 낡으면 차라리 오류다 */
+const GRACE_MS = 10 * 60_000;
+
+const shelfMs = (name: string) => (오래두기.has(name) ? LONG_MS : SHORT_MS);
+
+/**
+ * 이 화면이 선반에서 꺼낸 낡은 값을 쓰고 있는가
+ *
+ * 요청마다 따로 센다. 한 서버가 여러 사람의 화면을 같이 그리므로, 전역에
+ * 두면 남의 화면에서 난 일이 내 화면에 뜬다.
+ */
+const staleMark = cache(() => ({ at: 0 }));
+
+/** 낡은 값을 쓴 화면이면 그 값을 읽어 온 시각(ms). 아니면 0 */
+export function usedStale(): number {
+  try {
+    return staleMark().at;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * 이 탭에 뭔가 썼다 — 기억을 버린다
  *
  * 쓰기 「전」에만 버리면 모자란다. 칸을 만드는 일(addColumns)은 스스로 한 번
@@ -144,6 +197,8 @@ const memo = cache(() => new Map<string, SheetData>());
  * 그래서 쓰기가 끝난 뒤에도 한 번 더 버린다.
  */
 function forget(sheetName: string): void {
+  /* 선반은 요청 밖에 있으므로 늘 지울 수 있다 — 방금 쓴 것이 안 보이면 안 된다 */
+  shelf.delete(sheetName);
   try {
     memo().delete(sheetName);
     pending().delete(sheetName);
@@ -238,6 +293,17 @@ export async function readSheet(sheetName: string): Promise<SheetData> {
   }
   if (hit) return hit;
 
+  /* 선반에 갓 올려 둔 것이 있으면 구글에 안 묻는다 */
+  const 선반 = shelf.get(sheetName);
+  if (선반 && Date.now() - 선반.at < shelfMs(sheetName)) {
+    try {
+      memo().set(sheetName, 선반.data);
+    } catch {
+      /* 못 담아도 값은 있다 */
+    }
+    return 선반.data;
+  }
+
   /* 같은 탭을 두 곳에서 동시에 기다릴 때, 각각 따로 담지 않도록
      읽는 약속 자체를 기억해 둔다 */
   let busy: Map<string, Promise<SheetData>>;
@@ -251,6 +317,7 @@ export async function readSheet(sheetName: string): Promise<SheetData> {
 
   const job = readQueued(sheetName)
     .then((d) => {
+      shelf.set(sheetName, { at: Date.now(), data: d });
       try {
         memo().set(sheetName, d);
         busy.delete(sheetName);
@@ -264,6 +331,28 @@ export async function readSheet(sheetName: string): Promise<SheetData> {
         busy.delete(sheetName);
       } catch {
         /* 지울 자리가 없으면 그만이다 */
+      }
+      /*
+        구글이 안 받아줬다 — 선반에 있던 값이라도 내준다
+
+        몇 분 낡은 숫자를 보는 것과 화면이 아예 안 열리는 것은 무게가 다르다.
+        여러 대에서 같이 쓰면 1분 한도에 걸리는 일이 생기는데, 그때마다
+        일을 멈추게 할 수는 없다. 낡았다는 사실은 화면 위에 적어 준다.
+      */
+      const 낡은것 = shelf.get(sheetName);
+      if (낡은것 && Date.now() - 낡은것.at < GRACE_MS) {
+        try {
+          const m = staleMark();
+          m.at = m.at ? Math.min(m.at, 낡은것.at) : 낡은것.at;
+        } catch {
+          /* 요청 밖이면 알릴 화면도 없다 */
+        }
+        try {
+          memo().set(sheetName, 낡은것.data);
+        } catch {
+          /* 못 담아도 값은 있다 */
+        }
+        return 낡은것.data;
       }
       throw e;
     });
