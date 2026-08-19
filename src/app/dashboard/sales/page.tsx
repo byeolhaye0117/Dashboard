@@ -158,6 +158,7 @@ async function body() {
         missingRefund={missingRefund}
         canSetup={Boolean(ab.get("직원관리")?.update)}
         canWipePay={Boolean(ab.get("회원")?.remove)}
+        canEditPay={Boolean(ab.get("회원")?.update)}
         problem={problem}
       />
     </Shell>

@@ -87,6 +87,8 @@ type Props = {
   canSetup: boolean;
   /** 결제 한 줄을 지울 수 있는가 — 회원 삭제 권한을 따른다 */
   canWipePay: boolean;
+  /** 결제 한 줄을 고칠 수 있는가 — 회원 수정 권한을 따른다 */
+  canEditPay: boolean;
   problem: string;
 };
 
@@ -1447,6 +1449,8 @@ export default function Client(p: Props) {
           memberName={p.memberNames[detail.회원번호] ?? detail.회원번호 ?? "-"}
           branch={branchName(detail.지점코드)}
           staffNames={p.staffNames}
+          options={p.options}
+          canEdit={p.canEditPay}
           onClose={() => setDetail(null)}
         />
       )}
@@ -1499,7 +1503,7 @@ export default function Client(p: Props) {
  * 비율로 나눠 채웠다가 실제 결제와 전혀 안 맞았다.
  */
 function PayDetail({
-  x, items, productOf, memberName, branch, staffNames, onClose,
+  x, items, productOf, memberName, branch, staffNames, options, canEdit, onClose,
 }: {
   x: Payment;
   /** 이 결제에 딸린 이용권 줄 */
@@ -1508,6 +1512,9 @@ function PayDetail({
   memberName: string;
   branch: string;
   staffNames: Record<string, string>;
+  options: Record<string, string[]>;
+  /** 고칠 수 있는 사람인가 — 회원 메뉴의 수정 권한을 따른다 */
+  canEdit: boolean;
   onClose: () => void;
 }) {
   const 합 = num(x.결제금액);
@@ -1518,6 +1525,62 @@ function PayDetail({
     { k: "계좌", v: num(x.계좌액) },
   ].filter((w) => w.v > 0);
 
+  /*
+    여기서 바로 고친다
+
+    잘못 적힌 결제를 고치려면 회원 화면으로 건너가 그 회원을 찾고 이용권을
+    열어야 했다. 매출을 맞춰 보다가 틀린 것을 발견하는 자리는 여기인데,
+    고치는 자리는 저기라 걸음이 길었다.
+  */
+  const [edit, setEdit] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [f, setF] = useState({
+    결제일: (x.결제일시 ?? "").slice(0, 10),
+    결제수단: x.결제수단 ?? "",
+    결제금액: String(num(x.결제금액) || ""),
+    미수금액: String(num(x.미수금액) || ""),
+    담당직원사번: x.담당직원사번 ?? "",
+    매출유형: x.매출유형 ?? "",
+  });
+  const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
+
+  /* 이름 차례로 세운다. 사번 차례로 두면 찾는 이름이 어디쯤인지 모른다 */
+  const staffList = Object.entries(staffNames)
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+
+  async function save() {
+    if (busy) return;
+    setBusy(true);
+    setMsg("");
+    const res = await fetch("/api/members/payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: x.id,
+        changes: {
+          /* 시각은 원래 것을 그대로 둔다 — 날짜만 고치겠다는 뜻인데 00:00 으로
+             밀면 같은 날 결제 차례가 뒤바뀐다 */
+          결제일시: f.결제일 ? f.결제일 + (x.결제일시 ?? "").slice(10) : "",
+          결제수단: f.결제수단,
+          /* 수단과 금액을 같이 보내야 현금·카드·계좌 칸이 새 수단에 맞게
+             다시 나뉜다. 수단만 보내면 예전 칸에 금액이 그대로 남는다 */
+          결제금액: String(num(f.결제금액)),
+          미수금액: String(num(f.미수금액)),
+          담당직원사번: f.담당직원사번,
+          매출유형: f.매출유형,
+        },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setBusy(false);
+      return setMsg(data.error ?? "저장하지 못했습니다.");
+    }
+    location.reload();
+  }
+
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
@@ -1526,6 +1589,57 @@ function PayDetail({
           {(x.결제일시 ?? "").slice(0, 16).replace("T", " ")} · {branch} · {x.id}
         </p>
 
+        {edit ? (
+          <div className="form-grid">
+            <div className="field">
+              <label>결제일</label>
+              <input className="input" type="date" value={f.결제일}
+                     onChange={(e) => set("결제일", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>결제 수단</label>
+              <select className="input" value={f.결제수단}
+                      onChange={(e) => set("결제수단", e.target.value)}>
+                <option value="">정하지 않음</option>
+                {(options["결제수단"]?.length
+                  ? options["결제수단"]
+                  : ["카드", "현금", "계좌", "카드+계좌"]).map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>결제 금액</label>
+              <input className="input" inputMode="numeric" value={f.결제금액}
+                     onChange={(e) => set("결제금액", e.target.value.replace(/[^0-9]/g, ""))} />
+            </div>
+            <div className="field">
+              <label>미수금</label>
+              <input className="input" inputMode="numeric" value={f.미수금액}
+                     onChange={(e) => set("미수금액", e.target.value.replace(/[^0-9]/g, ""))} />
+            </div>
+            <div className="field">
+              <label>결제 담당</label>
+              <select className="input" value={f.담당직원사번}
+                      onChange={(e) => set("담당직원사번", e.target.value)}>
+                <option value="">정하지 않음</option>
+                {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>매출 유형</label>
+              <select className="input" value={f.매출유형}
+                      onChange={(e) => set("매출유형", e.target.value)}>
+                <option value="">정하지 않음</option>
+                {(options["매출유형"]?.length
+                  ? options["매출유형"]
+                  : ["신규", "재등록", "PT", "기타매출"]).map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        ) : (
         <div className="kv">
           <div className="kv-row"><span>유형</span>
             <b>{isRefund(x) ? "환불" : typeOf(x.매출유형)}</b></div>
@@ -1550,6 +1664,15 @@ function PayDetail({
                 {x.환불사유 ? ` · ${x.환불사유}` : ""}</b></div>
           )}
         </div>
+        )}
+
+        {edit && (
+          <p className="stat-note">
+            여기서 고치면 <b>같은 결제로 판 상품 전부</b>가 같이 옮겨갑니다. 상품마다 금액을
+            나눠 고치시려면 회원 화면의 <b>이용권 고치기</b>에서 하시면 됩니다.
+          </p>
+        )}
+        {msg && <div className="alert-bad">{msg}</div>}
 
         <h4 className="viz-title mt">무엇을 팔았나</h4>
         {items.length === 0 ? (
@@ -1604,7 +1727,15 @@ function PayDetail({
         )}
 
         <div className="modal-actions">
-          <button className="btn-ghost" onClick={onClose}>닫기</button>
+          {canEdit && !edit && (
+            <button className="btn-ghost" onClick={() => setEdit(true)}>고치기</button>
+          )}
+          <button className="btn-ghost" onClick={onClose} disabled={busy}>닫기</button>
+          {edit && (
+            <button className="btn-dark" onClick={save} disabled={busy}>
+              {busy ? "저장 중…" : "저장"}
+            </button>
+          )}
         </div>
       </div>
     </div>
