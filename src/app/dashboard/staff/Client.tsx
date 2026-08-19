@@ -25,6 +25,8 @@ type Staff = {
   restMin: string;
   restVary: boolean;
   workDays: string;
+  /** 지점코드 → 그 지점에서만 쓰는 출퇴근 시각 · 근무 요일 */
+  branchWork: Record<string, { baseTime: string; outTime: string; workDays: string }>;
   /** 수업을 맡는 사람인가 — 직급과 별개로 사람마다 정한다 */
   trainer: boolean;
   /** 맡은 그룹수업 시간대 "06:00,10:00,19:00" */
@@ -488,6 +490,10 @@ function Detail({
     그룹수업시간: item.groupSlots,
   });
   const [picked, setPicked] = useState<string[]>(item.branches);
+  /** 지점마다 다른 출퇴근 시각 · 근무 요일 */
+  const [work, setWork] = useState<Record<string, { baseTime: string; outTime: string; workDays: string }>>(
+    item.branchWork ?? {}
+  );
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -503,7 +509,18 @@ function Detail({
     const res = await fetch("/api/staff/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: item.id, changes: { ...f, 담당지점: picked } }),
+      body: JSON.stringify({
+        id: item.id,
+        changes: {
+          ...f,
+          담당지점: picked,
+          /* 담당에서 빠진 지점 값은 같이 버린다. 안 그러면 다시 넣었을 때
+             예전 시각이 되살아나 아무도 모르게 적용된다 */
+          지점근무: Object.fromEntries(picked.map((c) => [c, work[c] ?? {
+            baseTime: "", outTime: "", workDays: "",
+          }])),
+        },
+      }),
     });
     const data = await res.json();
     setBusy(false);
@@ -686,6 +703,51 @@ function Detail({
           근무 요일을 정하면 근태표에서 <b>원래 안 나오는 날</b>과
           <b> 나와야 하는데 안 찍은 날</b>이 구분됩니다. 안 정하면 매일 나오는 것으로 봅니다.
         </p>
+
+        {/*
+          지점마다 다르게
+
+          여러 지점을 도는 분은 「월·수·금 쌍용점 07:30~22:00, 화·목 용곡점
+          13:00~21:00」처럼 다닌다. 사람마다 하나로 재면 어느 쪽에 맞춰도
+          다른 쪽이 지각으로 찍힌다.
+
+          담당 지점이 둘 이상일 때만 보여준다. 한 지점만 다니는 분에게는
+          평생 안 쓸 칸이 여섯 개 늘어나는 것뿐이다.
+        */}
+        {picked.length > 1 && (
+          <>
+            <h4 className="mini-title" style={{ marginTop: 20 }}>지점마다 다르게</h4>
+            <p className="stat-note" style={{ margin: "0 0 10px" }}>
+              비워 두면 <b>위에 적은 값</b>을 그대로 씁니다. 다른 지점만 적어 주세요.
+            </p>
+            {picked.map((code) => {
+              const w = work[code] ?? { baseTime: "", outTime: "", workDays: "" };
+              const set2 = (k: string, v: string) =>
+                setWork({ ...work, [code]: { ...w, [k]: v } });
+              return (
+                <div className="bwork" key={code}>
+                  <b className="bwork-nm">
+                    {branches.find((x) => x.code === code)?.name ?? code}
+                  </b>
+                  <div className="form-grid">
+                    <L label="출근">
+                      <input className="input" type="time" value={w.baseTime} disabled={!editable}
+                             onChange={(e) => set2("baseTime", e.target.value)} />
+                    </L>
+                    <L label="퇴근">
+                      <input className="input" type="time" value={w.outTime} disabled={!editable}
+                             onChange={(e) => set2("outTime", e.target.value)} />
+                    </L>
+                    <L label="근무 요일" full>
+                      <DayPick value={w.workDays} disabled={!editable}
+                               onChange={(v) => set2("workDays", v)} />
+                    </L>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
 
         {isSelf && (
           <p className="stat-note">

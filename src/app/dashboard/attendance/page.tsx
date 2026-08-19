@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { myBranchesOf } from "@/lib/scope";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
-import { getBranches, getStaffAll, getStaffBranches } from "@/lib/data";
+import { getBranches, getStaffAll, getStaffBranches, getStaffBranchWork } from "@/lib/data";
 import { listAttendance, SHEET_T } from "@/lib/attendance";
 import { listSheetNames } from "@/lib/sheets";
 import Shell from "../Shell";
@@ -49,6 +49,8 @@ async function body() {
   const canEdit = Boolean(ab.get("근태")?.update);
 
   /** 이 화면에서 볼 수 있는 직원 — 담당 지점 사람만 */
+  const branchWork = await getStaffBranchWork();
+
   const people = staff
     .filter((s) => s.active)
     .filter((s) => {
@@ -61,11 +63,24 @@ async function body() {
       id: s.id,
       name: s.name,
       branch: (branchMap.get(s.id) ?? [])[0] || s.mainBranch || "",
-      baseTime: s.baseTime,
-      outTime: s.outTime,
+      /*
+        지점마다 다른 시각을 쓴다
+
+        여러 지점을 도는 분은 「월·수·금 쌍용점 07:30, 화·목 용곡점 13:00」
+        처럼 다닌다. 사람마다 하나로 재면 어느 쪽에 맞춰도 다른 쪽이 지각으로
+        찍힌다. 지금 보고 있는 지점 것이 있으면 그것을 쓰고, 없으면 직원 줄에
+        적힌 값을 쓴다 — 한 지점만 다니는 분은 지금까지와 같다.
+      */
+      ...(() => {
+        const w = branchWork.get(s.id)?.[session.currentBranch];
+        return {
+          baseTime: w?.baseTime || s.baseTime,
+          outTime: w?.outTime || s.outTime,
+          workDays: w?.workDays || s.workDays,
+        };
+      })(),
       restMin: s.restMin,
       restVary: s.restVary,
-      workDays: s.workDays,
     }));
 
   // 근태 탭이 아직 없을 수 있다. 없으면 화면에서 만들 수 있게 알려준다

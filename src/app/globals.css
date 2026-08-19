@@ -1684,6 +1684,20 @@ table.grid .late { color: var(--bad); font-weight: 800; }
 .emoji:hover { border-color: var(--ink-2); background: var(--surface-2); }
 .emoji:active { transform: translateY(1px); }
 
+/*
+  지점마다 다른 근무 조건
+
+  지점 이름을 위에 붙여 어느 지점 칸인지 헷갈리지 않게 한다. 상자를
+  나누지 않으면 시각 칸 여섯 개가 줄줄이 서서 어디까지가 한 지점인지
+  세어 봐야 한다.
+*/
+.bwork {
+  margin-top: 10px; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface-2);
+}
+.bwork-nm { display: block; margin-bottom: 8px; font-size: 12.5px; font-weight: 800; }
+
 /* 이름표 옆에 적는 「지금 이 값입니다」 — 칸 안이 아니라 밖이다 */
 .field label .nowv {
   font-size: 11px; font-weight: 700; color: var(--ink-2);

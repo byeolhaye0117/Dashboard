@@ -17,6 +17,13 @@ export const PW_COLUMN = "비밀번호(자동암호화)";
 /** 임시 비밀번호로 들어온 사람에게 변경을 강제하기 위한 칸 (없어도 동작한다) */
 export const TEMP_COLUMN = "비밀번호임시";
 
+/**
+ * 지점 하나에서의 근무 조건
+ *
+ * 비어 있는 값은 「따로 안 정함」이다 — 직원 줄에 적힌 값을 그대로 쓴다.
+ */
+export type BranchWork = { baseTime: string; outTime: string; workDays: string };
+
 export type AdminStaff = {
   id: string;
   name: string;
@@ -24,6 +31,8 @@ export type AdminStaff = {
   roleCode: string;
   mainBranch: string;
   branches: string[];
+  /** 지점코드 → 그 지점에서만 쓰는 근무 조건. 없으면 직원 줄 값을 쓴다 */
+  branchWork: Record<string, BranchWork>;
   status: string;
   accountOn: boolean;
   /** 비밀번호가 정해져 있는가 — 비밀번호 자체는 절대 내보내지 않는다 */
@@ -58,14 +67,35 @@ export async function listStaffAdmin(): Promise<{
     readSheet(SHEET.직원담당지점),
   ]);
 
+  /*
+   * 지점마다 출퇴근 시각과 근무 요일이 다를 수 있다
+   *
+   * 여러 지점을 도는 분은 「월·수·금은 쌍용점 07:30~22:00, 화·목은 용곡점
+   * 13:00~21:00」처럼 다닌다. 사람마다 하나로 두면 어느 쪽에 맞춰도 다른
+   * 쪽이 지각으로 찍힌다.
+   *
+   * 담당 지점 줄에 매단다. 안 적어 두면 직원 줄에 적힌 값을 그대로 쓴다 —
+   * 한 지점만 다니는 분은 지금까지대로 아무것도 안 하셔도 된다.
+   */
   const byStaff = new Map<string, string[]>();
+  const perBranch = new Map<string, Record<string, BranchWork>>();
   branchRows.rows.forEach((r) => {
     if ((r["삭제여부"] ?? "").toUpperCase() === "Y") return;
     const id = r["사번"];
-    if (!id) return;
+    const code = r["지점코드"];
+    if (!id || !code) return;
     const list = byStaff.get(id) ?? [];
-    if (r["지점코드"]) list.push(r["지점코드"]);
+    list.push(code);
     byStaff.set(id, list);
+
+    const 시작 = normalizeTime(r["출근기준시각"] ?? "");
+    const 끝 = normalizeTime(r["퇴근기준시각"] ?? "");
+    const 요일 = (r["근무요일"] ?? "").replace(/[^월화수목금토일]/g, "");
+    if (시작 || 끝 || 요일) {
+      const mine = perBranch.get(id) ?? {};
+      mine[code] = { baseTime: 시작, outTime: 끝, workDays: 요일 };
+      perBranch.set(id, mine);
+    }
   });
 
   const items: AdminStaff[] = [];
@@ -79,6 +109,7 @@ export async function listStaffAdmin(): Promise<{
       roleCode: r["직급코드"] ?? "",
       mainBranch: r["주소속지점"] ?? "",
       branches: byStaff.get(r["사번"]) ?? [],
+      branchWork: perBranch.get(r["사번"]) ?? {},
       status: r["재직상태"] || "재직중",
       accountOn: yes(r["계정사용"] || "Y"),
       hasPassword: Boolean((r[PW_COLUMN] ?? "").trim()),
@@ -135,6 +166,8 @@ export type NewStaff = {
   직급코드: string;
   주소속지점: string;
   담당지점: string[];
+  /** 지점마다 다른 출퇴근 시각 · 근무 요일 */
+  지점근무?: Record<string, BranchWork>;
   재직상태?: string;
 };
 
@@ -161,7 +194,7 @@ export async function createStaff(input: NewStaff, byId: string): Promise<string
   };
 
   await appendRow(SHEET.직원, headers, row);
-  await syncBranches(id, input.담당지점, byId);
+  await syncBranches(id, input.담당지점, byId, input.지점근무);
   return id;
 }
 
@@ -176,6 +209,7 @@ export async function patchStaff(
     재직상태?: string;
     계정사용?: boolean;
     담당지점?: string[];
+    지점근무?: Record<string, BranchWork>;
     출근기준시각?: string;
     퇴근기준시각?: string;
     휴게분?: string;
@@ -227,7 +261,7 @@ export async function patchStaff(
   });
 
   await updateRow(SHEET.직원, rowNumbers[i], headers, merged);
-  if (changes.담당지점) await syncBranches(id, changes.담당지점, byId);
+  if (changes.담당지점) await syncBranches(id, changes.담당지점, byId, changes.지점근무);
 }
 
 /**
@@ -285,10 +319,29 @@ export async function setPassword(
  *
  * 빠진 지점은 새로 넣고, 없어진 지점은 삭제 표시만 한다.
  */
-async function syncBranches(id: string, want: string[], byId: string): Promise<void> {
+async function syncBranches(
+  id: string,
+  want: string[],
+  byId: string,
+  work?: Record<string, BranchWork>
+): Promise<void> {
+  /* 뒤늦게 생긴 칸이다. 없는 칸에 적으면 조용히 사라진다 */
+  if (work) {
+    await addColumns(SHEET.직원담당지점, ["출근기준시각", "퇴근기준시각", "근무요일"]);
+  }
   const { headers, rows, rowNumbers } = await readSheet(SHEET.직원담당지점);
   const stamp = now();
   const target = new Set(want.filter(Boolean));
+  const 근무 = (code: string) => {
+    const w = work?.[code];
+    return w
+      ? {
+          출근기준시각: normalizeTime(w.baseTime ?? ""),
+          퇴근기준시각: normalizeTime(w.outTime ?? ""),
+          근무요일: (w.workDays ?? "").replace(/[^월화수목금토일]/g, ""),
+        }
+      : {};
+  };
 
   const live = new Set<string>();
   for (let i = 0; i < rows.length; i++) {
@@ -300,11 +353,14 @@ async function syncBranches(id: string, want: string[], byId: string): Promise<v
     if (target.has(code)) {
       live.add(code);
       // 예전에 뺐던 지점을 다시 넣는 경우 되살린다
-      if (dead) {
-        await updateRow(SHEET.직원담당지점, rowNumbers[i], headers, {
-          ...r, 삭제여부: "", 수정일시: stamp, 수정자: byId,
-        });
-      }
+      await updateRow(SHEET.직원담당지점, rowNumbers[i], headers, {
+        ...r,
+        ...근무(code),
+        // 예전에 뺐던 지점을 다시 넣는 경우 되살린다
+        삭제여부: "",
+        수정일시: stamp,
+        수정자: byId,
+      });
     } else if (!dead) {
       await updateRow(SHEET.직원담당지점, rowNumbers[i], headers, {
         ...r, 삭제여부: "Y", 수정일시: stamp, 수정자: byId,
@@ -317,6 +373,7 @@ async function syncBranches(id: string, want: string[], byId: string): Promise<v
     await appendRow(SHEET.직원담당지점, headers, {
       사번: id,
       지점코드: code,
+      ...근무(code),
       등록일시: stamp,
       등록자: byId,
       수정일시: stamp,

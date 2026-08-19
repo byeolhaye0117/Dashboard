@@ -64,6 +64,20 @@ export async function POST(req: Request) {
         재직상태: status,
         계정사용: accountOn,
         담당지점: Array.isArray(c.담당지점) ? c.담당지점.map(String) : undefined,
+        /* 지점마다 다른 출퇴근 시각 · 근무 요일. 담당 지점과 같이 저장한다 */
+        지점근무:
+          c.지점근무 && typeof c.지점근무 === "object"
+            ? Object.fromEntries(
+                Object.entries(c.지점근무 as Record<string, any>).map(([code, w]) => [
+                  String(code),
+                  {
+                    baseTime: String(w?.baseTime ?? ""),
+                    outTime: String(w?.outTime ?? ""),
+                    workDays: String(w?.workDays ?? ""),
+                  },
+                ])
+              )
+            : undefined,
         출근기준시각: c.출근기준시각 === undefined ? undefined : String(c.출근기준시각),
         퇴근기준시각: c.퇴근기준시각 === undefined ? undefined : String(c.퇴근기준시각),
         휴게분: c.휴게분 === undefined ? undefined : String(c.휴게분),
