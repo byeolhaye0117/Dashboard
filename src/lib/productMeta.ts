@@ -74,9 +74,27 @@ export function readProduct(r: Row): ProductMeta {
 
   const yes = (v: string) => ["y", "yes", "예", "o", "true", "✅"].includes(v.trim().toLowerCase());
 
-  const unit: "개월" | "일" =
+  let unit: "개월" | "일" =
     val(r, ["기간단위", "단위"]).trim() === "일" ? "일" : "개월";
-  const term = totalMonths || payMonths + freeMonths;
+  let term = totalMonths || payMonths + freeMonths;
+
+  /*
+   * 하루짜리 상품에 기간을 안 적어 두셨을 때
+   *
+   * 기간이 비어 있으면 화면이 1개월로 잡는다. 그래서 「일일권」을 팔면
+   * 26-08-19 ~ 26-09-18 로 한 달이 잡혔다 — 하루 쓰고 가시는 분이 한 달
+   * 회원으로 남는다.
+   *
+   * 이름이 하루를 말하고 있는데 기간이 비어 있으면 하루로 본다. 이름에
+   * 기대는 것은 원래 좋지 않지만, 이건 적힌 값을 뒤집는 것이 아니라
+   * 비어 있는 자리를 메우는 것이다. 상품 관리에서 기간단위를 「일」로,
+   * 기간을 1로 적어 두시면 이 짐작은 아예 안 쓰인다.
+   */
+  const 이름 = val(r, ["상품명"]).replace(/\s/g, "");
+  if (term === 0 && /일일권|1일권|원데이|데이패스|하루/i.test(이름)) {
+    unit = "일";
+    term = 1;
+  }
 
   return {
     code: val(r, ["상품코드"]),
