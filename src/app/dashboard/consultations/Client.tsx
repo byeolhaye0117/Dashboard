@@ -335,11 +335,6 @@ export default function Client(p: Props) {
         </p>
       )}
 
-      <p className="stat-note">
-        약속을 잡은 건은 <b>약속 날짜</b>, 아직 약속이 없는 건은 <b>문의가 들어온 날</b> 기준으로
-        그 달에 넣습니다. 같은 달 안에 늦게 등록해도 <b>등록</b>으로 인정하고, 달이 넘어가도록
-        결론이 없으면 <b>미등록</b>으로 마감합니다.
-      </p>
 
       <div className="filters">
         <div className="chips">
