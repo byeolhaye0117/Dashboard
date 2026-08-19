@@ -163,6 +163,38 @@ export async function getStaffBranches(): Promise<Map<string, string[]>> {
   return map;
 }
 
+/**
+ * 사번 → 지점코드 → 그 지점에서만 쓰는 근무 조건
+ *
+ * 여러 지점을 도는 분은 지점마다 출퇴근 시각과 근무 요일이 다르다. 여기
+ * 없는 지점은 직원 줄에 적힌 값을 그대로 쓴다 — 한 지점만 다니는 분은
+ * 지금까지대로 아무것도 안 적어도 된다.
+ */
+export const getStaffBranchWork = cache(_getStaffBranchWork);
+
+async function _getStaffBranchWork(): Promise<
+  Map<string, Record<string, { baseTime: string; outTime: string; workDays: string }>>
+> {
+  const { rows } = await readSheet(SHEET.직원담당지점);
+  const map = new Map<
+    string,
+    Record<string, { baseTime: string; outTime: string; workDays: string }>
+  >();
+  alive(rows).forEach((r) => {
+    const id = r["사번"];
+    const code = r["지점코드"];
+    if (!id || !code) return;
+    const baseTime = (r["출근기준시각"] ?? "").trim();
+    const outTime = (r["퇴근기준시각"] ?? "").trim();
+    const workDays = (r["근무요일"] ?? "").replace(/[^월화수목금토일]/g, "");
+    if (!baseTime && !outTime && !workDays) return;
+    const mine = map.get(id) ?? {};
+    mine[code] = { baseTime, outTime, workDays };
+    map.set(id, mine);
+  });
+  return map;
+}
+
 export const getPermissions = cache(_getPermissions);
 
 async function _getPermissions(): Promise<Permission[]> {

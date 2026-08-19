@@ -699,16 +699,16 @@ export default function Client(p: Props) {
         map.set(v, (map.get(v) ?? 0) + 1);
       });
 
-      /* 정해 둔 차례를 기억해 둔다. 0명끼리는 대표님이 정하신 순서대로 */
-      const 차례 = new Map((정해둔 ?? []).map((v, i) => [(v ?? "").trim(), i]));
       return [...map.entries()]
         .map(([key, n]) => ({ key, n }))
         /* 「모름」은 늘 맨 아래. 개수가 많다고 맨 위에 오면 그 갈래가
            제일 큰 무리인 것처럼 읽힌다 */
+        /* ㄱㄴㄷ 순. 많은 것부터 세우면 달마다 줄 차례가 바뀌어, 지난달과
+           견주려고 눈이 매번 이름을 다시 찾아야 한다.
+           「모름」만 맨 아래다 — 값이 아니라 빈 자리라서 갈래 사이에 끼면
+           그것도 한 갈래처럼 읽힌다 */
         .sort((a, b) =>
           (a.key === "모름" ? 1 : 0) - (b.key === "모름" ? 1 : 0) ||
-          b.n - a.n ||
-          (차례.get(a.key) ?? 9999) - (차례.get(b.key) ?? 9999) ||
           a.key.localeCompare(b.key, "ko")
         );
     };
@@ -1022,12 +1022,8 @@ export default function Client(p: Props) {
         못 보고 지나치는 값이 크다.
       */}
       <h2 className="sec-title">자세히 보기</h2>
-      <p className="sec-sub">일별 · 직원별 매출 · 결제 내역</p>
 
       <h3 className="viz-title mt">일별</h3>
-      <p className="viz-sub">
-            한 주씩 요일로 폅니다. 좌우 화살표로 다른 주를 봅니다
-          </p>
       <div className="viz">
         {cur.count === 0 ? (
           <p className="dim mini-note">이 달에 등록된 결제가 없습니다.</p>
@@ -1229,7 +1225,6 @@ export default function Client(p: Props) {
 
           <div className="viz">
             <h3 className="viz-title">지점별 어떻게 받았나</h3>
-            <p className="viz-sub">지점마다 현금 · 계좌 · 카드 비중</p>
             {branchMix.every((b) => b.method.named <= 0) ? (
               <p className="dim mini-note">나눠 적은 결제가 없습니다.</p>
             ) : (
@@ -2023,9 +2018,7 @@ function WeekLines({ list, month }: {
               ))}
             </ul>
           </>
-        ) : (
-          <span className="dim">그래프 위에 손을 올리면 그 날 값이 나옵니다</span>
-        )}
+        ) : null}
       </div>
 
       <div className="vkey">
