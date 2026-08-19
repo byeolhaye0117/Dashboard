@@ -79,11 +79,32 @@ async function body() {
   // 미수금 명단에 "누가"를 적으려면 회원 이름이 있어야 한다.
   // 이름을 못 읽어도 금액은 보여야 하므로 실패해도 넘어간다.
   let memberNames: Record<string, string> = {};
+  /*
+   * 어떤 분들이 등록하셨나
+   *
+   * 매출은 「얼마」만 말한다. 「누가」를 같이 봐야 다음 달에 어디에 힘을 쓸지
+   * 정할 수 있다 — 20대 여성이 몰리는데 광고는 40대 남성에게 나가고 있으면
+   * 그건 숫자를 보고도 모르는 일이다.
+   */
+  let people: any[] = [];
   try {
     const { items } = await listMembers();
     items.forEach((m) => (memberNames[m.id] = m.이름));
+    people = items
+      .filter((m) => allowed.has(m.지점코드))
+      .filter((m) => (m.회원상태 || "유효") !== "탈퇴")
+      .map((m) => ({
+        지점코드: m.지점코드,
+        가입일: (m.가입일 ?? "").slice(0, 10),
+        성별: (m.성별 ?? "").trim(),
+        나이대: (m.나이대 ?? "").trim(),
+        거주동네: (m.거주동네 ?? "").trim(),
+        직업: (m.직업 ?? "").trim(),
+        방문경로: (m.방문경로 ?? "").trim(),
+      }));
   } catch {
     memberNames = {};
+    people = [];
   }
 
   // 등록실패율은 상담 자료에서 나온다. 못 읽어도 매출 화면은 그대로 보이게 한다
@@ -115,6 +136,7 @@ async function body() {
         branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
         staffNames={staffNames}
         memberNames={memberNames}
+        people={people}
         missingRefund={missingRefund}
         canSetup={Boolean(ab.get("직원관리")?.update)}
         canWipePay={Boolean(ab.get("회원")?.remove)}

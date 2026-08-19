@@ -61,8 +61,15 @@ type Lead = {
   진행상태: string; 상담자사번: string;
 };
 
+/** 어떤 분들이 등록하셨나 — 회원 한 줄에서 사람을 말하는 값만 */
+type Person = {
+  지점코드: string; 가입일: string;
+  성별: string; 나이대: string; 거주동네: string; 직업: string; 방문경로: string;
+};
+
 type Props = {
   payments: Payment[];
+  people: Person[];
   tickets: Ticket[];
   products: ProductMeta[];
   goals: Goal[];
@@ -664,6 +671,46 @@ export default function Client(p: Props) {
    * 날마다 나눠 적는다 — 같은 셈(bucketOf)을 그대로 쓰므로 위아래 숫자가
    * 어긋날 일이 없다.
    */
+  /*
+   * 등록한 분들의 갈래
+   *
+   * 고른 지점 · 고른 달에 등록한 분만 센다. 화면 전체가 그 달 이야기인데
+   * 여기만 전체 회원이면 위아래가 다른 말을 하게 된다.
+   * 「전체 회원」으로 넘기면 지금까지 다니시는 분 전부를 본다.
+   */
+  const [who, setWho] = useState<"month" | "all">("month");
+  const dist = useMemo(() => {
+    const 사람 = p.people
+      .filter((m) => branch === "전체" || m.지점코드 === branch)
+      .filter((m) => who === "all" || (m.가입일 ?? "").startsWith(month));
+
+    const 세기 = (k: keyof Person) => {
+      const map = new Map<string, number>();
+      사람.forEach((m) => {
+        const v = (m[k] as string) || "모름";
+        map.set(v, (map.get(v) ?? 0) + 1);
+      });
+      return [...map.entries()]
+        .map(([key, n]) => ({ key, n }))
+        /* 「모름」은 늘 맨 아래. 개수가 많다고 맨 위에 오면 그 갈래가
+           제일 큰 무리인 것처럼 읽힌다 */
+        .sort((a, b) =>
+          (a.key === "모름" ? 1 : 0) - (b.key === "모름" ? 1 : 0) ||
+          b.n - a.n ||
+          a.key.localeCompare(b.key, "ko")
+        );
+    };
+
+    return {
+      total: 사람.length,
+      성별: 세기("성별"),
+      나이대: 세기("나이대"),
+      거주동네: 세기("거주동네"),
+      직업: 세기("직업"),
+      방문경로: 세기("방문경로"),
+    };
+  }, [p.people, branch, month, who]);
+
   const byDay = useMemo(() => {
     const [y, m] = month.split("-").map(Number);
     const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -829,6 +876,48 @@ export default function Client(p: Props) {
           </div>
         </div>
       </div>
+
+      {/*
+        어떤 분들이 등록하셨나
+
+        매출은 「얼마」만 말한다. 「누가」를 같이 봐야 다음 달에 어디에 힘을
+        쓸지 정할 수 있다 — 20대 여성이 몰리는데 광고는 40대 남성에게 나가고
+        있으면 숫자만 보고는 모른다.
+      */}
+      <div className="sec-head">
+        <div>
+          <h2 className="sec-title">등록한 분들</h2>
+          <p className="sec-sub">
+            {who === "month"
+              ? `${Number(month.slice(5, 7))}월에 등록한 ${dist.total}명`
+              : `지금 다니시는 ${dist.total}명 전부`}
+            {" · 안 적힌 것은 「모름」으로 셉니다"}
+          </p>
+        </div>
+        <div className="chips">
+          <button className={`chip${who === "month" ? " on" : ""}`} onClick={() => setWho("month")}>
+            이 달 등록
+          </button>
+          <button className={`chip${who === "all" ? " on" : ""}`} onClick={() => setWho("all")}>
+            전체 회원
+          </button>
+        </div>
+      </div>
+      {dist.total === 0 ? (
+        <div className="viz">
+          <p className="dim mini-note">
+            {who === "month" ? "이 달에 등록한 회원이 없습니다." : "회원이 없습니다."}
+          </p>
+        </div>
+      ) : (
+        <div className="viz-2">
+          <Dist title="성별" rows={dist.성별} total={dist.total} />
+          <Dist title="나이대" rows={dist.나이대} total={dist.total} />
+          <Dist title="거주 동네" rows={dist.거주동네} total={dist.total} />
+          <Dist title="직업" rows={dist.직업} total={dist.total} />
+          <Dist title="방문 경로" rows={dist.방문경로} total={dist.total} />
+        </div>
+      )}
 
       {/* 월별 흐름 — 시간에 따른 변화라 꺾은선 */}
       <h2 className="sec-title">월별 흐름</h2>
@@ -1930,6 +2019,46 @@ function WeekLines({ list, month }: {
           <span key={k}><i className={`ln s${i + 1}`} />{k}</span>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 한 갈래의 분포 — 가로 막대
+ *
+ * 파이로 그리면 다섯 조각까지는 읽히지만 「쌍용동 · 두정동 · 신방동 …」처럼
+ * 갈래가 여남은이면 아무것도 안 읽힌다. 가로 막대는 몇 줄이든 위에서
+ * 아래로 읽히고, 이름이 길어도 자리가 있다.
+ *
+ * 안 적힌 것은 「모름」으로 세운다. 빼 버리면 「20대가 절반」이라고 읽히는데
+ * 실은 절반이 안 적힌 것일 수 있다 — 그게 더 위험한 착각이다.
+ */
+function Dist({ title, rows, total }: {
+  title: string;
+  rows: { key: string; n: number }[];
+  total: number;
+}) {
+  const top = Math.max(1, ...rows.map((r) => r.n));
+  return (
+    <div className="viz">
+      <h3 className="viz-title">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="dim mini-note">아직 자료가 없습니다.</p>
+      ) : (
+        <div className="dist">
+          {rows.map((r) => (
+            <div className="drow" key={r.key}>
+              <span className={`nm${r.key === "모름" ? " dim" : ""}`}>{r.key}</span>
+              <span className="bt">
+                <i className={r.key === "모름" ? "off" : ""}
+                   style={{ width: `${Math.max(2, (r.n / top) * 100)}%` }} />
+              </span>
+              <span className="am num">{r.n}명</span>
+              <span className="pc num">{Math.round((r.n / Math.max(1, total)) * 100)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
