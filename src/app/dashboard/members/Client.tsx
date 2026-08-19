@@ -1619,9 +1619,8 @@ const 빠진칸 = (v: Record<string, string>): string[] => {
  * 왜 못 적었는지 한 줄이면, 나중에 「이건 물어봐야 할 사람인가」를 가릴 수
  * 있다. 「손님이 안 알려주심」과 「바빠서 못 물음」은 다음 할 일이 다르다.
  */
-function MissingGate({ 빈칸, opts, busy, onBack, onSkip }: {
+function MissingGate({ 빈칸, busy, onBack, onSkip }: {
   빈칸: string[];
-  opts?: string[];
   busy: boolean;
   onBack: () => void;
   onSkip: (사유: string) => void;
@@ -1640,24 +1639,18 @@ function MissingGate({ 빈칸, opts, busy, onBack, onSkip }: {
 
         {ing ? (
           <>
+            {/* 고르는 목록을 안 붙인다. 미리 적어 둔 말 중에 고르게 하면
+                실제 사정과 가장 비슷한 것을 고르고 끝내게 된다 — 사정은
+                그때그때 다르고, 그 다름이 곧 다음에 할 일을 정한다 */}
             <div className="field">
               <label htmlFor="gw">왜 못 적었는지 한 줄만</label>
-              <input id="gw" className="input" value={why} autoFocus list="gate-why"
-                     placeholder="예) 손님이 안 알려주심 · 바빠서 못 물어봄"
+              <input id="gw" className="input" value={why} autoFocus
+                     placeholder="예) 손님이 안 알려주심"
                      onChange={(e) => setWhy(e.target.value)}
                      onKeyDown={(e) => {
                        if (e.key === "Enter" && why.trim()) onSkip(why.trim());
                      }} />
-              <datalist id="gate-why">
-                {(opts ?? ["손님이 안 알려주심", "바빠서 못 물어봄", "나중에 확인 예정"]).map((o) => (
-                  <option key={o} value={o} />
-                ))}
-              </datalist>
             </div>
-            <p className="stat-note">
-              적어 두신 까닭은 <b>보고</b> 화면에 그대로 남습니다. 나중에 누구에게 다시 여쭤야
-              하는지 가리는 데 씁니다.
-            </p>
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setIng(false)} disabled={busy}>
                 돌아가기
@@ -1831,7 +1824,7 @@ function AddPurchase({
       </div>
 
       {gate && (
-        <MissingGate 빈칸={gate} opts={options["미입력사유"]} busy={busy}
+        <MissingGate 빈칸={gate} busy={busy}
                      onBack={() => setGate(null)}
                      onSkip={(why) => save(why)} />
       )}
@@ -1988,7 +1981,7 @@ function NewForm({
       </div>
 
       {gate && (
-        <MissingGate 빈칸={gate} opts={options["미입력사유"]} busy={busy}
+        <MissingGate 빈칸={gate} busy={busy}
                      onBack={() => setGate(null)}
                      onSkip={(why) => save(why)} />
       )}
@@ -3414,6 +3407,9 @@ function TicketEdit({
     /* 결제 줄에 적힌 날이다. 뒤늦게 넣은 결제는 넣은 날로 박혀 있어서
        실제로 받은 날과 다르다 — 매출이 엉뚱한 달에 잡힌다 */
     결제일: (pay?.결제일시 ?? "").slice(0, 10),
+    /* 카드로 받은 줄 알았는데 계좌였던 일이 있다. 매출 화면의
+       「어떻게 받았나」가 이 값을 그대로 센다 */
+    결제수단: pay?.결제수단 ?? "",
     /* 결제 줄에 적힌 값이다. 이용권이 아니라 결제 한 건의 성격이라
        같은 결제로 판 다른 상품도 같이 옮겨간다 */
     매출유형: pay?.매출유형 ?? "",
@@ -3485,6 +3481,12 @@ function TicketEdit({
     }
     if (pay && (f.매출유형 ?? "") !== (pay.매출유형 ?? "")) {
       payChanges.매출유형 = f.매출유형;
+    }
+    if (pay && f.결제수단 && f.결제수단 !== (pay.결제수단 ?? "")) {
+      /* 수단만 보내면 현금·카드·계좌 칸이 예전 값 그대로 남는다. 금액을 같이
+         보내야 서버가 새 수단에 맞춰 다시 나눠 담는다 */
+      payChanges.결제수단 = f.결제수단;
+      payChanges.결제금액 = pay.결제금액 ?? "";
     }
     if (pay && f.결제일 && f.결제일 !== (pay.결제일시 ?? "").slice(0, 10)) {
       /* 시각은 원래 것을 그대로 둔다. 날짜만 고치겠다는 뜻인데 시각까지
@@ -3590,6 +3592,17 @@ function TicketEdit({
             하나뿐이기 때문이다. 그 말을 칸 옆에 적어 둔다.
           */}
           {pay && (
+            <L label="결제 수단">
+              <select className="input" value={f.결제수단}
+                      onChange={(e) => set("결제수단", e.target.value)}>
+                <option value="">정하지 않음</option>
+                {(options["결제수단"]?.length ? options["결제수단"] : PAY_METHODS).map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </L>
+          )}
+          {pay && (
             <L label="결제일">
               <input className="input" type="date" value={f.결제일}
                      onChange={(e) => set("결제일", e.target.value)} />
@@ -3624,8 +3637,9 @@ function TicketEdit({
         </div>
         {pay ? (
           <p className="stat-note">
-            결제일 · 결제 담당 · 매출 유형을 바꾸면 <b>같은 결제로 판 다른 상품도 같이</b>{" "}
-            옮겨갑니다. 결제일을 바꾸면 그 매출이 잡히는 달도 바뀝니다.
+            결제 수단 · 결제일 · 결제 담당 · 매출 유형을 바꾸면{" "}
+            <b>같은 결제로 판 다른 상품도 같이</b> 옮겨갑니다. 결제일을 바꾸면 그 매출이
+            잡히는 달도 바뀝니다.
           </p>
         ) : (
           /*
@@ -3636,8 +3650,8 @@ function TicketEdit({
             데는 있고 어떤 데는 없나」가 됐다. 없으면 없다고 적는다.
           */
           <p className="stat-note">
-            이 이용권에 이어진 결제를 찾지 못해 <b>결제일 · 결제 담당 · 매출 유형</b>은 여기서
-            고칠 수 없습니다. 결제 탭에서 그 결제를 열어 고쳐 주세요.
+            이 이용권에 이어진 결제를 찾지 못해 <b>결제 수단 · 결제일 · 결제 담당 ·
+            매출 유형</b>은 여기서 고칠 수 없습니다. 결제 탭에서 그 결제를 열어 고쳐 주세요.
           </p>
         )}
 
