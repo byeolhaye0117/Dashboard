@@ -34,10 +34,12 @@ const 칸: { k: "방문경로" | "거주동네" | "직업"; label: string }[] = 
 export default function Client(p: {
   rows: Row[];
   branches: Named[];
+  /** 머리 위에서 고른 지점 — 이 화면의 기본 지점이 된다 */
+  currentBranch: string;
   problem: string;
 }) {
   const [tab, setTab] = useState("전체");
-  const [branch, setBranch] = useState("");
+  const [branch, setBranch] = useState(p.currentBranch || "");
   const [q, setQ] = useState("");
 
   const branchName = (code: string) =>

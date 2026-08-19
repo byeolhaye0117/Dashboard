@@ -148,6 +148,7 @@ async function body() {
         goals={goals.filter((g) => allowed.has(g.지점코드))}
         leads={leads}
         branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
+        currentBranch={session.currentBranch}
         staffNames={staffNames}
         memberNames={memberNames}
         people={people}

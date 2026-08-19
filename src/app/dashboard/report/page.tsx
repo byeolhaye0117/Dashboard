@@ -69,6 +69,7 @@ async function body() {
       <Client
         rows={rows}
         branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
+        currentBranch={session.currentBranch}
         problem={problem}
       />
     </Shell>

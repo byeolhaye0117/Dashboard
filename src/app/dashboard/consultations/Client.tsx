@@ -208,7 +208,10 @@ const needsResult = (c: Row) =>
 
 export default function Client(p: Props) {
   const [tab, setTab] = useState("전체");
-  const [branch, setBranch] = useState("전체");
+  /* 머리 위에서 고른 지점을 기본으로 본다. 지점을 골라 놓고도 다른 지점
+     상담이 같이 뜨면, 무엇을 보고 있는지 화면이 두 가지로 말하는 셈이다.
+     전 지점을 보실 때는 아래 고르개에서 「전 지점」을 고르시면 된다 */
+  const [branch, setBranch] = useState(p.currentBranch || "전체");
   const [q, setQ] = useState("");
   const [openNew, setOpenNew] = useState(false);
   const [detail, setDetail] = useState<Item | null>(null);
