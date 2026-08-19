@@ -1797,12 +1797,15 @@ function AddPurchase({
         {/* 다시 마주 앉는 자리다. 빠진 것을 여기서 채워 두면 다음에 또
             묻지 않아도 된다 — 안 고치면 아무것도 안 바뀐다 */}
         <div className="form-grid" style={{ marginBottom: 14 }}>
-          {/* 빈 칸으로 둔다. 예시도 지금 값도 안 적는다 — 읽을 것이 없어야
-              방금 들은 것을 그대로 치게 된다. 안 적으면 예전 값은 그대로다 */}
+          {/* 칸은 비워 둔다. 지금 적혀 있는 값은 이름표 옆에 작게만 적는다 —
+              칸 안에 넣으면 방금 적은 값처럼 보이고, 아예 안 적으면
+              「비어 있는데 왜 안 물어보지」가 된다 */}
           <Free label="방문 경로" k="방문경로" f={info} set={setI}
-                opts={options["문의채널"] ?? options["방문경로"]} />
-          <Free label="거주 동네" k="거주동네" f={info} set={setI} opts={options["거주동네"]} />
-          <Free label="직업" k="직업" f={info} set={setI} opts={options["직업"]} />
+                now={member.방문경로} opts={options["문의채널"] ?? options["방문경로"]} />
+          <Free label="거주 동네" k="거주동네" f={info} set={setI}
+                now={member.거주동네} opts={options["거주동네"]} />
+          <Free label="직업" k="직업" f={info} set={setI}
+                now={member.직업} opts={options["직업"]} />
         </div>
 
         <PurchaseFields products={sellable} options={options} tickets={tickets}
@@ -4121,15 +4124,29 @@ function L({ label, children, req, full, aside }: {
  * 「회사원」과 「직장인」이 섞여 나중에 세지지가 않는다.
  * 그래서 「선택목록」 탭에 적어 두신 것은 밑에 뜨고, 없는 것은 그냥 치면 된다.
  */
-function Free({ label, k, f, set, opts, placeholder }: {
+function Free({ label, k, f, set, opts, placeholder, now }: {
   label: string; k: string; f: Record<string, string>;
   set: (k: string, v: string) => void; opts?: string[]; placeholder?: string;
+  /**
+   * 지금 시트에 적혀 있는 값
+   *
+   * 칸 안에 넣으면 방금 적은 값처럼 보여서 뺐다. 그런데 아예 안 보이니
+   * 이번에는 「비어 있는데 왜 안 물어보지」가 됐다 — 실은 예전에 적어 둔
+   * 값이 있어서 안 물은 것이다. 칸 밖 이름표 옆에 작게 적는다.
+   */
+  now?: string;
 }) {
   const listId = `opt-${k}`;
   /* 밑에 뜨는 목록이 틀렸을 때 갈 곳을 그 자리에 놓는다.
      「관리 메뉴로 가세요」라고 말로만 하면 못 찾는다 */
   return (
-    <L label={label} aside={<a className="linkish" href="/dashboard/options">목록 고치기</a>}>
+    <L label={label}
+       aside={
+         <>
+           {now ? <span className="nowv">{now}</span> : null}
+           <a className="linkish" href="/dashboard/options">목록 고치기</a>
+         </>
+       }>
       <input className="input" value={f[k] ?? ""} list={listId} placeholder={placeholder}
              onChange={(e) => set(k, e.target.value)} />
       <datalist id={listId}>

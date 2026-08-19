@@ -1647,6 +1647,13 @@ table.grid .late { color: var(--bad); font-weight: 800; }
 .emoji:hover { border-color: var(--ink-2); background: var(--surface-2); }
 .emoji:active { transform: translateY(1px); }
 
+/* 이름표 옆에 적는 「지금 이 값입니다」 — 칸 안이 아니라 밖이다 */
+.field label .nowv {
+  font-size: 11px; font-weight: 700; color: var(--ink-2);
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 8px; margin-right: 8px;
+}
+
 /* 안 적힌 칸 이름들 — 창을 열자마자 무엇이 비었는지가 먼저 보여야 한다 */
 .gate-list { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 16px; }
 
