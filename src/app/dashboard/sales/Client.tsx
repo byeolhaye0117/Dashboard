@@ -922,25 +922,13 @@ export default function Client(p: Props) {
       <p className="sec-sub">일별 · 직원별 매출 · 결제 내역</p>
 
       <h3 className="viz-title mt">일별</h3>
-      <p className="viz-sub">막대가 없는 날은 결제가 없던 날입니다</p>
+      <p className="viz-sub">갈래마다 선이 하나입니다. 점이 없는 날은 그 갈래로 받은 돈이 없던 날입니다</p>
       <div className="viz">
         {cur.count === 0 ? (
           <p className="dim mini-note">이 달에 등록된 결제가 없습니다.</p>
         ) : (
           <>
-            <div className="day-bars">
-              {byDay.list.map((d) => (
-                <div className={`day${d.sum > 0 ? " on" : ""}`} key={d.key}
-                     title={`${d.day}일 · ${money(d.sum)}원 · ${d.count}건`}>
-                  <i style={{ height: d.sum > 0 ? `${Math.max(6, (d.sum / byDay.top) * 100)}%` : "2px" }} />
-                </div>
-              ))}
-            </div>
-            <div className="day-axis">
-              <span>1일</span>
-              <span>가장 높은 날 {money(byDay.top)}원</span>
-              <span>{byDay.list.length}일</span>
-            </div>
+            <DayLines list={byDay.list} month={month} />
 
             {/*
               날짜별 금액 — 갈래까지 나눠서
@@ -1796,6 +1784,153 @@ function Donut({ rows, center, label }: {
 }
 
 /** 지점 줄 끝에 붙는 6개월 흐름 */
+/**
+ * 눈금으로 쓰기 좋은 윗값
+ *
+ * 실제 최댓값이 549,000이면 눈금이 549,000 · 411,750 … 이 되어 아무도
+ * 못 읽는다. 1 · 2 · 5 의 배수로 올려 잡아야 눈금이 말이 된다.
+ */
+function niceTop(v: number): number {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+
+/**
+ * 날짜별 갈래 꺾은선
+ *
+ * ── 왜 막대에서 꺾은선으로 바꿨나 ───────────────────────────
+ * 막대 하나에는 그 날 합계밖에 안 담긴다. 「8월 14일에 회원권이 팔린 건지
+ * PT가 팔린 건지」는 막대만 봐서는 알 수 없었다. 갈래마다 선을 하나씩 그으면
+ * 다섯 갈래가 한 자리에서 같이 흐른다.
+ *
+ * ── 지킨 것 ─────────────────────────────────────────────────
+ * 세로 눈금은 하나다. 갈래마다 눈금을 따로 두면 같은 높이가 다른 금액이
+ * 되어, 눈으로 견주는 일이 아예 불가능해진다.
+ *
+ * 값이 0인 날에도 점을 안 찍는다. 31일 내내 바닥에 점이 깔리면 정작 돈이
+ * 오간 날이 안 보인다. 선은 그대로 이어져 「그 날은 0이었다」를 말한다.
+ *
+ * 색은 도넛 · 아래 표와 같은 차례다. 같은 갈래가 화면마다 다른 색이면
+ * 색으로 알아보는 일을 포기하게 된다.
+ */
+function DayLines({ list, month }: {
+  list: { day: number; key: string; sum: number; count: number; six: { key: string; sum: number }[] }[];
+  month: string;
+}) {
+  const [hi, setHi] = useState<number | null>(null);
+  const keys = list[0]?.six.map((k) => k.key) ?? [];
+  if (keys.length === 0 || list.length < 2) return null;
+
+  const W = 760, H = 230, PL = 62, PR = 16, PTop = 14, PB = 28;
+  const top = niceTop(Math.max(1, ...list.flatMap((d) => d.six.map((k) => k.sum))));
+  const x = (i: number) => PL + (i * (W - PL - PR)) / (list.length - 1);
+  const y = (v: number) => PTop + (1 - v / top) * (H - PTop - PB);
+
+  /*
+    가로줄은 다섯으로 나눈다
+
+    넷으로 나누면 50만짜리 눈금이 12.5만 · 37.5만이 되어 「13만 · 38만」으로
+    적힌다. 다섯이면 윗값이 1 · 2 · 5 의 배수라 눈금이 늘 딱 떨어진다 —
+    10만 · 20만 · 30만 · 40만 · 50만.
+  */
+  const steps = [0, 0.2, 0.4, 0.6, 0.8, 1].map((r) => r * top);
+  /* 날짜 눈금 — 1일과 5일 간격, 그리고 마지막 날.
+     마지막 날에 붙은 눈금은 뺀다. 30 과 31 이 겹쳐 읽히지 않는다 */
+  const last = list.length - 1;
+  const dayTicks = list
+    .map((d, i) => ({ d, i }))
+    .filter(({ d, i }) => i === last || ((d.day === 1 || d.day % 5 === 0) && last - i > 2));
+
+  const cur = hi === null ? null : list[hi];
+
+  return (
+    <div className="dlwrap">
+      <svg className="lc dl" viewBox={`0 0 ${W} ${H}`} role="img"
+           aria-label="날짜별 갈래 매출 꺾은선 그래프">
+        {steps.map((v, i) => (
+          <g key={i}>
+            <line className="grid" x1={PL} x2={W - PR} y1={y(v)} y2={y(v)} />
+            <text className="tick" x={PL - 8} y={y(v) + 3.5} textAnchor="end">
+              {axisLabel(v)}
+            </text>
+          </g>
+        ))}
+        <line className="axis" x1={PL} x2={W - PR} y1={y(0)} y2={y(0)} />
+
+        {dayTicks.map(({ d, i }) => (
+          <text className="tick" key={d.key} x={x(i)} y={H - 9} textAnchor="middle">
+            {d.day}
+          </text>
+        ))}
+
+        {/* 짚어 둔 날 — 선보다 뒤에 그려 세로줄이 선을 가리지 않게 한다 */}
+        {hi !== null && (
+          <line className="cross" x1={x(hi)} x2={x(hi)} y1={PTop} y2={y(0)} />
+        )}
+
+        {keys.map((key, si) => {
+          const pts = list.map((d, i) => `${x(i).toFixed(1)} ${y(d.six[si]?.sum ?? 0).toFixed(1)}`);
+          return (
+            <g key={key}>
+              <path className={`ln s${si + 1}`} d={`M${pts.join(" L")}`} />
+              {list.map((d, i) =>
+                (d.six[si]?.sum ?? 0) > 0 ? (
+                  <circle className={`dot s${si + 1}`} key={d.key}
+                          cx={x(i)} cy={y(d.six[si].sum)} r={4} />
+                ) : null
+              )}
+            </g>
+          );
+        })}
+
+        {/* 짚기 — 눈에 안 보이는 넓은 칸이라야 손가락으로도 짚힌다 */}
+        {list.map((d, i) => (
+          <rect key={d.key} className="hit"
+                x={x(i) - (W - PL - PR) / (list.length - 1) / 2}
+                y={PTop} width={(W - PL - PR) / (list.length - 1)} height={H - PTop - PB}
+                onMouseEnter={() => setHi(i)}
+                onMouseLeave={() => setHi(null)} />
+        ))}
+      </svg>
+
+      {/*
+        짚은 날의 값
+
+        선 위에 숫자를 다 적으면 서른한 날이 겹친다. 짚은 날만 옆에 적는다.
+        아래 표가 이미 다 적고 있으므로, 여기서는 「지금 짚은 것」만 말하면 된다.
+      */}
+      <div className={`dl-tip${cur ? " on" : ""}`}>
+        {cur ? (
+          <>
+            <b className="dt">
+              {Number(month.slice(5, 7))}월 {cur.day}일 · {money(cur.sum)}원
+            </b>
+            <ul>
+              {cur.six.map((k, i) => (
+                <li key={k.key} className={k.sum > 0 ? "" : "off"}>
+                  <i className={`sw s${i + 1}`} />
+                  <span className="nm">{k.key}</span>
+                  <span className="vl num">{k.sum > 0 ? money(k.sum) : "-"}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <span className="dim">그래프 위에 손을 올리면 그 날 값이 나옵니다</span>
+        )}
+      </div>
+
+      <div className="vkey">
+        {keys.map((k, i) => (
+          <span key={k}><i className={`ln s${i + 1}`} />{k}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MiniLine({ rows }: { rows: number[] }) {
   if (rows.length < 2) return <span className="mline" />;
   const hi = Math.max(...rows), lo = Math.min(...rows);
