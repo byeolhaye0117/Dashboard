@@ -794,6 +794,21 @@ function NoticeBox(props: {
   );
 }
 
+/**
+ * 공지에 넣을 그림글자
+ *
+ * 휴대폰 자판을 열지 않고도 한 번에 넣을 수 있게 자주 쓸 것만 골라 둔다.
+ * 유니코드 그림글자라 갤럭시에서는 갤럭시 그림으로, 아이폰에서는 아이폰
+ * 그림으로 보인다 — 폰마다 생김새는 달라도 뜻은 같다.
+ *
+ * 스무 개 남짓이면 충분하다. 다 넣으면 고르는 데 시간이 더 걸린다.
+ */
+const EMOJI = [
+  "📢", "🔔", "⚠️", "❗", "✅", "❌", "📌", "📅",
+  "🕐", "💪", "🏋️", "🧘", "🎉", "🎁", "🙏", "😊",
+  "👍", "💰", "📞", "🚫", "🅿️", "🧹", "🔥", "☀️",
+];
+
 /* ── 공지 올리기 ───────────────────────────── */
 
 function NoticeForm(props: {
@@ -813,6 +828,22 @@ function NoticeForm(props: {
   });
   const [again, setAgain] = useState(false);
   const [err, setErr] = useState("");
+  const area = useRef<HTMLTextAreaElement | null>(null);
+
+  /** 커서가 있던 자리에 글자를 끼워 넣는다 */
+  function insert(t: string) {
+    const el = area.current;
+    if (!el) return setF((o) => ({ ...o, 내용: o.내용 + t }));
+    const a = el.selectionStart ?? el.value.length;
+    const b = el.selectionEnd ?? a;
+    const next = el.value.slice(0, a) + t + el.value.slice(b);
+    setF((o) => ({ ...o, 내용: next }));
+    /* 넣은 글자 뒤로 커서를 옮긴다 — 안 그러면 다음 글자가 앞에 끼어든다 */
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(a + t.length, a + t.length);
+    });
+  }
 
   function save() {
     if (!f.제목.trim()) return setErr("제목을 적어주세요.");
@@ -832,8 +863,25 @@ function NoticeForm(props: {
 
         <div className="field">
           <label htmlFor="nc">내용</label>
-          <textarea id="nc" className="input" rows={6} value={f.내용}
+          {/*
+            그림글자 넣기
+
+            글자를 치던 자리에 그대로 끼워 넣는다. 늘 맨 뒤에 붙으면 문단
+            앞에 두려고 잘라내기 · 붙여넣기를 하게 된다.
+          */}
+          <div className="emoji-bar">
+            {EMOJI.map((e) => (
+              <button type="button" className="emoji" key={e} aria-label={`${e} 넣기`}
+                      onClick={() => insert(e)}>
+                {e}
+              </button>
+            ))}
+          </div>
+          <textarea id="nc" className="input" rows={6} value={f.내용} ref={area}
                     onChange={(e) => setF({ ...f, 내용: e.target.value })} />
+          <p className="stat-note">
+            줄을 바꾼 그대로 알림에 뜹니다. 문단을 나눠 적으셔도 됩니다.
+          </p>
         </div>
 
         <div className="form-grid">
