@@ -15,7 +15,7 @@
  * 색은 눈대중으로 고르지 않았다. 색각이상에서도 구분되는지 검사를 돌려
  * 통과한 조합만 썼다(밝은 화면·어두운 화면 각각).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import type { ProductMeta } from "@/lib/productMeta";
@@ -137,6 +137,32 @@ function axisLabel(n: number): string {
   if (n >= 100_000_000) return `${Number((n / 100_000_000).toFixed(1))}억`;
   if (n >= 10_000_000) return `${Number((n / 10_000_000).toFixed(1))}천만`;
   if (n >= 10_000) return `${Math.round(n / 10_000)}만`;
+  return money(n);
+}
+
+/**
+ * 좁은 화면인가
+ *
+ * 그래프는 가로 760짜리 그림을 화면 너비에 맞춰 줄인다. 폰에서는 그 배율이
+ * 0.45쯤이라 10px 글자가 4.5px가 됐다 — 숫자가 있는 줄 알지만 못 읽는다.
+ * 줄이는 대신 폰용 크기로 다시 그리려고 화면 너비를 잰다.
+ */
+function useNarrow(px = 640): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${px}px)`);
+    const on = () => setNarrow(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [px]);
+  return narrow;
+}
+
+/** 폰 화면의 점 위 금액 — 548,000 → 54.8만. 자리가 없어 줄여 적는다 */
+function tinyMoney(n: number): string {
+  if (n >= 10_000_000) return `${Number((n / 10_000_000).toFixed(1))}천만`;
+  if (n >= 10_000) return `${Number((n / 10_000).toFixed(n < 1_000_000 ? 1 : 0))}만`;
   return money(n);
 }
 
@@ -1857,7 +1883,15 @@ function LineChart({ rows, current, onPick }: {
   current: string;
   onPick: (m: string) => void;
 }) {
-  const W = 760, L = 58, R = 736, TOP = 22, BASE = 190;
+  /* 폰에서는 760짜리를 340폭에 욱여넣느라 글자가 절반 이하로 줄었다.
+     폰 크기로 다시 그린다 — 달 이름은 자리가 없어 한 칸 걸러 적는다 */
+  const narrow = useNarrow();
+  const W = narrow ? 360 : 760;
+  const L = narrow ? 40 : 58;
+  const R = narrow ? 348 : 736;
+  const TOP = 22;
+  const BASE = narrow ? 174 : 190;
+  const VB = narrow ? 200 : 216;
   const n = rows.length;
   const top = niceMax(Math.max(1, ...rows.map((r) => Math.max(r.sum, r.goal))));
   const x = (i: number) => (n > 1 ? L + (i * (R - L)) / (n - 1) : (L + R) / 2);
@@ -1886,7 +1920,7 @@ function LineChart({ rows, current, onPick }: {
   const iCur = Math.max(0, rows.findIndex((r) => r.m === current));
 
   return (
-    <svg className="lc" viewBox={`0 0 ${W} 216`} role="img" aria-label="최근 12개월 매출 꺾은선 그래프">
+    <svg className="lc" viewBox={`0 0 ${W} ${VB}`} role="img" aria-label="최근 12개월 매출 꺾은선 그래프">
       <defs>
         <linearGradient id="lcfade" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" className="g0" />
@@ -1920,9 +1954,13 @@ function LineChart({ rows, current, onPick }: {
             <title>{`${r.m.replace("-", "년 ")}월 · ${money(r.sum)}원${r.goal > 0 ? ` · 목표 ${money(r.goal)}원` : ""}`}</title>
           </rect>
           <circle className="hov" cx={x(i)} cy={y(r.sum)} r="5" />
-          <text className={`mlb${r.m === current ? " on" : ""}`} x={x(i)} y={209} textAnchor="middle">
-            {Number(r.m.slice(5, 7))}월
-          </text>
+          {/* 폰에서는 열두 달 이름이 다 안 들어간다. 보고 있는 달과 한 칸
+              걸러 하나만 적는다 — 사이는 눈으로 세면 된다 */}
+          {(!narrow || r.m === current || (i - iCur) % 2 === 0) && (
+            <text className={`mlb${r.m === current ? " on" : ""}`} x={x(i)} y={VB - 7} textAnchor="middle">
+              {Number(r.m.slice(5, 7))}월
+            </text>
+          )}
         </g>
       ))}
     </svg>
@@ -1984,7 +2022,11 @@ function niceTop(v: number): number {
   if (v <= 0) return 1;
   const p = Math.pow(10, Math.floor(Math.log10(v)));
   const n = v / p;
-  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+  /* 1·2·5·10 만 쓰면 230만짜리 그래프의 천장이 500만이 된다. 그림의 절반이
+     빈 하늘이고 정작 30만짜리 날들은 바닥에 붙어 안 보였다 — 눈금을 촘촘히
+     둬서 제일 큰 날이 천장 가까이 오게 한다 */
+  const step = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((s) => n <= s) ?? 10;
+  return step * p;
 }
 
 /**
@@ -2052,12 +2094,20 @@ function WeekLines({ list, month }: {
 
   const [wi, setWi] = useState(처음);
   const [hi, setHi] = useState<number | null>(null);
+  /* 폰에서는 그림 자체를 폰 크기로 다시 그린다 — 줄여서 넣으면 글자가 뭉갠다 */
+  const narrow = useNarrow();
   const at = Math.min(wi, weeks.length - 1);
   const week = weeks[at];
   if (keys.length === 0 || !week) return null;
 
   const days = week.days;
-  const W = 760, H = 250, PL = 62, PR = 20, PTop = 26, PB = 30;
+  const W = narrow ? 360 : 760;
+  const H = narrow ? 300 : 250;
+  const PL = narrow ? 40 : 62;
+  const PR = narrow ? 12 : 20;
+  const PTop = narrow ? 22 : 26;
+  /* 폰에서는 날짜와 요일을 두 줄로 적어서 밑을 더 비운다 */
+  const PB = narrow ? 40 : 30;
   /* 눈금은 달 전체에서 가장 큰 날에 맞춘다 — 주를 넘겨도 높이가 안 흔들린다 */
   const top = niceTop(Math.max(1, ...list.flatMap((d) => d.six.map((k) => k.sum))));
   const x = (i: number) => (days.length === 1 ? (PL + W - PR) / 2
@@ -2105,11 +2155,18 @@ function WeekLines({ list, month }: {
         ))}
         <line className="axis" x1={PL} x2={W - PR} y1={y(0)} y2={y(0)} />
 
-        {days.map((d, i) => (
-          <text className="tick" key={d.key} x={x(i)} y={H - 10} textAnchor="middle">
-            {d.day}일({d.요일})
-          </text>
-        ))}
+        {days.map((d, i) =>
+          narrow ? (
+            <text className={`tick${hi === i ? " on" : ""}`} key={d.key} x={x(i)} textAnchor="middle">
+              <tspan x={x(i)} y={H - 22}>{d.day}</tspan>
+              <tspan x={x(i)} y={H - 8}>{d.요일}</tspan>
+            </text>
+          ) : (
+            <text className="tick" key={d.key} x={x(i)} y={H - 10} textAnchor="middle">
+              {d.day}일({d.요일})
+            </text>
+          )
+        )}
 
         {hi !== null && (
           <line className="cross" x1={x(hi)} x2={x(hi)} y1={PTop} y2={y(0)} />
@@ -2128,24 +2185,31 @@ function WeekLines({ list, month }: {
           </g>
         ))}
 
-        {/* 점 위 금액 — 선보다 나중에 그려야 선에 안 가린다 */}
+        {/*
+          점 위 금액 — 선보다 나중에 그려야 선에 안 가린다
+
+          폰에서는 날 사이가 50px밖에 안 돼서 「2,300,000」이 옆 날까지 넘어간다.
+          그래서 만 단위로 줄여 적고, 자세한 금액은 날을 짚으면 밑에 뜬다.
+        */}
         {days.map((d, i) =>
           labelsAt(i).map((r) => (
             <text className="ptlb" key={`${d.key}-${r.si}`}
                   x={x(i)} y={r.ly}
                   textAnchor={i === 0 ? "start" : i === days.length - 1 ? "end" : "middle"}>
-              {money(r.v)}
+              {narrow ? tinyMoney(r.v) : money(r.v)}
             </text>
           ))
         )}
 
+        {/* 폰에는 마우스가 없다. 손가락으로 짚어도 밑에 값이 뜨게 한다 */}
         {days.map((d, i) => (
           <rect key={d.key} className="hit"
                 x={x(i) - (days.length > 1 ? (W - PL - PR) / (days.length - 1) / 2 : 60)}
                 y={0} width={days.length > 1 ? (W - PL - PR) / (days.length - 1) : 120}
                 height={H - PB}
-                onMouseEnter={() => setHi(i)}
-                onMouseLeave={() => setHi(null)} />
+                onPointerDown={() => setHi(hi === i ? null : i)}
+                onMouseEnter={() => { if (!narrow) setHi(i); }}
+                onMouseLeave={() => { if (!narrow) setHi(null); }} />
         ))}
       </svg>
 

@@ -2180,3 +2180,17 @@ td .ktag {
 }
 .combo-item:hover { background: var(--surface-2); }
 .combo-item.on { font-weight: 800; color: var(--point); background: var(--point-soft); }
+
+/* ── 폰에서 보는 날짜별 그래프 ──────────────────────────────
+   그림을 폰 크기로 다시 그리니 세로가 길어졌다. 260px 천장에 걸리면
+   위아래로 여백만 생기고 그림은 그대로 작다 — 천장을 푼다. */
+@media (max-width: 640px) {
+  .lc.dl { max-height: none; }
+  .lc.dl .hit { cursor: pointer; }
+  /* 짚은 날의 날짜는 진하게 — 손가락에 가려도 어느 날을 짚었는지 남는다 */
+  .lc.dl .tick.on { fill: var(--ink); font-weight: 800; }
+  .wk-head { flex-wrap: wrap; }
+  .wk-sum { margin-left: 0; width: 100%; }
+  /* 값 칸은 폰에서 늘 펼쳐 둔다. 접혔다 펴지면 밑의 표가 들썩인다 */
+  .dl-tip { min-height: 52px; }
+}
