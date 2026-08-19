@@ -457,6 +457,18 @@ button { font-family: inherit; }
 .lc.dl .dot.s3 { fill: var(--s3); }
 .lc.dl .dot.s4 { fill: var(--s4); }
 .lc.dl .dot.s5 { fill: var(--s5); }
+/*
+  점 위 금액
+
+  글자는 배경색 테두리를 두르고 그 위에 칠한다(paint-order). 선 위에
+  얹혀도 글자가 끊겨 보이지 않는다. 색은 갈래 색이 아니라 글자 색이다 —
+  숫자까지 색을 입히면 어느 것이 선이고 어느 것이 글자인지 흐려진다.
+*/
+.lc.dl .ptlb {
+  fill: var(--ink); font-size: 10px; font-weight: 700;
+  paint-order: stroke; stroke: var(--surface); stroke-width: 3px;
+  stroke-linejoin: round;
+}
 
 /* 짚은 날의 값 — 자리를 늘 잡아 둔다. 손을 올릴 때만 나타나면 그때마다
    아래 표가 밀려 내려가 눈이 따라가지 못한다 */
