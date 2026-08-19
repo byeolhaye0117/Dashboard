@@ -86,7 +86,10 @@ async function body() {
 
       const day = today();
       const done = new Set(logs.filter((l) => l.날짜 === day).map((l) => l.업무번호));
-      todo = tasks.filter((t) => t.지점코드 === session.currentBranch && !done.has(t.id)).length;
+      /* 「전 지점」을 보고 계시면 볼 수 있는 지점 것을 다 센다 */
+      todo = tasks
+        .filter((t) => (session.currentBranch ? t.지점코드 === session.currentBranch : true))
+        .filter((t) => !done.has(t.id)).length;
     } catch {
       unread = 0;
       todo = 0;
@@ -144,7 +147,7 @@ async function body() {
 
       <h1 className="page-title">{session.name}님, {greet}</h1>
       <p className="page-sub">
-        {session.roleName} · {current?.name ?? session.currentBranch}
+        {session.roleName} · {current?.name || "전 지점"}
         {reach.all && " · 전 지점 조회 가능"}
         {" · "}볼 수 있는 메뉴 {menus.length}개
       </p>

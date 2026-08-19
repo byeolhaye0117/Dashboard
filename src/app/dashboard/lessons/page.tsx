@@ -6,7 +6,7 @@
  */
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
-import { myBranchesOf } from "@/lib/scope";
+import { myBranchesOf, viewBranches } from "@/lib/scope";
 import { visibleMenus, abilitiesForStaff } from "@/lib/menu";
 import { getBranches, getStaffAll, getStaffBranches, getProducts } from "@/lib/data";
 import { listMembers, listTickets } from "@/lib/members";
@@ -45,7 +45,9 @@ async function body() {
   /* 지점 범위는 화면을 열 때마다 다시 잰다 — 권한과 같은 규칙이다.
      로그인할 때 굳혀 둔 쿠키만 믿으면, 범위를 좁혀도 다시 로그인할 때까지 넓다 */
   const myBranches = await myBranchesOf(session, branches);
-  const allowed = new Set(myBranches.map((b) => b.code));
+  /* 머리 위에서 고른 지점만 본다. 「전 지점」을 고르시면 볼 수 있는 곳 전부다 —
+     지점을 골라 놓고도 다른 지점 것이 같이 뜨면 화면이 두 가지로 말하게 된다 */
+  const allowed = await viewBranches(session, new Set(myBranches.map((b) => b.code)));
 
   /** 수업을 맡는 사람 — 직원 관리에서 「트레이너」로 체크된 담당 지점 재직자 */
   const trainers = staff

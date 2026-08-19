@@ -14,7 +14,7 @@
  */
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
-import { myBranchesOf } from "@/lib/scope";
+import { myBranchesOf, viewBranches } from "@/lib/scope";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches } from "@/lib/data";
 import { listMembers } from "@/lib/members";
@@ -37,7 +37,9 @@ async function body() {
 
   const [menus, branches] = await Promise.all([visibleMenus(session), getBranches()]);
   const myBranches = await myBranchesOf(session, branches);
-  const allowed = new Set(myBranches.map((b) => b.code));
+  /* 머리 위에서 고른 지점만 본다. 「전 지점」을 고르시면 볼 수 있는 곳 전부다 —
+     지점을 골라 놓고도 다른 지점 것이 같이 뜨면 화면이 두 가지로 말하게 된다 */
+  const allowed = await viewBranches(session, new Set(myBranches.map((b) => b.code)));
 
   let rows: any[] = [];
   let problem = "";
