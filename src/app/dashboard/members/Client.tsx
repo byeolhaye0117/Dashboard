@@ -91,7 +91,11 @@ type Extra = {
   추가금액: string;
 };
 
-type Waiting = { id: string; 이름: string; 전화번호: string; 지점코드: string };
+type Waiting = {
+  id: string; 이름: string; 전화번호: string; 지점코드: string;
+  /** 상담은 「등록」인데 회원 줄이 없다 — 만들다 실패한 것이다 */
+  등록됨: boolean;
+};
 type Named = { code: string; name: string };
 
 /**
@@ -449,6 +453,22 @@ export default function Client(p: Props) {
           <div className="dt">재등록 대상</div>
         </div>
       </div>
+
+      {/*
+        등록으로 눌렀는데 회원 줄이 없는 사람
+
+        회원 만들기가 한 번 실패하면 회원 목록에도 없고 대기 목록에서도
+        「등록이니까」 빠져서 어디에도 안 남았다. 그런 분이 있으면 제일
+        먼저 알린다 — 그냥 대기와 섞어 두면 또 못 보고 지나간다.
+      */}
+      {p.waiting.some((w) => w.등록됨) && p.can.create && (
+        <div className="alert-bad" style={{ marginBottom: 10 }}>
+          상담은 <b>등록</b>인데 회원 목록에 없는 분이{" "}
+          <b>{p.waiting.filter((w) => w.등록됨).length}명</b> 있습니다 —{" "}
+          {p.waiting.filter((w) => w.등록됨).map((w) => w.이름).join(" · ")}.{" "}
+          <b>회원 등록</b>을 눌러 <b>상담에서 가져오기</b>에서 고르시면 올라갑니다.
+        </div>
+      )}
 
       {p.waiting.length > 0 && p.can.create && (
         <p className="stat-note">
