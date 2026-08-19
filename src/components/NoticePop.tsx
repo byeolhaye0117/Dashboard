@@ -71,7 +71,14 @@ export default function NoticePop() {
 
   return (
     <div className="modal-back">
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      {/*
+        넓게 연다
+
+        공지는 문단으로 적히는 글이다. 좁은 창에 넣으면 한 문장이 네 줄로
+        접혀 읽기가 힘들고, 그 때문에 스크롤까지 생겨 아래 문단이 있는지도
+        모르게 된다.
+      */}
+      <div className="modal wide np" onClick={(e) => e.stopPropagation()}>
         <div className="np-top">
           {cur.중요 && <span className="pill bad">중요</span>}
           {items.length > 1 && (
