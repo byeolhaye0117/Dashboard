@@ -40,6 +40,9 @@ const M_COLS: ColumnSpec = {
   /* 어떻게 오셨나. 상담을 거쳐 오신 분은 상담 줄에도 있지만, 바로
      등록하신 분은 여기 말고는 적을 자리가 없다 */
   방문경로: { names: ["문의채널", "유입경로", "경로"] },
+  /* 방문경로 · 거주동네 · 직업을 비운 채로 저장할 때 적어 두는 까닭.
+     비어 있다는 사실보다 왜 비었는지가 나중에 쓸모 있다 */
+  미입력사유: { names: ["미입력 사유", "빈칸사유"] },
   지점코드: { names: ["소속지점", "등록지점", "지점"], required: true },
   가입일: { names: ["최초등록일", "등록일", "가입일자"], required: true },
   담당직원사번: { names: ["담당트레이너사번", "담당직원", "담당트레이너", "담당사번"] },
@@ -161,6 +164,7 @@ export type Member = {
   거주동네: string;
   직업: string;
   방문경로: string;
+  미입력사유: string;
   지점코드: string;
   가입일: string;
   담당직원사번: string;
@@ -246,6 +250,7 @@ export async function listMembers(): Promise<{
       거주동네: get(r, cols, "거주동네"),
       직업: get(r, cols, "직업"),
       방문경로: get(r, cols, "방문경로"),
+      미입력사유: get(r, cols, "미입력사유"),
       지점코드: get(r, cols, "지점코드"),
       가입일: get(r, cols, "가입일"),
       담당직원사번: get(r, cols, "담당직원사번"),
@@ -438,6 +443,8 @@ export type NewMember = {
   직업?: string;
   /** 어떻게 오셨나 — 네이버플레이스 · 지인소개 … */
   방문경로?: string;
+  /** 위 칸들을 비운 채로 저장할 때 적어 두는 까닭 */
+  미입력사유?: string;
   지점코드: string;
   가입일: string;
   담당직원사번?: string;
@@ -685,7 +692,7 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
   const stamp = now();
 
   /* 뒤늦게 생긴 칸들. 없는 칸에 적으면 조용히 사라진다 */
-  await addColumns(SHEET_M, ["직업", "상담번호", "방문경로"]);
+  await addColumns(SHEET_M, ["직업", "상담번호", "방문경로", "미입력사유"]);
 
   const m = await readSheet(SHEET_M);
   const mCols = resolve(SHEET_M, m.headers, M_COLS);
@@ -704,6 +711,7 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
         거주동네: input.거주동네 ?? "",
         직업: input.직업 ?? "",
         방문경로: input.방문경로 ?? "",
+        미입력사유: input.미입력사유 ?? "",
         지점코드: input.지점코드,
         가입일: input.가입일 || today(),
         담당직원사번: input.담당직원사번 ?? "",
@@ -763,6 +771,7 @@ export async function patchMember(
 ): Promise<void> {
   if (changes["직업"] !== undefined) await addColumns(SHEET_M, ["직업"]);
   if (changes["방문경로"] !== undefined) await addColumns(SHEET_M, ["방문경로"]);
+  if (changes["미입력사유"] !== undefined) await addColumns(SHEET_M, ["미입력사유"]);
 
   const { headers, rows, rowNumbers } = await readSheet(SHEET_M);
   const cols = resolve(SHEET_M, headers, M_COLS);

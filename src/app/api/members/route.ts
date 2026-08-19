@@ -62,6 +62,7 @@ export async function POST(req: Request) {
         거주동네: String(b.거주동네 ?? ""),
         직업: String(b.직업 ?? "").slice(0, 60),
         방문경로: String(b.방문경로 ?? "").slice(0, 60),
+        미입력사유: String(b.미입력사유 ?? "").slice(0, 120),
         지점코드,
         가입일: String(b.가입일 ?? ""),
         담당직원사번: String(b.담당직원사번 ?? ""),

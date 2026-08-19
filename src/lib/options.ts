@@ -52,6 +52,9 @@ export const OPTION_USED: Record<string, string> = {
   미등록사유: "상담을 미등록으로 닫을 때 고르는 사유",
   매출유형: "결제의 매출 유형 (신규 · 재등록 …)",
   결제수단: "결제할 때 고르는 수단",
+  미입력사유: "회원 정보를 비운 채로 저장할 때 고르는 까닭",
+  문의채널: "상담 · 회원의 방문 경로",
+
 };
 
 export async function listOptions(): Promise<OptionRow[]> {
