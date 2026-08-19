@@ -910,7 +910,7 @@ export default function Client(p: Props) {
           </p>
         </div>
       ) : (
-        <div className="viz-2">
+        <div className="viz-2 viz-dist">
           <Dist title="성별" rows={dist.성별} total={dist.total} />
           <Dist title="나이대" rows={dist.나이대} total={dist.total} />
           <Dist title="거주 동네" rows={dist.거주동네} total={dist.total} />
@@ -2038,7 +2038,16 @@ function Dist({ title, rows, total }: {
   rows: { key: string; n: number }[];
   total: number;
 }) {
-  const top = Math.max(1, ...rows.map((r) => r.n));
+  /*
+    막대 길이는 전체 대비 비율이다
+    
+    처음에는 그 카드 안에서 가장 큰 값을 100% 로 잡았다. 그러면 성별의
+    「남자 5명」과 방문경로의 「모름 10명」이 똑같은 길이로 그려진다 —
+    카드마다 자가 달라서 옆 카드와 견줄 수가 없다.
+    
+    전체 인원을 100% 로 두면 다섯 카드가 같은 자를 쓴다. 옆에 적힌
+    퍼센트와 막대 길이도 그제서야 같은 말을 한다.
+  */
   return (
     <div className="viz">
       <h3 className="viz-title">{title}</h3>
@@ -2051,7 +2060,7 @@ function Dist({ title, rows, total }: {
               <span className={`nm${r.key === "모름" ? " dim" : ""}`}>{r.key}</span>
               <span className="bt">
                 <i className={r.key === "모름" ? "off" : ""}
-                   style={{ width: `${Math.max(2, (r.n / top) * 100)}%` }} />
+                   style={{ width: `${Math.max(2, (r.n / Math.max(1, total)) * 100)}%` }} />
               </span>
               <span className="am num">{r.n}명</span>
               <span className="pc num">{Math.round((r.n / Math.max(1, total)) * 100)}%</span>
