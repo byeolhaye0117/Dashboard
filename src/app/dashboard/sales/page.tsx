@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { myBranchesOf } from "@/lib/scope";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
-import { getBranches, getStaffNames, getProducts } from "@/lib/data";
+import { getBranches, getStaffNames, getProducts, getAllOptions } from "@/lib/data";
 import { listPayments, listTickets, listMembers, SHEET_P } from "@/lib/members";
 import { REFUND_COLUMNS } from "@/lib/refund";
 import { readSheet } from "@/lib/sheets";
@@ -86,6 +86,20 @@ async function body() {
    * 정할 수 있다 — 20대 여성이 몰리는데 광고는 40대 남성에게 나가고 있으면
    * 그건 숫자를 보고도 모르는 일이다.
    */
+  /*
+   * 고를 수 있게 정해 둔 값은 아무도 안 고른 것까지 다 세운다
+   *
+   * 이 달에 20대만 오셨다고 30대 줄이 사라지면, 다음 달에 30대가 한 분
+   * 오셨을 때 줄이 새로 생긴다. 줄이 늘었다 줄었다 하면 달끼리 견줄 수가
+   * 없다 — 0명도 0명이라고 적혀 있어야 비교가 된다.
+   */
+  let options: Record<string, string[]> = {};
+  try {
+    options = await getAllOptions();
+  } catch {
+    options = {};
+  }
+
   let people: any[] = [];
   try {
     const { items } = await listMembers();
@@ -137,6 +151,7 @@ async function body() {
         staffNames={staffNames}
         memberNames={memberNames}
         people={people}
+        options={options}
         missingRefund={missingRefund}
         canSetup={Boolean(ab.get("직원관리")?.update)}
         canWipePay={Boolean(ab.get("회원")?.remove)}

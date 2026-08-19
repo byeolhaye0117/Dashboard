@@ -70,6 +70,8 @@ type Person = {
 type Props = {
   payments: Payment[];
   people: Person[];
+  /** 선택목록에 정해 둔 값들 — 아무도 안 고른 갈래도 0명으로 세우는 데 쓴다 */
+  options: Record<string, string[]>;
   tickets: Ticket[];
   products: ProductMeta[];
   goals: Goal[];
@@ -684,12 +686,21 @@ export default function Client(p: Props) {
       .filter((m) => branch === "전체" || m.지점코드 === branch)
       .filter((m) => who === "all" || (m.가입일 ?? "").startsWith(month));
 
-    const 세기 = (k: keyof Person) => {
+    const 세기 = (k: keyof Person, 정해둔?: string[]) => {
       const map = new Map<string, number>();
+      /* 정해 둔 값을 0 으로 먼저 세워 둔다. 이 달에 아무도 안 고른 갈래도
+         자리를 지켜야 지난달과 견줄 수 있다 */
+      (정해둔 ?? []).forEach((v) => {
+        const t = (v ?? "").trim();
+        if (t) map.set(t, 0);
+      });
       사람.forEach((m) => {
         const v = (m[k] as string) || "모름";
         map.set(v, (map.get(v) ?? 0) + 1);
       });
+
+      /* 정해 둔 차례를 기억해 둔다. 0명끼리는 대표님이 정하신 순서대로 */
+      const 차례 = new Map((정해둔 ?? []).map((v, i) => [(v ?? "").trim(), i]));
       return [...map.entries()]
         .map(([key, n]) => ({ key, n }))
         /* 「모름」은 늘 맨 아래. 개수가 많다고 맨 위에 오면 그 갈래가
@@ -697,19 +708,22 @@ export default function Client(p: Props) {
         .sort((a, b) =>
           (a.key === "모름" ? 1 : 0) - (b.key === "모름" ? 1 : 0) ||
           b.n - a.n ||
+          (차례.get(a.key) ?? 9999) - (차례.get(b.key) ?? 9999) ||
           a.key.localeCompare(b.key, "ko")
         );
     };
 
+    const 경로목록 = p.options["문의채널"] ?? p.options["방문경로"];
+
     return {
       total: 사람.length,
-      성별: 세기("성별"),
-      나이대: 세기("나이대"),
-      거주동네: 세기("거주동네"),
-      직업: 세기("직업"),
-      방문경로: 세기("방문경로"),
+      성별: 세기("성별", p.options["성별"]),
+      나이대: 세기("나이대", p.options["나이대"]),
+      거주동네: 세기("거주동네", p.options["거주동네"]),
+      직업: 세기("직업", p.options["직업"]),
+      방문경로: 세기("방문경로", 경로목록),
     };
-  }, [p.people, branch, month, who]);
+  }, [p.people, p.options, branch, month, who]);
 
   const byDay = useMemo(() => {
     const [y, m] = month.split("-").map(Number);
@@ -2056,11 +2070,13 @@ function Dist({ title, rows, total }: {
       ) : (
         <div className="dist">
           {rows.map((r) => (
-            <div className="drow" key={r.key}>
+            <div className={`drow${r.n === 0 ? " zero" : ""}`} key={r.key}>
               <span className={`nm${r.key === "모름" ? " dim" : ""}`}>{r.key}</span>
               <span className="bt">
-                <i className={r.key === "모름" ? "off" : ""}
-                   style={{ width: `${Math.max(2, (r.n / Math.max(1, total)) * 100)}%` }} />
+                {r.n > 0 && (
+                  <i className={r.key === "모름" ? "off" : ""}
+                     style={{ width: `${Math.max(2, (r.n / Math.max(1, total)) * 100)}%` }} />
+                )}
               </span>
               <span className="am num">{r.n}명</span>
               <span className="pc num">{Math.round((r.n / Math.max(1, total)) * 100)}%</span>
