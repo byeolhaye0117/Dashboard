@@ -2148,3 +2148,35 @@ td .ktag {
 /* 칸 이름표 오른쪽에 붙는 작은 길 (「목록 고치기」) */
 .field > label .aside { float: right; font-weight: 500; }
 .field > label .aside .linkish { font-size: 11px; }
+
+/* ── 고르기도 되고 직접 쓰기도 되는 칸 ──────────────────────
+   브라우저가 달아 주는 목록(datalist)은 칸에 적힌 글자로 미리 걸러 버려서,
+   이미 「봉명동」이 적혀 있으면 지우기 전에는 다른 동네가 안 떴다.
+   그래서 목록을 직접 그린다 — 눌러서 펼치고, 눌러서 고른다. */
+.combo { position: relative; }
+.combo > .input { padding-right: 34px; }
+
+.combo-arw {
+  position: absolute; top: 0; right: 0; width: 32px; height: 100%;
+  display: grid; place-items: center;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--muted);
+}
+.combo-arw:hover { color: var(--ink-2); }
+.combo-arw svg { width: 15px; height: 15px; transform: rotate(90deg); transition: transform .15s; }
+.combo-arw.on svg { transform: rotate(-90deg); }
+
+.combo-pop {
+  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
+  max-height: 208px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / .12);
+  padding: 4px;
+}
+.combo-item {
+  display: block; width: 100%; text-align: left;
+  padding: 8px 10px; border: 0; border-radius: 7px; background: none;
+  font-size: 13.5px; color: var(--ink); cursor: pointer;
+}
+.combo-item:hover { background: var(--surface-2); }
+.combo-item.on { font-weight: 800; color: var(--point); background: var(--point-soft); }

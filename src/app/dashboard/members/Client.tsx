@@ -3,7 +3,7 @@
 /**
  * 회원 목록 · 등록 · 이용권 관리
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { korDate, today, daysBetween, weekdayIndex } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
@@ -4143,6 +4143,13 @@ function L({ label, children, req, full, aside }: {
  * 직업 같은 것은 목록을 미리 다 적어 둘 수가 없다. 그렇다고 늘 손으로 치면
  * 「회사원」과 「직장인」이 섞여 나중에 세지지가 않는다.
  * 그래서 「선택목록」 탭에 적어 두신 것은 밑에 뜨고, 없는 것은 그냥 치면 된다.
+ *
+ * ── 왜 브라우저 기본 목록(datalist)을 버렸나 ────────────────
+ * 브라우저가 달아 주는 목록은 칸에 적힌 글자로 미리 걸러서 보여 준다.
+ * 「봉명동」이 적혀 있으면 봉명동 말고는 안 뜬다. 다른 동네로 바꾸려면
+ * 적힌 것을 먼저 지워야 목록이 다시 나왔다 — 두 손이 가는 일이다.
+ * 그래서 목록을 직접 그린다. 칸을 누르면 적힌 것이 있어도 전부 펼쳐지고,
+ * 새로 치기 시작하면 그때부터 걸러 준다.
  */
 function Free({ label, k, f, set, opts, placeholder, now }: {
   label: string; k: string; f: Record<string, string>;
@@ -4156,7 +4163,26 @@ function Free({ label, k, f, set, opts, placeholder, now }: {
    */
   now?: string;
 }) {
-  const listId = `opt-${k}`;
+  const [open, setOpen] = useState(false);
+  /* 칸을 연 뒤에 새로 친 적이 있는지. 치기 전에는 안 거르고 전부 보여 준다 */
+  const [typed, setTyped] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  /* 칸 밖을 누르면 접는다 — 목록을 펼쳐 둔 채로 다른 칸을 적으면 가린다 */
+  useEffect(() => {
+    if (!open) return;
+    function away(e: MouseEvent) {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+
+  const v = f[k] ?? "";
+  const all = (opts ?? []).filter(Boolean);
+  const word = v.trim();
+  const shown = typed && word ? all.filter((o) => o.includes(word)) : all;
+
   /* 밑에 뜨는 목록이 틀렸을 때 갈 곳을 그 자리에 놓는다.
      「관리 메뉴로 가세요」라고 말로만 하면 못 찾는다 */
   return (
@@ -4167,11 +4193,33 @@ function Free({ label, k, f, set, opts, placeholder, now }: {
            <a className="linkish" href="/dashboard/options">목록 고치기</a>
          </>
        }>
-      <input className="input" value={f[k] ?? ""} list={listId} placeholder={placeholder}
-             onChange={(e) => set(k, e.target.value)} />
-      <datalist id={listId}>
-        {(opts ?? []).map((o) => <option key={o} value={o} />)}
-      </datalist>
+      <div className="combo" ref={box}>
+        <input className="input" value={v} placeholder={placeholder}
+               onFocus={() => { setOpen(true); setTyped(false); }}
+               onClick={() => { setOpen(true); }}
+               onChange={(e) => { setTyped(true); setOpen(true); set(k, e.target.value); }}
+               onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }} />
+        {all.length > 0 && (
+          <button type="button" className={`combo-arw${open ? " on" : ""}`} tabIndex={-1}
+                  aria-label={open ? "목록 접기" : "목록 펼치기"}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => { setTyped(false); setOpen(!open); }}>
+            <Icon name="chevron" />
+          </button>
+        )}
+        {open && shown.length > 0 && (
+          <div className="combo-pop">
+            {shown.map((o) => (
+              <button type="button" key={o}
+                      className={`combo-item${o === v ? " on" : ""}`}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { set(k, o); setTyped(false); setOpen(false); }}>
+                {o}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </L>
   );
 }
