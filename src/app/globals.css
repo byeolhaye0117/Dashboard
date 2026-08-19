@@ -1645,11 +1645,19 @@ table.grid .late { color: var(--bad); font-weight: 800; }
 */
 .np-body {
   white-space: pre-wrap; word-break: break-word;
-  max-height: 46dvh; overflow-y: auto;
-  padding: 13px 14px; border-radius: var(--r);
+  padding: 15px 16px; border-radius: var(--r);
   background: var(--surface-2); border: 1px solid var(--line);
-  font-size: 13.5px; line-height: 1.75; color: var(--ink);
+  font-size: 14px; line-height: 1.8; color: var(--ink);
 }
+/*
+  창이 통째로 굴러가게 둔다
+
+  예전에는 본문 상자에만 스크롤을 걸었다. 그러면 상자 안이 굴러가는 것을
+  모르고 첫 문단만 읽고 닫는다 — 아래 문단이 있다는 것조차 안 보인다.
+  창 전체가 굴러가면 단추가 아래에 있다는 사실이 스크롤을 부른다.
+  (.modal.wide 가 88dvh 에서 잘라 준다)
+*/
+.modal.np { padding: 24px 26px; }
 
 .modal-lead {
   margin: -8px 0 16px; font-size: 12.5px; color: var(--muted); line-height: 1.6;
