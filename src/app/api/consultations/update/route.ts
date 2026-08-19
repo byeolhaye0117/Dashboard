@@ -78,6 +78,7 @@ export async function POST(req: Request) {
           성별: merged["성별"],
           나이대: merged["나이대"],
           담당직원사번: merged["상담자사번"],
+          문의채널: merged["문의채널"] || merged["방문경로"],
         },
         session.staffId
       );

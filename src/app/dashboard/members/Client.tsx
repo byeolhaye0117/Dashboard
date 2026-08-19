@@ -21,6 +21,8 @@ type Member = {
   나이대: string;
   거주동네: string;
   직업: string;
+  /** 어떻게 오셨나 — 네이버플레이스 · 지인소개 … */
+  방문경로: string;
   지점코드: string;
   가입일: string;
   담당직원사번: string;
@@ -381,7 +383,8 @@ export default function Client(p: Props) {
       .filter((m) => {
         if (tab !== "전체" && stateOf(m) !== tab) return false;
         if (q) {
-          const hay = `${m.이름} ${m.전화번호} ${m.거주동네} ${m.직업}`.toLowerCase();
+          const hay =
+            `${m.이름} ${m.전화번호} ${m.거주동네} ${m.직업} ${m.방문경로}`.toLowerCase();
           if (!hay.includes(q.toLowerCase())) return false;
         }
         return true;
@@ -1651,11 +1654,6 @@ function AddPurchase({
     <div className="modal-back top" onClick={onClose}>
       <div className="modal xl" onClick={(e) => e.stopPropagation()}>
         <h3>{member.이름}님 상품 추가</h3>
-        {hidden > 0 && (
-          <p className="modal-lead">
-            이 회원 지점에서 파는 상품만 보입니다 — 다른 지점 것 {hidden}개는 가렸습니다
-          </p>
-        )}
 
         <PurchaseFields products={sellable} options={options} tickets={tickets}
                         trainers={trainers}
@@ -1778,14 +1776,18 @@ function NewForm({
             <input className="input" type="date" value={f["가입일"] ?? ""}
                    onChange={(e) => set("가입일", e.target.value)} />
           </L>
+          {/*
+            어떻게 오셨나
+
+            상담을 거쳐 오신 분은 상담 줄에 적혀 있지만, 바로 등록하신 분은
+            적을 자리가 없었다. 어느 채널이 회원으로 이어지는지 알아야
+            광고비를 어디에 쓸지 정할 수 있다.
+          */}
+          <Free label="방문 경로" k="방문경로" f={f} set={set}
+                opts={options["문의채널"] ?? options["방문경로"]}
+                placeholder="예) 네이버플레이스 · 지인소개" />
         </div>
 
-        {hidden > 0 && (
-          <p className="stat-note">
-            {branches.find((x) => x.code === f["지점코드"])?.name ?? "이 지점"}에서 파는 상품만
-            보입니다 — 다른 지점 것 {hidden}개는 가렸습니다
-          </p>
-        )}
         <PurchaseFields products={sellable} options={options} tickets={[]}
                         trainers={trainers}
                         baseDate={f["가입일"] ?? today()} b={b} setB={setB} />
@@ -1950,7 +1952,8 @@ function Detail({
         id: item.id,
         changes: {
           이름: f["이름"], 전화번호: f["전화번호"], 성별: f["성별"], 나이대: f["나이대"],
-          거주동네: f["거주동네"], 직업: f["직업"], 담당직원사번: f["담당직원사번"],
+          거주동네: f["거주동네"], 직업: f["직업"], 방문경로: f["방문경로"],
+          담당직원사번: f["담당직원사번"],
           회원상태: f["회원상태"], 가입일: f["가입일"], 메모: f["메모"],
         },
       }),
@@ -1999,6 +2002,9 @@ function Detail({
               <Sel label="나이대" k="나이대" f={f} set={setV} opts={options["나이대"]} />
               <Free label="거주 동네" k="거주동네" f={f} set={setV} opts={options["거주동네"]}
                     placeholder="예) 쌍용동" />
+              <Free label="방문 경로" k="방문경로" f={f} set={setV}
+                    opts={options["문의채널"] ?? options["방문경로"]}
+                    placeholder="예) 네이버플레이스 · 지인소개" />
               <Free label="직업" k="직업" f={f} set={setV} opts={options["직업"]}
                     placeholder="예) 간호사 · 3교대 근무" />
               <L label="가입일">
@@ -2082,6 +2088,7 @@ function Detail({
                   <Kv k="연락처" v={showPhone(item.전화번호)} />
                   <Kv k="성별 · 나이" v={[item.성별, item.나이대].filter(Boolean).join(" · ")} />
                   <Kv k="직업" v={item.직업} />
+                  <Kv k="방문 경로" v={item.방문경로} />
                   <Kv k="거주 동네" v={item.거주동네} />
                   <Kv k="등록 지점" v={branchName} />
                   <Kv k="담당 트레이너"

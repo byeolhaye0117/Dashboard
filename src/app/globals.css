@@ -1612,6 +1612,25 @@ table.grid .late { color: var(--bad); font-weight: 800; }
 .ask-box p { margin: 5px 0 10px; font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
 .ask-box p b { color: var(--ink); font-weight: 700; }
 
+/*
+  그림글자 고르기
+
+  손가락으로 눌러야 하므로 32px 이상이어야 한다. 폰마다 그림 생김새가
+  달라도(갤럭시 · 아이폰) 자리는 같게 잡히도록 크기를 글자에 맡기지 않는다.
+*/
+.emoji-bar {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin-bottom: 8px;
+}
+.emoji {
+  width: 34px; height: 34px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 18px; line-height: 1; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+}
+.emoji:hover { border-color: var(--ink-2); background: var(--surface-2); }
+.emoji:active { transform: translateY(1px); }
+
 /* ── 공지 팝업 ───────────────────────────── */
 .np-top {
   display: flex; align-items: center; gap: 8px;

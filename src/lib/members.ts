@@ -37,6 +37,9 @@ const M_COLS: ColumnSpec = {
   거주동네: { names: ["거주지역", "거주지", "동네"] },
   /* 뒤늦게 생긴 칸이다. 없으면 저장할 때 스스로 만든다 */
   직업: { names: ["하는 일", "업종"] },
+  /* 어떻게 오셨나. 상담을 거쳐 오신 분은 상담 줄에도 있지만, 바로
+     등록하신 분은 여기 말고는 적을 자리가 없다 */
+  방문경로: { names: ["문의채널", "유입경로", "경로"] },
   지점코드: { names: ["소속지점", "등록지점", "지점"], required: true },
   가입일: { names: ["최초등록일", "등록일", "가입일자"], required: true },
   담당직원사번: { names: ["담당트레이너사번", "담당직원", "담당트레이너", "담당사번"] },
@@ -157,6 +160,7 @@ export type Member = {
   나이대: string;
   거주동네: string;
   직업: string;
+  방문경로: string;
   지점코드: string;
   가입일: string;
   담당직원사번: string;
@@ -241,6 +245,7 @@ export async function listMembers(): Promise<{
       나이대: get(r, cols, "나이대"),
       거주동네: get(r, cols, "거주동네"),
       직업: get(r, cols, "직업"),
+      방문경로: get(r, cols, "방문경로"),
       지점코드: get(r, cols, "지점코드"),
       가입일: get(r, cols, "가입일"),
       담당직원사번: get(r, cols, "담당직원사번"),
@@ -431,6 +436,8 @@ export type NewMember = {
   나이대?: string;
   거주동네?: string;
   직업?: string;
+  /** 어떻게 오셨나 — 네이버플레이스 · 지인소개 … */
+  방문경로?: string;
   지점코드: string;
   가입일: string;
   담당직원사번?: string;
@@ -678,7 +685,7 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
   const stamp = now();
 
   /* 뒤늦게 생긴 칸들. 없는 칸에 적으면 조용히 사라진다 */
-  await addColumns(SHEET_M, ["직업", "상담번호"]);
+  await addColumns(SHEET_M, ["직업", "상담번호", "방문경로"]);
 
   const m = await readSheet(SHEET_M);
   const mCols = resolve(SHEET_M, m.headers, M_COLS);
@@ -696,6 +703,7 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
         나이대: input.나이대 ?? "",
         거주동네: input.거주동네 ?? "",
         직업: input.직업 ?? "",
+        방문경로: input.방문경로 ?? "",
         지점코드: input.지점코드,
         가입일: input.가입일 || today(),
         담당직원사번: input.담당직원사번 ?? "",
@@ -754,6 +762,7 @@ export async function patchMember(
   staffId: string
 ): Promise<void> {
   if (changes["직업"] !== undefined) await addColumns(SHEET_M, ["직업"]);
+  if (changes["방문경로"] !== undefined) await addColumns(SHEET_M, ["방문경로"]);
 
   const { headers, rows, rowNumbers } = await readSheet(SHEET_M);
   const cols = resolve(SHEET_M, headers, M_COLS);
@@ -1351,6 +1360,8 @@ export async function enrollFromConsultation(
     나이대?: string;
     담당직원사번?: string;
     메모?: string;
+    /** 상담에 적힌 문의 채널 — 회원의 방문 경로로 물려받는다 */
+    문의채널?: string;
   },
   staffId: string
 ): Promise<Enrolled> {
@@ -1395,6 +1406,9 @@ export async function enrollFromConsultation(
         나이대: c.나이대 ?? "",
         거주동네: "",
         직업: "",
+        /* 상담에 적힌 문의 채널을 그대로 물려받는다. 여기서 안 옮기면
+           상담을 거쳐 오신 분만 방문 경로가 비어 있게 된다 */
+        방문경로: c.문의채널 ?? "",
         지점코드: c.지점코드,
         가입일: today(),
         담당직원사번: c.담당직원사번 ?? "",
