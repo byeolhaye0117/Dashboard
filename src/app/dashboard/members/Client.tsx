@@ -1632,10 +1632,13 @@ function MissingGate({ 빈칸, busy, onBack, onSkip }: {
     <div className="modal-back" onClick={onBack}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>아직 안 적힌 것이 있습니다</h3>
-        <p className="modal-lead">
-          <b>{빈칸.join(" · ")}</b>이(가) 비어 있습니다. 지금 적어 두시면 다음에 또 여쭙지
-          않아도 됩니다.
-        </p>
+        {/* 무엇이 비었는지만 보여준다. 「지금 적어 두시면…」 같은 말은
+            읽을 것만 늘리고 할 일은 안 알려준다 */}
+        <div className="gate-list">
+          {빈칸.map((x) => (
+            <span className="pill warn" key={x}>{x}</span>
+          ))}
+        </div>
 
         {ing ? (
           <>
@@ -1645,7 +1648,6 @@ function MissingGate({ 빈칸, busy, onBack, onSkip }: {
             <div className="field">
               <label htmlFor="gw">왜 못 적었는지 한 줄만</label>
               <input id="gw" className="input" value={why} autoFocus
-                     placeholder="예) 손님이 안 알려주심"
                      onChange={(e) => setWhy(e.target.value)}
                      onKeyDown={(e) => {
                        if (e.key === "Enter" && why.trim()) onSkip(why.trim());

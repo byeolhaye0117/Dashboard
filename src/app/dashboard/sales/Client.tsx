@@ -923,7 +923,7 @@ export default function Client(p: Props) {
 
       <h3 className="viz-title mt">일별</h3>
       <p className="viz-sub">
-            월요일부터 일요일까지 한 주씩입니다. 점이 없는 주는 그 갈래로 받은 돈이 없던 주입니다
+            한 주씩 요일로 폅니다. 좌우 화살표로 다른 주를 봅니다
           </p>
       <div className="viz">
         {cur.count === 0 ? (
@@ -1742,25 +1742,22 @@ function niceTop(v: number): number {
 }
 
 /**
- * 주별 갈래 꺾은선
+ * 한 주 갈래 꺾은선
  *
- * ── 왜 날마다가 아니라 주마다인가 ───────────────────────────
- * 서른한 점을 찍으면 돈이 오간 예닐곱 날만 뾰족하게 솟고 나머지는 바닥에
- * 깔린다. 모양은 요란한데 읽히는 것은 없었다. 게다가 점 위에 금액을 적으면
- * 서른한 칸에 글자가 겹쳐 아무것도 안 보인다.
+ * ── 왜 한 주만 보여주나 ─────────────────────────────────────
+ * 처음에는 한 달 다섯 주를 한 그림에 올렸다. 그런데 대표님이 실제로 하시는
+ * 질문은 「이번 주 어땠나」다. 다섯 주가 같이 있으면 그 한 주를 눈으로
+ * 골라내야 하고, 점 하나에 이레치가 뭉쳐 있어 무슨 요일에 팔렸는지는 아예
+ * 알 수가 없었다.
  *
- * 주로 묶으면 다섯 점이다. 점마다 금액을 적어도 자리가 남고, 「이 달 둘째
- * 주에 회원권이 몰렸다」처럼 사람이 실제로 하는 말과 눈금이 맞는다.
+ * 한 주만 띄우고 요일로 편다. 월요일부터 일요일까지 일곱 점이라 「토요일에
+ * 몰린다」 같은 것이 눈에 보인다. 다른 주는 좌우 화살표로 넘긴다.
  *
  * ── 지킨 것 ─────────────────────────────────────────────────
- * 세로 눈금은 하나다. 갈래마다 눈금을 따로 두면 같은 높이가 다른 금액이
- * 되어 눈으로 견주는 일이 아예 불가능해진다.
+ * 세로 눈금은 한 달 전체에서 가장 큰 값으로 고정한다. 주마다 눈금을 다시
+ * 잡으면 매출이 적은 주도 그래프가 꽉 차 보여서, 넘길 때마다 착시가 생긴다.
  *
- * 값이 0인 주에는 점도 글자도 안 붙인다. 0을 다섯 번 적으면 정작 돈이
- * 오간 주가 안 보인다.
- *
- * 색은 도넛과 같은 차례다. 같은 갈래가 화면마다 다른 색이면 색으로
- * 알아보는 일을 포기하게 된다.
+ * 값이 0인 날에는 점도 글자도 안 붙인다. 색은 도넛과 같은 차례다.
  */
 function WeekLines({ list, month }: {
   list: { day: number; key: string; sum: number; count: number; six: { key: string; sum: number }[] }[];
@@ -1768,89 +1765,90 @@ function WeekLines({ list, month }: {
 }) {
   const keys = list[0]?.six.map((k) => k.key) ?? [];
 
-  /*
-   * 진짜 한 주 — 월요일부터 일요일까지
-   *
-   * 처음에는 1~7 · 8~14 처럼 일곱씩 잘랐다. 달마다 자리가 같아 견주기는
-   * 쉬웠지만, 그건 한 주가 아니다. 8월 8일이 금요일이면 「8~14일」 안에
-   * 금·토·일과 다음 주 월~목이 섞인다. 「이번 주 얼마 했나」를 물으면
-   * 아무도 그 칸을 못 쓴다.
-   *
-   * 달력 그대로 자른다. 첫 주와 끝 주는 며칠만 걸릴 수 있는데, 그것도
-   * 사실이라 그대로 둔다 — 없는 날을 채워 넣으면 그 주가 부풀어 보인다.
-   */
+  /* 달력 그대로 월~일로 자른다. 첫 주와 끝 주는 며칠만 걸릴 수 있다 */
   const weeks = useMemo(() => {
     const y = Number(month.slice(0, 4));
     const m = Number(month.slice(5, 7));
     /* 월요일을 0 으로 센다. 자바스크립트는 일요일이 0 이라 그대로 쓰면
        일요일이 그 주의 첫날이 된다 */
     const mon0 = (day: number) => (new Date(Date.UTC(y, m - 1, day)).getUTCDay() + 6) % 7;
+    const 요일 = ["월", "화", "수", "목", "금", "토", "일"];
 
-    const groups: { days: typeof list }[] = [];
+    const groups: (typeof list)[] = [];
     list.forEach((d) => {
       const 첫날 = d.day - mon0(d.day);
       const 앞 = groups[groups.length - 1];
-      if (앞 && 앞.days[0].day - mon0(앞.days[0].day) === 첫날) 앞.days.push(d);
-      else groups.push({ days: [d] });
+      if (앞 && 앞[0].day - mon0(앞[0].day) === 첫날) 앞.push(d);
+      else groups.push([d]);
     });
 
-    const 요일 = ["월", "화", "수", "목", "금", "토", "일"];
-    return groups.map((g) => {
-      const from = g.days[0].day;
-      const to = g.days[g.days.length - 1].day;
-      const sums = keys.map((_, si) => g.days.reduce((a, d) => a + (d.six[si]?.sum ?? 0), 0));
+    return groups.map((days) => {
+      const from = days[0].day;
+      const to = days[days.length - 1].day;
       return {
-        key: `w${from}`,
-        label: from === to ? `${from}일` : `${from}~${to}일`,
-        /* 창에는 무슨 요일부터 무슨 요일까지인지 그대로 적는다 */
-        full: `${m}월 ${from}일(${요일[mon0(from)]}) ~ ${m}월 ${to}일(${요일[mon0(to)]})`,
-        sum: g.days.reduce((a, d) => a + d.sum, 0),
-        count: g.days.reduce((a, d) => a + d.count, 0),
-        sums,
+        days: days.map((d) => ({ ...d, 요일: 요일[mon0(d.day)] })),
+        label:
+          from === to
+            ? `${m}월 ${from}일(${요일[mon0(from)]})`
+            : `${m}월 ${from}일(${요일[mon0(from)]}) ~ ${to}일(${요일[mon0(to)]})`,
+        sum: days.reduce((a, d) => a + d.sum, 0),
+        count: days.reduce((a, d) => a + d.count, 0),
       };
     });
-  }, [list, keys.length, month]);
+  }, [list, month]);
 
+  /* 처음 열 때는 돈이 오간 마지막 주를 보여준다. 빈 주에서 시작하면
+     「자료가 없나」 하고 닫게 된다 */
+  const 처음 = useMemo(() => {
+    for (let i = weeks.length - 1; i >= 0; i--) if (weeks[i].sum > 0) return i;
+    return Math.max(0, weeks.length - 1);
+  }, [weeks]);
+
+  const [wi, setWi] = useState(처음);
   const [hi, setHi] = useState<number | null>(null);
-  if (keys.length === 0 || weeks.length < 2) return null;
+  const at = Math.min(wi, weeks.length - 1);
+  const week = weeks[at];
+  if (keys.length === 0 || !week) return null;
 
+  const days = week.days;
   const W = 760, H = 250, PL = 62, PR = 20, PTop = 26, PB = 30;
-  const top = niceTop(Math.max(1, ...weeks.flatMap((w) => w.sums)));
-  const x = (i: number) => PL + (i * (W - PL - PR)) / (weeks.length - 1);
+  /* 눈금은 달 전체에서 가장 큰 날에 맞춘다 — 주를 넘겨도 높이가 안 흔들린다 */
+  const top = niceTop(Math.max(1, ...list.flatMap((d) => d.six.map((k) => k.sum))));
+  const x = (i: number) => (days.length === 1 ? (PL + W - PR) / 2
+    : PL + (i * (W - PL - PR)) / (days.length - 1));
   const y = (v: number) => PTop + (1 - v / top) * (H - PTop - PB);
-
-  /* 가로줄을 다섯으로 나눈다. 넷이면 50만 눈금이 「13만 · 38만」이 된다 */
   const steps = [0, 0.2, 0.4, 0.6, 0.8, 1].map((r) => r * top);
 
-  /*
-   * 점 위 글자가 겹치지 않게 밀어 올린다
-   *
-   * 한 주에 값이 비슷한 갈래가 둘이면 글자가 정확히 포개진다. 아래에서부터
-   * 훑으며 앞 글자와 13px 이 안 되면 그만큼 올린다. 다섯 개뿐이라 이 정도
-   * 셈으로 충분하다.
-   */
-  const labelsAt = (wi: number) => {
+  /* 값이 비슷한 갈래끼리 글자가 포개지지 않게 아래에서부터 밀어 올린다 */
+  const labelsAt = (di: number) => {
     const rows = keys
-      .map((k, si) => ({ si, v: weeks[wi].sums[si] }))
+      .map((_, si) => ({ si, v: days[di].six[si]?.sum ?? 0 }))
       .filter((r) => r.v > 0)
       .map((r) => ({ ...r, y: y(r.v) }))
       .sort((a, b) => b.y - a.y);
     let 아래 = Infinity;
-    return rows
-      .map((r) => {
-        const ny = Math.min(r.y - 8, 아래 - 13);
-        아래 = ny;
-        return { ...r, ly: Math.max(11, ny) };
-      })
-      .reverse();
+    return rows.map((r) => {
+      const ny = Math.min(r.y - 8, 아래 - 13);
+      아래 = ny;
+      return { ...r, ly: Math.max(11, ny) };
+    });
   };
 
-  const cur = hi === null ? null : weeks[hi];
+  const cur = hi === null ? null : days[hi];
 
   return (
     <div className="dlwrap">
+      <div className="wk-head">
+        <button className="icon-btn" aria-label="지난주" disabled={at === 0}
+                onClick={() => { setWi(at - 1); setHi(null); }}>‹</button>
+        <b className="wk-lb">{week.label}</b>
+        <button className="icon-btn" aria-label="다음주" disabled={at >= weeks.length - 1}
+                onClick={() => { setWi(at + 1); setHi(null); }}>›</button>
+        <span className="wk-sum num">{money(week.sum)}원 · {week.count}건</span>
+      </div>
+
       <svg className="lc dl" viewBox={`0 0 ${W} ${H}`} role="img"
-           aria-label="주별 갈래 매출 꺾은선 그래프">
+           aria-label={`${week.label} 갈래별 매출 꺾은선 그래프`}>
         {steps.map((v, i) => (
           <g key={i}>
             <line className="grid" x1={PL} x2={W - PR} y1={y(v)} y2={y(v)} />
@@ -1861,9 +1859,9 @@ function WeekLines({ list, month }: {
         ))}
         <line className="axis" x1={PL} x2={W - PR} y1={y(0)} y2={y(0)} />
 
-        {weeks.map((w, i) => (
-          <text className="tick" key={w.key} x={x(i)} y={H - 10} textAnchor="middle">
-            {w.label}
+        {days.map((d, i) => (
+          <text className="tick" key={d.key} x={x(i)} y={H - 10} textAnchor="middle">
+            {d.day}일({d.요일})
           </text>
         ))}
 
@@ -1874,31 +1872,32 @@ function WeekLines({ list, month }: {
         {keys.map((key, si) => (
           <g key={key}>
             <path className={`ln s${si + 1}`}
-                  d={`M${weeks.map((w, i) => `${x(i).toFixed(1)} ${y(w.sums[si]).toFixed(1)}`).join(" L")}`} />
-            {weeks.map((w, i) =>
-              w.sums[si] > 0 ? (
-                <circle className={`dot s${si + 1}`} key={w.key}
-                        cx={x(i)} cy={y(w.sums[si])} r={4} />
+                  d={`M${days.map((d, i) => `${x(i).toFixed(1)} ${y(d.six[si]?.sum ?? 0).toFixed(1)}`).join(" L")}`} />
+            {days.map((d, i) =>
+              (d.six[si]?.sum ?? 0) > 0 ? (
+                <circle className={`dot s${si + 1}`} key={d.key}
+                        cx={x(i)} cy={y(d.six[si].sum)} r={4} />
               ) : null
             )}
           </g>
         ))}
 
         {/* 점 위 금액 — 선보다 나중에 그려야 선에 안 가린다 */}
-        {weeks.map((w, i) =>
+        {days.map((d, i) =>
           labelsAt(i).map((r) => (
-            <text className="ptlb" key={`${w.key}-${r.si}`}
+            <text className="ptlb" key={`${d.key}-${r.si}`}
                   x={x(i)} y={r.ly}
-                  textAnchor={i === 0 ? "start" : i === weeks.length - 1 ? "end" : "middle"}>
+                  textAnchor={i === 0 ? "start" : i === days.length - 1 ? "end" : "middle"}>
               {money(r.v)}
             </text>
           ))
         )}
 
-        {weeks.map((w, i) => (
-          <rect key={w.key} className="hit"
-                x={x(i) - (W - PL - PR) / (weeks.length - 1) / 2}
-                y={0} width={(W - PL - PR) / (weeks.length - 1)} height={H - PB}
+        {days.map((d, i) => (
+          <rect key={d.key} className="hit"
+                x={x(i) - (days.length > 1 ? (W - PL - PR) / (days.length - 1) / 2 : 60)}
+                y={0} width={days.length > 1 ? (W - PL - PR) / (days.length - 1) : 120}
+                height={H - PB}
                 onMouseEnter={() => setHi(i)}
                 onMouseLeave={() => setHi(null)} />
         ))}
@@ -1908,20 +1907,21 @@ function WeekLines({ list, month }: {
         {cur ? (
           <>
             <b className="dt">
-              {cur.full} · {money(cur.sum)}원 · {cur.count}건
+              {Number(month.slice(5, 7))}월 {cur.day}일({cur.요일}) · {money(cur.sum)}원 ·{" "}
+              {cur.count}건
             </b>
             <ul>
-              {keys.map((k, i) => (
-                <li key={k} className={cur.sums[i] > 0 ? "" : "off"}>
+              {cur.six.map((k, i) => (
+                <li key={k.key} className={k.sum > 0 ? "" : "off"}>
                   <i className={`sw s${i + 1}`} />
-                  <span className="nm">{k}</span>
-                  <span className="vl num">{cur.sums[i] > 0 ? money(cur.sums[i]) : "-"}</span>
+                  <span className="nm">{k.key}</span>
+                  <span className="vl num">{k.sum > 0 ? money(k.sum) : "-"}</span>
                 </li>
               ))}
             </ul>
           </>
         ) : (
-          <span className="dim">그래프 위에 손을 올리면 그 주 값이 나옵니다</span>
+          <span className="dim">그래프 위에 손을 올리면 그 날 값이 나옵니다</span>
         )}
       </div>
 
