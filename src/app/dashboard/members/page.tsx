@@ -58,7 +58,9 @@ async function body() {
   let members: any[] = [];
   let tickets: any[] = [];
   let payments: any[] = [];
-  let waiting: { id: string; 이름: string; 전화번호: string; 지점코드: string }[] = [];
+  let waiting: {
+    id: string; 이름: string; 전화번호: string; 지점코드: string; 등록됨: boolean;
+  }[] = [];
   let problem = "";
 
   try {
@@ -141,18 +143,34 @@ async function body() {
       payments = payments.filter((x) => ids.has(x.회원번호));
     }
 
+    /*
+     * 상담에서 넘어올 사람 — 회원 줄이 없는 상담을 다 보여준다
+     *
+     * ── 소리 없이 사라지던 자리 ─────────────────────────────
+     * 예전에는 진행상태가 「등록」인 상담을 이 목록에서 뺐다. 이미 회원이
+     * 됐을 테니 뺀 것인데, 회원 만들기가 한 번 실패하면 그 사람은 어디에도
+     * 안 남는다 — 회원 목록에는 줄이 없고, 여기서는 「등록이니까」 빠진다.
+     * 두정점에서 접수하고 등록을 눌렀는데 회원 탭에 안 뜬 것이 그것이다.
+     *
+     * 그래서 상태로 거르지 않는다. 「회원 줄이 있는가」만 본다. 상담번호로
+     * 잇고, 옛 줄은 전화번호로도 본다. 등록인데 줄이 없으면 그것이야말로
+     * 제일 먼저 보여야 할 사람이다.
+     */
     const done = new Set(members.map((m) => m.상담번호).filter(Boolean));
+    const donePhone = new Set(members.map((m) => phone(m.전화번호)).filter(Boolean));
     waiting = items
       .filter((c) => allowed.has(c["지점코드"]))
-      .filter((c) => !done.has(c.id))
-      .filter((c) => !["등록", "등록완료"].includes((c["진행상태"] ?? "").trim()))
-      .filter((c) => (c["약속일시"] ?? "").trim())
+      .filter((c) => !done.has(c.id) && !donePhone.has(phone(c["전화번호"])))
+      /* 약속도 없고 결론도 안 난 건은 아직 회원 이야기가 아니다 */
+      .filter((c) => (c["약속일시"] ?? "").trim() || stageNow(c, today()) === "등록")
       .slice(0, 40)
       .map((c) => ({
         id: c.id,
         이름: c["이름"] ?? "",
         전화번호: c["전화번호"] ?? "",
         지점코드: c["지점코드"] ?? "",
+        /* 등록으로 눌렀는데 회원 줄이 없다 — 뭔가 잘못된 것이라 따로 알린다 */
+        등록됨: stageNow(c, today()) === "등록",
       }));
   } catch {
     waiting = [];
