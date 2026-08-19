@@ -483,6 +483,9 @@ function splitAmount(input: Purchase, total: number) {
   const cash = won(input.현금액);
   const bank = won(input.계좌액);
   if (card + cash + bank > 0) return { card, cash, bank };
+  /* 오늘은 한 푼도 안 받고 전액 외상으로 다는 일이 있다. 그때 셋 다 0인데
+     여기서 총액을 카드에 얹으면, 받지도 않은 돈이 카드 매출로 잡힌다 */
+  if (won(input.미수금액) > 0) return { card: 0, cash: 0, bank: 0 };
 
   const m = (input.결제수단 ?? "").trim();
   if (m === "현금") return { card: 0, cash: total, bank: 0 };
@@ -1187,10 +1190,14 @@ export async function patchPayment(
   if (split > 0) {
     next["결제금액"] = String(split);
   } else if (total > 0 && next["결제수단"]) {
+    /* 수단별로 나눠 적는 것은 오늘 실제로 들어온 돈이다. 미수금은 아직 어느
+       수단으로도 안 들어왔으니 빼고 나눈다 — 안 그러면 매출 화면의
+       「결제수단별」이 받지도 않은 돈을 카드 매출로 센다 */
+    const got = Math.max(0, total - won(next["미수금액"]));
     const m = next["결제수단"].trim();
-    next["현금액"] = String(m === "현금" ? total : 0);
-    next["계좌액"] = String(m === "계좌" ? total : 0);
-    next["카드액"] = String(m !== "현금" && m !== "계좌" ? total : 0);
+    next["현금액"] = String(m === "현금" ? got : 0);
+    next["계좌액"] = String(m === "계좌" ? got : 0);
+    next["카드액"] = String(m !== "현금" && m !== "계좌" ? got : 0);
   }
 
   await patchOne(SHEET_P, P_COLS, "결제번호", id, next, staffId);

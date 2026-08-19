@@ -1038,6 +1038,21 @@ function buyPayload(
   const split = b.결제수단.includes("+");
   // 옵션은 돈을 받는 항목이라 합계에 들어간다. 무료 서비스만 뺀다
   const suggested = b.lines.reduce((s, l) => s + linePrice(l, pOf(l.상품코드)), 0);
+  /** 상품마다 적은 미수금을 더한 값 */
+  const unpaid = b.lines.reduce((s, l) => s + onlyNum(l.미수금), 0);
+  /**
+   * 화면에서 손으로 넣는 「오늘 받는 돈」 → 시트에 적는 「결제금액」
+   *
+   * 화면은 오늘 손에 들어오는 돈을 묻는다. 그게 데스크가 세는 돈이다.
+   * 그런데 시트의 결제금액은 「이 계약으로 받기로 한 전부」다 — 매출 화면이
+   * 그 값을 매출로 세고, 미수금을 빼서 실입금을 낸다. 두 자리의 뜻이 다르니
+   * 여기서 한 번만 옮겨 적는다. 미수금을 다시 받을 때 매출을 또 세지 않으려면
+   * 시트 쪽 뜻을 건드리면 안 된다.
+   */
+  const 오늘 = split
+    ? onlyNum(b.카드액) + onlyNum(b.계좌액)
+    : b.직접입력 ? onlyNum(b.금액) : Math.max(0, suggested - unpaid);
+  const 총액 = 오늘 + unpaid;
 
   /*
    * 서비스·옵션만 골랐으면 그것이 곧 이용권이다
@@ -1076,13 +1091,19 @@ function buyPayload(
     /* 회원의 「담당 트레이너」와 이름이 겹치면 서로 덮어쓴다. 결제 실적은
        따로 부른다 — 데스크에서 대신 넣어 주는 일이 흔해 둘이 다를 수 있다 */
     결제담당사번: b.담당직원사번,
-    결제금액: split
-      ? String(onlyNum(b.카드액) + onlyNum(b.계좌액))
-      : b.직접입력 ? b.금액 : String(suggested),
-    카드액: split ? b.카드액 : "",
-    계좌액: split ? b.계좌액 : "",
+    결제금액: String(총액),
+    /*
+      수단별 금액은 오늘 실제로 들어온 돈만 적는다
+
+      미수금은 아직 어느 수단으로도 안 들어왔다. 그것까지 카드에 얹으면
+      매출 화면의 「결제수단별」이 받지도 않은 돈을 카드 매출로 센다.
+      미수금이 없으면 오늘 = 총액이라 예전과 똑같은 값이 적힌다.
+    */
+    카드액: split ? b.카드액 : String(b.결제수단 === "현금" || b.결제수단 === "계좌" ? 0 : 오늘),
+    현금액: split ? "0" : String(b.결제수단 === "현금" ? 오늘 : 0),
+    계좌액: split ? b.계좌액 : String(b.결제수단 === "계좌" ? 오늘 : 0),
     // 미수금은 상품마다 적은 것을 더해서 결제 한 줄에 담는다
-    미수금액: String(b.lines.reduce((s, l) => s + onlyNum(l.미수금), 0)),
+    미수금액: String(unpaid),
     미수금결제예정일: b.미수금결제예정일,
     /* 실제로 받은 날. 비면 서버가 지금으로 적는다 */
     결제일: b.결제일,
@@ -1091,6 +1112,9 @@ function buyPayload(
       (b.매출유형 ?? "").trim() ||
       matchOption(salesType(b.lines, products, tickets, now), saleOpts),
     suggested,
+    오늘,
+    총액,
+    unpaid,
   };
 }
 
@@ -1126,7 +1150,7 @@ function PurchaseFields({
 }) {
   const now = today();
   const pOf = (code: string) => products.find((x) => x.code === code);
-  const { suggested } = buyPayload(b, products, tickets, now);
+  const { suggested, 오늘: todayCash, 총액 } = buyPayload(b, products, tickets, now);
   const sale = salesType(b.lines, products, tickets, now);
   /* 고를 수 있는 유형 — 목록 관리에서 정한 것이 있으면 그것을 쓴다.
      계산한 값이 그 목록에 없을 수도 있어서 한 번 더 끼워 넣는다 */
@@ -1142,7 +1166,6 @@ function PurchaseFields({
   /** 상품마다 적은 미수금을 더한 값 */
   const unpaidTotal = b.lines.reduce((s, l) => s + onlyNum(l.미수금), 0);
   const split = b.결제수단.includes("+");
-  const splitTotal = onlyNum(b.카드액) + onlyNum(b.계좌액);
   const cashSide = b.결제수단 === "현금" || b.결제수단 === "계좌";
 
   const cats = useMemo(() => {
@@ -1534,10 +1557,19 @@ function PurchaseFields({
                 </label>
               </>
             ) : (
+              /*
+                오늘 손에 들어오는 돈을 묻는다
+
+                예전에는 이 칸이 「결제 금액」이었고, 뜻은 받기로 한 돈 전부였다.
+                그런데 데스크에서는 이 칸을 오늘 카드로 긁는 돈으로 읽는다.
+                125만원을 넣었더니 오늘 받는 돈이 15만원으로 뜬 일이 그래서다 —
+                화면은 거기서 미수금 110만원을 빼고 있었다.
+                이제 묻는 대로 받는다. 받기로 한 전부는 밑에서 더해서 보여 준다.
+              */
               <label className="row f">
-                <span>결제 금액</span>
+                <span>오늘 받는 돈</span>
                 <input className="input" inputMode="numeric"
-                       value={b.직접입력 ? b.금액 : suggested ? String(suggested) : ""}
+                       value={b.직접입력 ? b.금액 : todayCash ? String(todayCash) : ""}
                        onChange={(e) => setB({ ...b, 직접입력: true, 금액: e.target.value })} />
               </label>
             )}
@@ -1595,22 +1627,32 @@ function PurchaseFields({
               </label>
             )}
 
+            {/*
+              오늘 받는 돈 + 미수금 = 받기로 한 돈 전부
+
+              매출로 잡히는 것은 이 값이다. 오늘 받는 돈만 매출로 세면, 나중에
+              미수금을 받을 때 한 번 더 세게 되어 같은 계약이 두 번 잡힌다.
+              그래서 굵게 적어 두고, 정가에서 할인을 뺀 값과 어긋나면 알린다 —
+              어긋난 채로 저장하면 그 계약은 영영 그 금액으로 남는다.
+            */}
+            {/* 카드와 계좌로 나눠 받으면 두 칸이라 합계가 안 보인다 */}
+            {split && (
+              <div className="row">
+                <span>오늘 받는 돈</span>
+                <b className="num">{money(todayCash)}원</b>
+              </div>
+            )}
+
             <div className="row total">
-              <span>받을 금액</span>
-              <b className="num">
-                {money(split ? splitTotal : b.직접입력 ? onlyNum(b.금액) : suggested)}원
-              </b>
+              <span>받기로 한 돈</span>
+              <b className="num">{money(총액)}원</b>
             </div>
 
-            {unpaidTotal > 0 && (
-              <div className="row total">
-                <span>오늘 받는 금액</span>
-                <b className="num">
-                  {money(
-                    Math.max(0, (split ? splitTotal : b.직접입력 ? onlyNum(b.금액) : suggested) - unpaidTotal)
-                  )}원
-                </b>
-              </div>
+            {suggested > 0 && 총액 !== suggested && (
+              <p className="stat-note">
+                고른 상품값 <b>{money(suggested)}원</b>과 <b className="warn-text">{money(Math.abs(suggested - 총액))}원</b> 차이가 납니다.
+                이대로 저장하면 매출에는 <b>{money(총액)}원</b>으로 잡힙니다.
+              </p>
             )}
 
           </div>

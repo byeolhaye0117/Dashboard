@@ -1608,8 +1608,15 @@ function PayDetail({
                 ))}
               </select>
             </div>
+            {/*
+              여기는 「받기로 한 돈 전부」다
+
+              매출로 세는 값이 이것이라서 뜻을 바꿀 수 없다. 대신 미수금을 뺀
+              값을 그 자리에서 적어 준다 — 등록 화면은 오늘 받는 돈을 묻는데
+              여기만 총액을 물으면, 같은 숫자를 두 가지로 읽게 된다.
+            */}
             <div className="field">
-              <label>결제 금액</label>
+              <label>총 결제 금액</label>
               <input className="input" inputMode="numeric" value={f.결제금액}
                      onChange={(e) => set("결제금액", e.target.value.replace(/[^0-9]/g, ""))} />
             </div>
@@ -1617,6 +1624,12 @@ function PayDetail({
               <label>미수금</label>
               <input className="input" inputMode="numeric" value={f.미수금액}
                      onChange={(e) => set("미수금액", e.target.value.replace(/[^0-9]/g, ""))} />
+            </div>
+            <div className="field full">
+              <p className="stat-note">
+                실제로 받은 돈 <b className="num">{money(Math.max(0, num(f.결제금액) - num(f.미수금액)))}원</b>
+                {" "}= 총 결제 금액 − 미수금
+              </p>
             </div>
             <div className="field">
               <label>결제 담당</label>
