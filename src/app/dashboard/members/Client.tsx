@@ -10,6 +10,7 @@ import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
 import { termOf, type ProductMeta } from "@/lib/productMeta";
 import { SALE_TYPES } from "@/lib/saleTypes";
+import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 import { REFUND_STAGES, REFUND_REASONS } from "@/lib/refund";
 
 type Member = {
@@ -727,6 +728,18 @@ const emptyBuy = (): Buy => ({
 });
 
 const onlyNum = (v?: string) => Number((v ?? "").replace(/[^0-9]/g, "")) || 0;
+
+/**
+ * 매출 화면에서 「기타」로 잡히는 갈래인가
+ *
+ * 사물함 · 운동복 · 케어권처럼 신규도 재등록도 아닌 것들이다. 매출 화면의
+ * 갈래 나누기와 같은 뜻이라, 한쪽만 고치면 화면끼리 다른 말을 하게 된다.
+ */
+const 기타갈래 = (pr?: ProductMeta) => {
+  const k = (pr?.kind ?? "").replace(/\s/g, "");
+  if (k.includes("회원권")) return false;
+  return !fitsKind(k, pr?.name ?? "", KIND_PT) && !fitsKind(k, pr?.name ?? "", KIND_GROUP);
+};
 
 /** 서비스·옵션인가 — 이용권이 아니라 회원권에 얹는 항목이다 */
 const isExtraKind = (pr?: ProductMeta) => {
@@ -1527,6 +1540,23 @@ function PurchaseFields({
                 </select>
               </label>
             )}
+            {/*
+              한 번에 여러 갈래를 팔 때
+
+              회원권과 사물함을 같이 결제하면 결제 줄은 하나뿐이라 유형도
+              하나다. 그래서 「신규」로 두면 사물함까지 신규 매출로 세어졌다.
+              지금은 매출 화면이 상품 갈래를 보고 알아서 가른다 — 여기서는
+              회원권 기준으로만 고르시면 된다. 그 말을 골라야 할 자리에 적어
+              두지 않으면, 나중에 매출표를 보고 「왜 다르지」가 된다.
+            */}
+            {b.lines.length > 0 &&
+              b.lines.some((l) => 기타갈래(pOf(l.상품코드))) &&
+              b.lines.some((l) => !기타갈래(pOf(l.상품코드))) && (
+                <p className="stat-note">
+                  사물함 · 운동복 같은 <b>부가상품은 자동으로 「기타매출」</b>로 잡힙니다.
+                  여기서는 회원권 기준으로만 골라 주세요.
+                </p>
+              )}
 
             {unpaidTotal > 0 && (
               <div className="row">
