@@ -1600,6 +1600,89 @@ function PurchaseFields({
   );
 }
 
+/** 아직 안 적힌 칸 이름들 */
+const 빠진칸 = (v: Record<string, string>): string[] => {
+  const 이름: Record<string, string> = {
+    방문경로: "방문 경로", 거주동네: "거주 동네", 직업: "직업",
+  };
+  return Object.keys(이름).filter((k) => !(v[k] ?? "").trim()).map((k) => 이름[k]);
+};
+
+/**
+ * 안 적고 넘어가려 할 때 한 번 묻는다
+ *
+ * ── 왜 막지 않고 묻기만 하나 ────────────────────────────────
+ * 필수로 막으면 데스크가 회원을 앞에 두고 멈춘다. 모르는 것을 아무거나
+ * 적어 넣게 되고, 그러면 비어 있는 것보다 나쁜 자료가 쌓인다.
+ *
+ * 그래서 막지 않고 한 번만 묻는다. 다만 그냥 넘어가지는 못하게 한다 —
+ * 왜 못 적었는지 한 줄이면, 나중에 「이건 물어봐야 할 사람인가」를 가릴 수
+ * 있다. 「손님이 안 알려주심」과 「바빠서 못 물음」은 다음 할 일이 다르다.
+ */
+function MissingGate({ 빈칸, opts, busy, onBack, onSkip }: {
+  빈칸: string[];
+  opts?: string[];
+  busy: boolean;
+  onBack: () => void;
+  onSkip: (사유: string) => void;
+}) {
+  const [why, setWhy] = useState("");
+  const [ing, setIng] = useState(false);
+
+  return (
+    <div className="modal-back" onClick={onBack}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>아직 안 적힌 것이 있습니다</h3>
+        <p className="modal-lead">
+          <b>{빈칸.join(" · ")}</b>이(가) 비어 있습니다. 지금 적어 두시면 다음에 또 여쭙지
+          않아도 됩니다.
+        </p>
+
+        {ing ? (
+          <>
+            <div className="field">
+              <label htmlFor="gw">왜 못 적었는지 한 줄만</label>
+              <input id="gw" className="input" value={why} autoFocus list="gate-why"
+                     placeholder="예) 손님이 안 알려주심 · 바빠서 못 물어봄"
+                     onChange={(e) => setWhy(e.target.value)}
+                     onKeyDown={(e) => {
+                       if (e.key === "Enter" && why.trim()) onSkip(why.trim());
+                     }} />
+              <datalist id="gate-why">
+                {(opts ?? ["손님이 안 알려주심", "바빠서 못 물어봄", "나중에 확인 예정"]).map((o) => (
+                  <option key={o} value={o} />
+                ))}
+              </datalist>
+            </div>
+            <p className="stat-note">
+              적어 두신 까닭은 <b>보고</b> 화면에 그대로 남습니다. 나중에 누구에게 다시 여쭤야
+              하는지 가리는 데 씁니다.
+            </p>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setIng(false)} disabled={busy}>
+                돌아가기
+              </button>
+              <button className="btn-dark" disabled={busy || !why.trim()}
+                      onClick={() => onSkip(why.trim())}>
+                {busy ? "저장 중…" : "이대로 저장"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="modal-actions">
+            <button className="btn-ghost" onClick={onBack} disabled={busy}>
+              돌아가서 적기
+            </button>
+            <button className="btn-dark" onClick={() => setIng(true)} disabled={busy}>
+              미입력으로 두기
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── 이미 있는 회원에게 상품 더하기 ────────── */
 function AddPurchase({
   member, tickets, products, productBranches, options, trainers, onClose,
@@ -1647,12 +1730,18 @@ function AddPurchase({
     직업: member.직업 ?? "",
   });
   const setI = (k: string, v: string) => setInfo((o) => ({ ...o, [k]: v }));
+  /** 안 적힌 칸이 있어 한 번 물어보는 중인가 */
+  const [gate, setGate] = useState<string[] | null>(null);
 
-  async function save() {
+  async function save(사유?: string) {
     const payload = buyPayload(b, sellable, tickets, today(), options["매출유형"]);
     if (payload.이용권.length === 0 && payload.부가서비스.length === 0) {
       return setMsg("더할 상품을 하나 이상 골라주세요.");
     }
+    /* 안 적힌 칸이 있으면 한 번 묻는다. 까닭을 들고 다시 오면 그대로 저장한다 */
+    const 빈칸 = 빠진칸(info);
+    if (빈칸.length > 0 && !사유) return setGate(빈칸);
+
     setBusy(true);
 
     /* 손댄 칸만 보낸다. 안 고친 값을 같이 보내면 다른 사람이 그 사이 고쳐
@@ -1661,6 +1750,7 @@ function AddPurchase({
     (["방문경로", "거주동네", "직업"] as const).forEach((k) => {
       if ((info[k] ?? "") !== ((member as any)[k] ?? "")) 바뀐것[k] = info[k] ?? "";
     });
+    if (사유) 바뀐것.미입력사유 = 사유;
     if (Object.keys(바뀐것).length > 0) {
       const r = await fetch("/api/members/update", {
         method: "POST",
@@ -1670,6 +1760,7 @@ function AddPurchase({
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
         setBusy(false);
+        setGate(null);
         return setMsg(d.error ?? "회원 정보를 고치지 못했습니다.");
       }
     }
@@ -1710,11 +1801,17 @@ function AddPurchase({
 
         <div className="modal-actions">
           <button className="btn-ghost" onClick={onClose}>취소</button>
-          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+          <button className="btn-primary" style={{ marginTop: 0 }} onClick={() => save()} disabled={busy}>
             {busy ? "저장 중…" : "추가"}
           </button>
         </div>
       </div>
+
+      {gate && (
+        <MissingGate 빈칸={gate} opts={options["미입력사유"]} busy={busy}
+                     onBack={() => setGate(null)}
+                     onSkip={(why) => save(why)} />
+      )}
     </div>
   );
 }
@@ -1757,7 +1854,10 @@ function NewForm({
     setF((o) => ({ ...o, 이름: w.이름, 전화번호: w.전화번호, 지점코드: w.지점코드 || o.지점코드 }));
   }
 
-  async function save() {
+  /** 안 적힌 칸이 있어 한 번 물어보는 중인가 */
+  const [gate, setGate] = useState<string[] | null>(null);
+
+  async function save(사유?: string) {
     if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
     if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
 
@@ -1766,15 +1866,23 @@ function NewForm({
       return setMsg("회원권이나 PT를 하나 이상 골라주세요.");
     }
 
+    /* 이름 · 연락처처럼 막지는 않는다. 모르는 것을 아무거나 적어 넣게 하면
+       비어 있는 것보다 나쁜 자료가 쌓인다. 한 번만 묻고 까닭을 남긴다 */
+    const 빈칸 = 빠진칸(f);
+    if (빈칸.length > 0 && !사유) return setGate(빈칸);
+
     setBusy(true);
     const res = await fetch("/api/members", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...f, 상담번호: fromId, ...payload }),
+      body: JSON.stringify({ ...f, 미입력사유: 사유 ?? "", 상담번호: fromId, ...payload }),
     });
     const data = await res.json();
     setBusy(false);
-    if (!res.ok) return setMsg(data.error ?? "저장하지 못했습니다.");
+    if (!res.ok) {
+      setGate(null);
+      return setMsg(data.error ?? "저장하지 못했습니다.");
+    }
     location.reload();
   }
 
@@ -1850,11 +1958,17 @@ function NewForm({
 
         <div className="modal-actions">
           <button className="btn-ghost" onClick={onClose}>취소</button>
-          <button className="btn-primary" style={{ marginTop: 0 }} onClick={save} disabled={busy}>
+          <button className="btn-primary" style={{ marginTop: 0 }} onClick={() => save()} disabled={busy}>
             {busy ? "저장 중…" : "저장"}
           </button>
         </div>
       </div>
+
+      {gate && (
+        <MissingGate 빈칸={gate} opts={options["미입력사유"]} busy={busy}
+                     onBack={() => setGate(null)}
+                     onSkip={(why) => save(why)} />
+      )}
     </div>
   );
 }

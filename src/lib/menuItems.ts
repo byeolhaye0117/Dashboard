@@ -39,6 +39,9 @@ export const MENUS: MenuItem[] = [
   { key: "공지", label: "공지·업무", short: "업무", href: "/dashboard/notices", icon: "clipboard", group: "운영" },
   { key: "시설·재고", label: "시설·재고", short: "재고", href: "/dashboard/facility", icon: "box", group: "운영" },
   { key: "리뷰", label: "리뷰 답글", short: "리뷰", href: "/dashboard/reviews", icon: "chat", group: "운영" },
+  /* 빠진 것을 모아 알리는 자리. 「관리」에 두는 것은 고쳐야 할 일이 모이는
+     곳이기 때문이다 — 매일 여는 화면이 아니라 가끔 정리하러 가는 화면이다 */
+  { key: "보고", label: "보고", short: "보고", href: "/dashboard/report", icon: "warn", group: "관리" },
   { key: "상품", label: "상품 관리", short: "상품", href: "/dashboard/products", icon: "tag", group: "관리" },
   { key: "직원관리", label: "직원 관리", short: "직원", href: "/dashboard/staff", icon: "badge", group: "관리" },
   { key: "권한설정", label: "권한 설정", short: "권한", href: "/dashboard/permissions", icon: "lock", group: "관리" },
@@ -99,6 +102,7 @@ export const ACTION_HINTS: Record<string, ActionHint> = {
     remove: "직원 지우기",
   },
   권한설정: { update: "권한 바꾸기 · 목록 관리에서 고르는 값 고치기" },
+  보고: { note: "빠진 회원 정보를 모아 보여줍니다 — 보기만 씁니다" },
 };
 
 /** 「보기」는 어디서나 같은 뜻이라 따로 적지 않는다 */
