@@ -6,7 +6,7 @@
  */
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
-import { myBranchesOf } from "@/lib/scope";
+import { myBranchesOf, viewBranches } from "@/lib/scope";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import {
   getBranches, getAllOptions, getStaffNames, getStaffAll, getProducts, getProductBranches,
@@ -53,7 +53,9 @@ async function body() {
   /* 지점 범위는 화면을 열 때마다 다시 잰다 — 권한과 같은 규칙이다.
      로그인할 때 굳혀 둔 쿠키만 믿으면, 범위를 좁혀도 다시 로그인할 때까지 넓다 */
   const myBranches = await myBranchesOf(session, branches);
-  const allowed = new Set(myBranches.map((b) => b.code));
+  /* 머리 위에서 고른 지점만 본다. 「전 지점」을 고르시면 볼 수 있는 곳 전부다 —
+     지점을 골라 놓고도 다른 지점 것이 같이 뜨면 화면이 두 가지로 말하게 된다 */
+  const allowed = await viewBranches(session, new Set(myBranches.map((b) => b.code)));
 
   let members: any[] = [];
   let tickets: any[] = [];
@@ -254,10 +256,15 @@ async function body() {
    * 트레이너 칸만 걸러 쓴다.
    */
   const branchMap = await getStaffBranches();
+  /* 「전 지점」을 보고 계시면 볼 수 있는 지점 사람을 다 띄운다 */
   const here = session.currentBranch;
+  const 이지점 = (id: string, main: string) =>
+    here
+      ? (branchMap.get(id) ?? []).includes(here) || main === here
+      : [...(branchMap.get(id) ?? []), main].some((b) => b && allowed.has(b));
   const trainers = staff
     .filter((s) => s.active)
-    .filter((s) => (branchMap.get(s.id) ?? []).includes(here) || s.mainBranch === here)
+    .filter((s) => 이지점(s.id, s.mainBranch))
     .map((s) => ({ id: s.id, name: s.name, pt: Boolean(s.trainer) }))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 

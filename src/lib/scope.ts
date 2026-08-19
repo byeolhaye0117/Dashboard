@@ -63,3 +63,22 @@ export async function myBranchesOf(who: Who, branches: Branch[]): Promise<Branch
   const s = await scopeOf(who);
   return s.all ? branches : branches.filter((b) => s.codes.includes(b.code));
 }
+
+/**
+ * 이 화면이 보여줄 지점
+ *
+ * ── 왜 따로 두나 ────────────────────────────────────────────
+ * 「볼 수 있는 지점」과 「지금 보고 있는 지점」은 다르다. 대표님은 네 지점을
+ * 다 볼 수 있지만, 머리 위에서 두정점을 고르셨으면 그 화면은 두정점 이야기여야
+ * 한다. 지점을 골라 놓고도 다른 지점 것이 같이 뜨면, 무엇을 보고 있는지
+ * 화면이 두 가지로 말하는 셈이다.
+ *
+ * 머리 위에서 「전 지점」을 고르시면 볼 수 있는 지점 전부다.
+ * 고른 지점이 볼 수 없는 곳이면(권한이 좁아진 뒤라면) 무시하고 전부를 준다 —
+ * 화면이 통째로 비는 것보다 낫다.
+ */
+export async function viewBranches(who: Who, all: Set<string>): Promise<Set<string>> {
+  const here = (who.currentBranch ?? "").trim();
+  if (!here) return all;
+  return all.has(here) ? new Set([here]) : all;
+}

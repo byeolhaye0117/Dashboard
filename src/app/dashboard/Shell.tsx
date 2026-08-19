@@ -188,6 +188,9 @@ export default function Shell({
           {branches.length > 1 && (
             <select className="select" value={session.currentBranch}
                     onChange={(e) => switchBranch(e.target.value)} aria-label="지점 선택">
+              {/* 여기서 고른 지점이 모든 화면에 그대로 걸린다.
+                  전 지점을 보시려면 이것을 고르시면 된다 */}
+              <option value="">전 지점</option>
               {branches.map((b) => (
                 <option key={b.code} value={b.code}>{b.name}</option>
               ))}

@@ -656,7 +656,7 @@ export default function Client(p: Props) {
           options={p.options}
           branches={p.branches}
           trainers={p.trainers}
-          defaultBranch={p.currentBranch}
+          defaultBranch={p.currentBranch || p.branches[0]?.code || ""}
           onClose={() => setOpenNew(false)}
         />
       )}

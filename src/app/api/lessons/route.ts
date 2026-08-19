@@ -21,6 +21,14 @@ export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   const reach = await scopeOf(session);
+  /*
+    지점이 비면 안 된다
+
+    머리 위에서 「전 지점」을 고르고 계시면 고른 지점이 없다. 그대로 저장하면
+    지점 없는 수업이 되어 어느 화면에도 안 뜬다. 그때는 이 사람이 볼 수 있는
+    첫 지점으로 적는다.
+  */
+  const 기본지점 = session.currentBranch || reach.codes[0] || "";
 
   try {
     const body = await req.json();
@@ -67,7 +75,7 @@ export async function POST(req: Request) {
       }
       const id = await createLesson(
         {
-          지점코드: body.지점코드 ?? session.currentBranch,
+          지점코드: body.지점코드 || 기본지점,
           수업구분: body.수업구분,
           상품코드: body.상품코드 ?? "",
           트레이너사번: trainer,
@@ -106,7 +114,7 @@ export async function POST(req: Request) {
       const n = await reportGroup(
         {
           사번: who,
-          지점코드: body.지점코드 ?? session.currentBranch,
+          지점코드: body.지점코드 || 기본지점,
           날짜: body.날짜,
           slots: Array.isArray(body.slots) ? body.slots.map(String) : [],
           사진파일: String(body.사진파일 ?? ""),
