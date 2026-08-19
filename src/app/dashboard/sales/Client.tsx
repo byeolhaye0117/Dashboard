@@ -136,6 +136,75 @@ function koShort(n: number): string {
   return `${money(man)}만`;
 }
 
+/**
+ * 결제 한 건을 상품별로 나눈다
+ *
+ * ── 왜 그냥 비율로 안 나누나 ─────────────────────────────────
+ * 예전에는 결제 금액 전체를 상품 값 비율로 나눴다. 그런데 이용권에 금액이
+ * 적혀 있는 줄과 안 적힌 줄이 섞여 있으면, 적힌 값까지 같이 늘었다 줄었다
+ * 했다. 사물함 15,000원이 14,780원으로 잡히고 그만큼이 회원권으로 옮겨가,
+ * 「기타 매출이 왜 45,000원이 아니지」가 됐다.
+ *
+ * 적힌 값은 그대로 쓴다. 그것이 기록이다. 남은 돈만 안 적힌 줄에 정가
+ * 비율로 나눈다. 적힌 합이 결제 금액보다 크면(결제 줄에만 할인을 적은
+ * 경우) 그때는 어쩔 수 없이 전체를 비율로 줄인다.
+ *
+ * 어느 쪽이든 나눈 값의 합은 결제 금액과 정확히 같다 — 잔돈은 마지막
+ * 줄에서 맞춘다. 나누다 남은 돈이 사라지면 매출이 안 맞는다.
+ */
+function shareOut(
+  amt: number,
+  ts: Ticket[],
+  productOf: (code: string) => ProductMeta | undefined
+): number[] | null {
+  const 정가 = (t: Ticket) => {
+    const pr = productOf(t.상품코드);
+    return pr?.card || pr?.cash || 0;
+  };
+  /* 안 적힌 줄은 -1 로 표시한다. 0원짜리 서비스와 구분해야 한다 */
+  const 적힘 = ts.map((t) => ((t.금액 ?? "").trim() !== "" ? num(t.금액) : -1));
+  const 적힌합 = 적힘.filter((v) => v >= 0).reduce((a, b) => a + b, 0);
+  const 빈칸 = 적힘.filter((v) => v < 0).length;
+
+  if (적힌합 <= amt) {
+    const out = 적힘.map((v) => (v >= 0 ? v : 0));
+    let 남은 = amt - 적힌합;
+
+    if (빈칸 > 0) {
+      /* 정가를 모르는 줄도 몫이 있어야 한다 — 1 로 두면 똑같이 나눠 갖는다 */
+      const w = ts.map((t, i) => (적힘[i] >= 0 ? 0 : 정가(t) || 1));
+      const wsum = w.reduce((a, b) => a + b, 0);
+      let 마지막 = -1;
+      적힘.forEach((v, i) => { if (v < 0) 마지막 = i; });
+      let 쓴 = 0;
+      ts.forEach((_, i) => {
+        if (적힘[i] >= 0) return;
+        const 몫 = i === 마지막 ? 남은 - 쓴 : Math.round((남은 * w[i]) / wsum);
+        쓴 += 몫;
+        out[i] = 몫;
+      });
+    } else if (남은 !== 0) {
+      /* 다 적혀 있는데 결제 금액과 다르다 — 차액은 마지막 줄에 붙인다.
+         조용히 버리면 갈래 합이 총매출과 어긋난다 */
+      out[out.length - 1] += 남은;
+    }
+    return out;
+  }
+
+  /* 적힌 합이 결제 금액보다 크다 — 결제 줄에만 할인을 적은 경우다 */
+  const w = ts.map((t, i) => (적힘[i] >= 0 ? 적힘[i] : 정가(t)));
+  const wsum = w.reduce((a, b) => a + b, 0);
+  if (wsum <= 0) return null;
+  const out: number[] = [];
+  let 쓴 = 0;
+  ts.forEach((_, i) => {
+    const 몫 = i === ts.length - 1 ? amt - 쓴 : Math.round((amt * w[i]) / wsum);
+    쓴 += 몫;
+    out.push(몫);
+  });
+  return out;
+}
+
 const typeOf = (v: string) => {
   const t = (v ?? "").trim();
   if (t.startsWith("재등")) return "재등록";
@@ -381,20 +450,17 @@ export default function Client(p: Props) {
         if (amt <= 0) return;
         const 적힌유형 = typeOf(pay.매출유형);
         const ts = byPay[pay.id] ?? [];
-        const w = ts.map((t) => {
-          const pr = productOf(t.상품코드);
-          return num(t.금액) || pr?.card || pr?.cash || 0;
-        });
-        const wsum = w.reduce((a, b) => a + b, 0);
-        if (ts.length === 0 || wsum <= 0) {
+        if (ts.length === 0) {
           put("미분류", amt, 적힌유형);
           return;
         }
-        /* 마지막 줄에서 잔돈을 맞춘다 — 나누다 남은 돈이 사라지면 안 된다 */
-        let 쓴돈 = 0;
+        const parts = shareOut(amt, ts, productOf);
+        if (!parts) {
+          put("미분류", amt, 적힌유형);
+          return;
+        }
         ts.forEach((t, i) => {
-          const 몫 = i === ts.length - 1 ? amt - 쓴돈 : Math.round((amt * w[i]) / wsum);
-          쓴돈 += 몫;
+          const 몫 = parts[i];
           const 갈래 = where(productOf(t.상품코드));
           /*
            * 상품마다 유형을 따로 본다
@@ -422,11 +488,6 @@ export default function Client(p: Props) {
   }, [byPay, p.tickets, p.products]);
 
   const bucket = bucketOf(cur.live);
-
-  /** 도넛 밑 소계에 쓰는 값 */
-  const parts = [bucket.회원권, bucket.PT, bucket.수업, bucket.기타, bucket.미분류];
-  const 신규합 = parts.reduce((s, k) => s + k.신규, 0);
-  const 재등록합 = parts.reduce((s, k) => s + k.재등록, 0);
 
   /** 전 지점 다섯 갈래 */
   const six = sixOf(bucket, cur.sum);
@@ -595,20 +656,30 @@ export default function Client(p: Props) {
       .sort((a, b) => b.sum - a.sum);
   }, [cur.live, p.staffNames]);
 
+  /*
+   * 날짜별 — 얼마를 무엇으로 받았나
+   *
+   * 막대만 있으면 모양은 보여도 얼마인지 알 수 없고, 합계만 있으면 그 날
+   * 회원권이 팔린 건지 사물함이 팔린 건지 알 수 없다. 도넛과 같은 갈래로
+   * 날마다 나눠 적는다 — 같은 셈(bucketOf)을 그대로 쓰므로 위아래 숫자가
+   * 어긋날 일이 없다.
+   */
   const byDay = useMemo(() => {
     const [y, m] = month.split("-").map(Number);
     const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-    const map: Record<string, number> = {};
+    const map: Record<string, Payment[]> = {};
     cur.live.forEach((x) => {
       const d = (x.결제일시 ?? "").slice(0, 10);
-      if (d) map[d] = (map[d] ?? 0) + num(x.결제금액);
+      if (d) (map[d] ??= []).push(x);
     });
     const list = Array.from({ length: last }, (_, i) => {
       const key = `${month}-${String(i + 1).padStart(2, "0")}`;
-      return { day: i + 1, key, sum: map[key] ?? 0 };
+      const rows = map[key] ?? [];
+      const sum = rows.reduce((a, x) => a + num(x.결제금액), 0);
+      return { day: i + 1, key, sum, count: rows.length, six: sixOf(bucketOf(rows), sum) };
     });
     return { list, top: Math.max(1, ...list.map((d) => d.sum)) };
-  }, [cur.live, month]);
+  }, [cur.live, month, bucketOf]);
 
   if (p.problem) {
     return (
@@ -793,12 +864,13 @@ export default function Client(p: Props) {
               </ul>
             </div>
           )}
-          <div className="subtot">
-            <span>회원권 <b className="num">{money(bucket.회원권.total)}</b></span>
-            <span>PT <b className="num">{money(bucket.PT.total)}</b></span>
-            <span>신규 <b className="num">{money(신규합)}</b></span>
-            <span>재등록 <b className="num">{money(재등록합)}</b></span>
-          </div>
+          {/*
+            소계 한 줄을 뺐다
+
+            오른쪽 목록이 이미 갈래마다 금액을 적고 있어서, 아래 줄은 그것을
+            더한 값을 한 번 더 말하는 것뿐이었다. 같은 값을 두 군데서 말하면
+            읽는 사람이 「이 둘이 왜 다르지」를 확인하느라 시간을 쓴다.
+          */}
         </div>
 
         {/* 결제수단 — 어떻게 받았는지 */}
@@ -859,7 +931,7 @@ export default function Client(p: Props) {
             <div className="day-bars">
               {byDay.list.map((d) => (
                 <div className={`day${d.sum > 0 ? " on" : ""}`} key={d.key}
-                     title={`${d.day}일 · ${money(d.sum)}원`}>
+                     title={`${d.day}일 · ${money(d.sum)}원 · ${d.count}건`}>
                   <i style={{ height: d.sum > 0 ? `${Math.max(6, (d.sum / byDay.top) * 100)}%` : "2px" }} />
                 </div>
               ))}
@@ -868,6 +940,65 @@ export default function Client(p: Props) {
               <span>1일</span>
               <span>가장 높은 날 {money(byDay.top)}원</span>
               <span>{byDay.list.length}일</span>
+            </div>
+
+            {/*
+              날짜별 금액 — 갈래까지 나눠서
+
+              31칸 막대 위에 숫자를 얹으면 글자끼리 겹친다. 한 칸이 20px
+              남짓인데 「549,000」은 그 두 배다. 그래서 돈이 오간 날만 아래에
+              표로 적는다. 없는 날은 위 막대가 이미 말하고 있다.
+
+              갈래는 도넛과 같은 것을 쓴다. 위에서는 「기타」인데 아래에서는
+              「부가상품」이면, 같은 화면에서 두 가지 말을 하는 셈이다.
+            */}
+            <div className="table-wrap t2wrap" style={{ marginTop: 14 }}>
+              <table className="grid t2 daytab">
+                <thead>
+                  <tr>
+                    <th>날짜</th>
+                    {byDay.list[0]?.six.map((k, i) => (
+                      <th className="r" key={k.key}>
+                        <i className={`sw s${i + 1}`} />
+                        {k.key}
+                      </th>
+                    ))}
+                    <th className="r">합계</th>
+                    <th className="r">건수</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byDay.list
+                    .filter((d) => d.sum > 0)
+                    .map((d) => (
+                      <tr key={d.key}>
+                        <td className="strong num">
+                          {Number(month.slice(5, 7))}/{d.day}
+                        </td>
+                        {d.six.map((k) => (
+                          <td className={`r num ${k.sum > 0 ? "" : "dim"}`} key={k.key}>
+                            {k.sum > 0 ? money(k.sum) : "-"}
+                          </td>
+                        ))}
+                        <td className="r big num">{money(d.sum)}</td>
+                        <td className="r dim num">{d.count}</td>
+                      </tr>
+                    ))}
+                </tbody>
+                {/* 아래 합계는 위 도넛과 같은 값이어야 한다 — 다르면 셈이 틀린 것이다 */}
+                <tfoot>
+                  <tr>
+                    <td className="strong">합계</td>
+                    {six.map((k) => (
+                      <td className="r num strong" key={k.key}>
+                        {k.sum > 0 ? money(k.sum) : "-"}
+                      </td>
+                    ))}
+                    <td className="r big num">{money(cur.sum)}</td>
+                    <td className="r dim num">{cur.count}</td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </>
         )}

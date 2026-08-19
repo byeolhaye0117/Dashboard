@@ -716,6 +716,25 @@ table.cal thead .sticky { background: var(--surface); }
   font-size: 10.5px; color: var(--muted);
 }
 
+/*
+  날짜별 표 — 막대 아래
+
+  머리글에 도넛과 같은 색 네모를 붙인다. 위아래가 같은 갈래를 말하고
+  있다는 것을 색이 먼저 알려준다 — 글자를 읽고 맞춰 보게 하면 안 된다.
+*/
+.daytab th .sw {
+  display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+  margin-right: 5px; vertical-align: middle;
+}
+.daytab td, .daytab th { white-space: nowrap; }
+.daytab tfoot td {
+  border-top: 1px solid var(--line); border-bottom: 0;
+  background: var(--surface-2); font-weight: 800;
+}
+/* 표 안은 읽으라고 있는 것이지 누르라고 있는 것이 아니다 */
+.daytab tbody tr { cursor: default; }
+.daytab tbody tr:hover td { background: var(--surface-2); }
+
 .grid th.right, .grid td.right { text-align: right; }
 
 /* 그래프 색 — 다른 규칙 뒤에 둬야 회색 기본값에 덮이지 않는다.
