@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 import { myBranchesOf } from "@/lib/scope";
 import { visibleMenus, abilitiesFor, MENUS } from "@/lib/menu";
-import { getBranches, getRoles, getPermissions, getStaffAll } from "@/lib/data";
+import { getBranches, getRoles, getAllRoles, getPermissions, getStaffAll } from "@/lib/data";
 import Shell from "../Shell";
 import Client from "./Client";
 import { guard } from "../guard";
@@ -26,10 +26,12 @@ async function body() {
   const ab = await abilitiesFor(session.roleCode);
   if (!ab.get("권한설정")?.view) redirect("/dashboard");
 
-  const [menus, branches, roles, perms, staff] = await Promise.all([
+  const [menus, branches, roles, allRoles, perms, staff] = await Promise.all([
     visibleMenus(session),
     getBranches(),
     getRoles(),
+    /* 감춰 둔 직급까지 — 다시 꺼내려면 목록에 보여야 한다 */
+    getAllRoles(),
     getPermissions(),
     getStaffAll(),
   ]);
@@ -50,6 +52,7 @@ async function body() {
       <Client
         myRole={session.roleCode}
         roles={roles.map((r) => ({ code: r.code, name: r.name, scope: r.scope }))}
+        allRoles={allRoles.map((r) => ({ code: r.code, name: r.name, scope: r.scope, use: r.use }))}
         menus={MENUS.map((m) => ({ key: m.key, label: m.label, group: m.group }))}
         perms={perms.map((p) => ({
           roleCode: p.roleCode, menu: p.menu,

@@ -1627,8 +1627,10 @@ function PayDetail({
               <select className="input" value={f.결제수단}
                       onChange={(e) => set("결제수단", e.target.value)}>
                 <option value="">정하지 않음</option>
-                {(options["결제수단"]?.length
-                  ? options["결제수단"]
+                {/* 선택목록 시트에서는 「결제유형」이라는 이름을 쓴다.
+                    둘 다 받아야 등록 화면과 같은 목록이 뜬다 */}
+                {(options["결제수단"]?.length ? options["결제수단"]
+                  : options["결제유형"]?.length ? options["결제유형"]
                   : ["카드", "현금", "계좌", "카드+계좌"]).map((m) => (
                   <option key={m} value={m}>{m}</option>
                 ))}

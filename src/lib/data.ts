@@ -65,6 +65,8 @@ export type Role = {
   name: string;
   scope: string;
   order: number;
+  /** 목록에 내놓는 직급인가. 안 쓰게 된 직급은 감춰 두고 줄은 남긴다 */
+  use: boolean;
 };
 
 export type Permission = {
@@ -98,14 +100,24 @@ export async function getBranches(): Promise<Branch[]> {
 }
 
 export async function getRoles(): Promise<Role[]> {
+  return (await getAllRoles()).filter((r) => r.use);
+}
+
+/**
+ * 감춰 둔 직급까지 전부
+ *
+ * 「안 쓰는 직급 감추기」를 하면 목록에서는 빠지지만 줄은 남는다. 다시
+ * 꺼내려면 감춰진 것도 보여줘야 한다 — 안 그러면 시트를 직접 열어야 한다.
+ */
+export async function getAllRoles(): Promise<Role[]> {
   const { rows } = await readSheet(SHEET.직급);
   return alive(rows)
-    .filter((r) => yes(r["사용여부"] || "Y"))
     .map((r) => ({
       code: r["직급코드"],
       name: r["직급명"],
       scope: r["지점범위"] ?? "담당지점",
       order: num(r["정렬순서"], 99),
+      use: yes(r["사용여부"] || "Y"),
     }))
     .sort((a, b) => a.order - b.order);
 }

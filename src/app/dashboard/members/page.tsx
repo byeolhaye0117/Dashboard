@@ -16,8 +16,7 @@ import { listMembers, listTickets, listPayments, listTicketServices } from "@/li
 import { readProduct } from "@/lib/productMeta";
 import { listConsultations } from "@/lib/consultations";
 import { listLessons } from "@/lib/lessons";
-import { listOptions } from "@/lib/options";
-import { SALE_TYPES } from "@/lib/saleTypes";
+import { withSaleTypes } from "@/lib/options";
 import { stageNow } from "@/lib/stage";
 import { today } from "@/lib/time";
 import { listTransfers } from "@/lib/members";
@@ -213,33 +212,8 @@ async function body() {
     lessonTrainer = {};
   }
 
-  /*
-   * 매출 유형 — 새로 만든 기본값이 화면에 닿게 한다
-   *
-   * 고르는 목록은 「선택목록」 시트가 먼저다. 그런데 그 시트에 이미 매출유형이
-   * 적혀 있으면 화면은 그것만 보므로, 코드에 값을 더해도 아무 데도 안 나온다.
-   * 실제로 「PT」를 더했는데 목록에 안 떴다.
-   *
-   * 그래서 시트에 아예 없는 기본값만 뒤에 붙인다. 「안 쓰기」로 돌려 둔 값은
-   * 되살리지 않는다 — 그건 대표님이 일부러 끄신 것이다.
-   */
-  let options2 = options;
-  try {
-    const rows = await listOptions();
-    const 납작 = (v: string) => (v ?? "").replace(/\s/g, "");
-    const 아는값 = new Set(
-      rows.filter((r) => r.구분 === "매출유형").map((r) => 납작(r.값))
-    );
-    const 지금 = options["매출유형"] ?? [];
-    const 더할것 = SALE_TYPES.filter(
-      (v) => !아는값.has(납작(v)) && !지금.some((x) => 납작(x) === 납작(v))
-    );
-    if (더할것.length > 0) {
-      options2 = { ...options, 매출유형: [...지금, ...더할것] };
-    }
-  } catch {
-    /* 선택목록 탭이 없어도 화면은 떠야 한다 — 기본값이 그대로 쓰인다 */
-  }
+  /* 시트가 한 번도 본 적 없는 매출 유형(「PT」 같은 것)을 뒤에 붙인다 */
+  const options2 = await withSaleTypes(options);
 
   /*
    * 지금 보고 있는 지점 사람만 고른다

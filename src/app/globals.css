@@ -2194,3 +2194,46 @@ td .ktag {
   /* 값 칸은 폰에서 늘 펼쳐 둔다. 접혔다 펴지면 밑의 표가 들썩인다 */
   .dl-tip { min-height: 52px; }
 }
+
+/* ── 직급 만들기 · 고치기 ───────────────────────────────────
+   날마다 쓰는 것은 권한표다. 직급을 새로 만드는 일은 몇 달에 한 번이라
+   접어 두고, 필요할 때만 펼친다. */
+.rolebox {
+  margin-top: 12px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface);
+}
+.rolebox-t {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 12px 14px; background: none; border: 0; cursor: pointer;
+  font-size: 13px; color: var(--ink); text-align: left;
+}
+.rolebox-t b { font-weight: 800; letter-spacing: -.02em; }
+.rolebox-t .dim { margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 600; }
+.rolebox-b { padding: 0 14px 14px; }
+
+.rolelist { list-style: none; margin: 0 0 10px; padding: 0; }
+.rolelist li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 0; border-top: 1px solid var(--line-soft);
+}
+.rolelist li.off .nm { color: var(--muted); text-decoration: line-through; }
+.rolelist .nm { font-size: 13.5px; font-weight: 700; }
+.rolelist .am { font-size: 12px; color: var(--muted); font-weight: 600; }
+.rolelist .tag {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  padding: 2px 7px; border-radius: 999px; background: var(--surface-2);
+}
+.rolelist .ops { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
+/* 「감추기」가 세 줄로 쪼개져 단추가 아니라 세로 글씨가 됐다 */
+.rolelist .ops .mini-tab { white-space: nowrap; flex: 0 0 auto; }
+.rolelist .input { flex: 1; min-width: 0; }
+
+.roleadd { display: flex; gap: 8px; }
+.roleadd .input { flex: 1; min-width: 0; }
+.roleadd .btn-primary { flex: 0 0 auto; width: auto; padding: 0 18px; }
+
+@media (max-width: 560px) {
+  .rolelist li { flex-wrap: wrap; }
+  .rolelist .ops { margin-left: 0; width: 100%; }
+}

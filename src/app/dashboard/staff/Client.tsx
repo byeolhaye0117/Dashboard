@@ -600,7 +600,9 @@ function Detail({
             <input className="input" inputMode="tel" value={f.휴대폰} disabled={!editable}
                    onChange={(e) => setF({ ...f, 휴대폰: e.target.value })} />
           </L>
-          <L label="직급">
+          {/* 목록에 없는 직급이 필요할 때 갈 곳을 그 자리에 둔다 */}
+          <L label="직급"
+             aside={<a className="linkish" href="/dashboard/permissions">직급 고치기</a>}>
             <select className="input" value={f.직급코드} disabled={!editable || isSelf}
                     onChange={(e) => setF({ ...f, 직급코드: e.target.value })}>
               {pickable.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
@@ -1092,12 +1094,17 @@ function DayPick({ value, disabled, onChange }: {
   );
 }
 
-function L({ label, children, req, full }: {
+function L({ label, children, req, full, aside }: {
   label: string; children: React.ReactNode; req?: boolean; full?: boolean;
+  /** 이름표 오른쪽에 붙는 작은 길 — 「직급 고치기」 같은 것 */
+  aside?: React.ReactNode;
 }) {
   return (
     <div className={`field${full ? " full" : ""}`}>
-      <label>{label}{req && <span className="req">*</span>}</label>
+      <label>
+        {label}{req && <span className="req">*</span>}
+        {aside && <span className="aside">{aside}</span>}
+      </label>
       {children}
     </div>
   );

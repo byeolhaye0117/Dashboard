@@ -11,6 +11,7 @@ import { getBranches, getStaffNames, getProducts, getAllOptions } from "@/lib/da
 import { listPayments, listTickets, listMembers, SHEET_P } from "@/lib/members";
 import { REFUND_COLUMNS } from "@/lib/refund";
 import { readSheet } from "@/lib/sheets";
+import { withSaleTypes } from "@/lib/options";
 import { getGoals } from "@/lib/sales";
 import { listConsultations } from "@/lib/consultations";
 import { readProduct } from "@/lib/productMeta";
@@ -97,7 +98,9 @@ async function body() {
    */
   let options: Record<string, string[]> = {};
   try {
-    options = await getAllOptions();
+    /* 시트가 한 번도 본 적 없는 매출 유형(「PT」 같은 것)을 뒤에 붙인다.
+       안 붙이면 결제 고치기의 매출 유형에서 그 값을 고를 수가 없다 */
+    options = await withSaleTypes(await getAllOptions());
   } catch {
     options = {};
   }

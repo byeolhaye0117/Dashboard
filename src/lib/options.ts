@@ -12,6 +12,7 @@ import { readSheet, appendRow, updateRow, createSheet, type Row } from "./sheets
 import { resolve, toSheetRow, get, type ColumnSpec } from "./columns";
 import { now } from "./time";
 import { SHEET } from "./data";
+import { SALE_TYPES } from "./saleTypes";
 
 export const OPT_HEADERS = [
   "구분", "값", "정렬순서", "사용여부", "수정일시", "수정자", "삭제여부",
@@ -160,4 +161,33 @@ export async function patchOption(
     ...data.rows[i],
     ...(toSheetRow(fields, c) as Row),
   });
+}
+
+/**
+ * 매출 유형 — 코드에 새로 넣은 기본값이 화면에 닿게 한다
+ *
+ * 고르는 목록은 「선택목록」 시트가 먼저다. 그런데 그 시트에 이미 매출유형이
+ * 적혀 있으면 화면은 그것만 보므로, 코드에 값을 더해도 아무 데도 안 나온다.
+ * 실제로 「PT」를 더했는데 등록 화면에도, 매출 화면의 결제 고치기에도 안 떴다.
+ *
+ * 그래서 시트가 한 번도 본 적 없는 기본값만 뒤에 붙인다. 「안 쓰기」로 돌려
+ * 두신 값은 되살리지 않는다 — 그건 일부러 끄신 것이다.
+ */
+export async function withSaleTypes(
+  options: Record<string, string[]>
+): Promise<Record<string, string[]>> {
+  try {
+    const rows = await listOptions();
+    const 납작 = (v: string) => (v ?? "").replace(/\s/g, "");
+    const 아는값 = new Set(rows.filter((r) => r.구분 === "매출유형").map((r) => 납작(r.값)));
+    const 지금 = options["매출유형"] ?? [];
+    const 더할것 = SALE_TYPES.filter(
+      (v) => !아는값.has(납작(v)) && !지금.some((x) => 납작(x) === 납작(v))
+    );
+    if (더할것.length === 0) return options;
+    return { ...options, 매출유형: [...지금, ...더할것] };
+  } catch {
+    /* 선택목록 탭이 없어도 화면은 떠야 한다 — 기본값이 그대로 쓰인다 */
+    return options["매출유형"]?.length ? options : { ...options, 매출유형: [...SALE_TYPES] };
+  }
 }
