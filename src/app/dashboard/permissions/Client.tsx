@@ -12,6 +12,7 @@
  */
 import { Fragment, useMemo, useState } from "react";
 import { ACTION_HINTS, VIEW_MEANS } from "@/lib/menuItems";
+import RoleEdit from "@/components/RoleEdit";
 
 /** 이 메뉴에서 등록·수정·삭제가 각각 무엇을 여는지 */
 function hint(key: string): string[] {
@@ -129,30 +130,6 @@ export default function Client(p: Props) {
    * 「로그인은 되는데 아무것도 안 보인다」가 된다.
    */
   const [openRoles, setOpenRoles] = useState(false);
-  /** 지금 이름을 고치고 있는 직급코드 */
-  const [ren, setRen] = useState("");
-  const [renName, setRenName] = useState("");
-  const [newName, setNewName] = useState("");
-  const [rbusy, setRbusy] = useState(false);
-  const [rmsg, setRmsg] = useState("");
-
-  async function roleAct(body: Record<string, unknown>) {
-    setRbusy(true);
-    setRmsg("");
-    try {
-      const res = await fetch("/api/roles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? "저장하지 못했습니다.");
-      location.reload();
-    } catch (e: any) {
-      setRmsg(e.message);
-      setRbusy(false);
-    }
-  }
 
   /* 직급을 바꾸면 앞 직급에 손댄 것이 따라가면 안 된다 */
   function pickRole(code: string) {
@@ -213,83 +190,8 @@ export default function Client(p: Props) {
             <b>직급 만들기 · 고치기</b>
             <span className="dim">{openRoles ? "접기" : "펼치기"}</span>
           </button>
-
           {openRoles && (
-            <div className="rolebox-b">
-              <ul className="rolelist">
-                {p.allRoles.map((r, i) => (
-                  <li key={r.code} className={r.use ? "" : "off"}>
-                    {ren === r.code ? (
-                      <input className="input" value={renName} autoFocus
-                             onChange={(e) => setRenName(e.target.value)}
-                             onKeyDown={(e) => {
-                               if (e.key === "Enter" && renName.trim()) {
-                                 roleAct({ action: "rename", code: r.code, name: renName });
-                               }
-                               if (e.key === "Escape") setRen("");
-                             }} />
-                    ) : (
-                      <>
-                        <span className="nm">{r.name}</span>
-                        <span className="am num">{p.headcount[r.code] ?? 0}명</span>
-                        {!r.use && <span className="tag">감춤</span>}
-                      </>
-                    )}
-
-                    <span className="ops">
-                      {ren === r.code ? (
-                        <>
-                          <button className="mini-tab" disabled={rbusy || !renName.trim()}
-                                  onClick={() => roleAct({ action: "rename", code: r.code, name: renName })}>
-                            저장
-                          </button>
-                          <button className="mini-tab" onClick={() => setRen("")}>그만</button>
-                        </>
-                      ) : (
-                        <>
-                          <button className="mini-tab" aria-label="위로" disabled={rbusy || i === 0}
-                                  onClick={() => roleAct({ action: "move", code: r.code, dir: "up" })}>↑</button>
-                          <button className="mini-tab" aria-label="아래로"
-                                  disabled={rbusy || i === p.allRoles.length - 1}
-                                  onClick={() => roleAct({ action: "move", code: r.code, dir: "down" })}>↓</button>
-                          <button className="mini-tab" disabled={rbusy}
-                                  onClick={() => { setRen(r.code); setRenName(r.name); setRmsg(""); }}>
-                            이름
-                          </button>
-                          <button className="mini-tab" disabled={rbusy || r.code === "R1" || r.code === p.myRole}
-                                  onClick={() => roleAct({ action: "use", code: r.code, on: !r.use })}>
-                            {r.use ? "감추기" : "다시 쓰기"}
-                          </button>
-                        </>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="roleadd">
-                <input className="input" placeholder="새 직급 이름 (예: 팀장)" value={newName}
-                       onChange={(e) => setNewName(e.target.value)}
-                       onKeyDown={(e) => {
-                         if (e.key === "Enter" && newName.trim()) {
-                           roleAct({ action: "create", name: newName });
-                         }
-                       }} />
-                <button className="btn-primary" style={{ marginTop: 0 }}
-                        disabled={rbusy || !newName.trim()}
-                        onClick={() => roleAct({ action: "create", name: newName })}>
-                  더하기
-                </button>
-              </div>
-
-              <p className="stat-note">
-                새로 만든 직급은 <b>아무 권한도 없습니다.</b> 만든 뒤 위에서 그 직급을 골라
-                무엇을 볼지 체크하고 저장해 주세요. 이름을 바꿔도 그 직급을 쓰는 직원은
-                그대로 따라옵니다.
-              </p>
-
-              {rmsg && <div className="alert-bad">{rmsg}</div>}
-            </div>
+            <RoleEdit roles={p.allRoles} headcount={p.headcount} myRole={p.myRole} />
           )}
         </div>
       )}

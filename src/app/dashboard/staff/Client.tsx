@@ -5,6 +5,7 @@
  */
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
+import RoleEdit from "@/components/RoleEdit";
 import { showPhone } from "@/lib/phone";
 import { WEEKDAYS, WEEKEND, daysText } from "@/lib/attendanceMeta";
 
@@ -38,6 +39,10 @@ type Named = { code: string; name: string };
 type Props = {
   items: Staff[];
   roles: Named[];
+  /** 감춰 둔 것까지 전부 — 직급을 고치는 창에서만 쓴다 */
+  allRoles: { code: string; name: string; use: boolean }[];
+  /** 직급을 고칠 수 있는 계정인가 — 권한 설정을 고칠 수 있는 사람만 */
+  canEditRoles: boolean;
   branches: Named[];
   me: string;
   myRole: string;
@@ -308,6 +313,8 @@ export default function Client(p: Props) {
       {openNew && (
         <StaffForm
           roles={p.roles}
+          allRoles={p.allRoles}
+          canEditRoles={p.canEditRoles}
           branches={p.branches}
           myRole={p.myRole}
           onClose={() => setOpenNew(false)}
@@ -318,6 +325,8 @@ export default function Client(p: Props) {
         <Detail
           item={detail}
           roles={p.roles}
+          allRoles={p.allRoles}
+          canEditRoles={p.canEditRoles}
           branches={p.branches}
           me={p.me}
           myRole={p.myRole}
@@ -385,9 +394,11 @@ function IssuedBox({ name, password, onClose }: { name: string; password: string
 
 /* ── 직원 추가 ─────────────────────────────── */
 function StaffForm({
-  roles, branches, myRole, onClose,
+  roles, allRoles, canEditRoles, branches, myRole, onClose,
 }: {
   roles: Named[];
+  allRoles: { code: string; name: string; use: boolean }[];
+  canEditRoles: boolean;
   branches: Named[];
   myRole: string;
   onClose: () => void;
@@ -400,6 +411,8 @@ function StaffForm({
   const [picked, setPicked] = useState<string[]>(branches[0] ? [branches[0].code] : []);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  /** 직급을 고치는 창을 이 위에 겹쳐 연다 */
+  const [roleEdit, setRoleEdit] = useState(false);
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
 
   async function save() {
@@ -418,6 +431,7 @@ function StaffForm({
   }
 
   return (
+    <>
     <div className="modal-back" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>직원 추가</h3>
@@ -433,7 +447,11 @@ function StaffForm({
             <input className="input" inputMode="tel" placeholder="010-0000-0000"
                    value={f["휴대폰"] ?? ""} onChange={(e) => set("휴대폰", e.target.value)} />
           </L>
-          <L label="직급">
+          {/* 고르려는 직급이 목록에 없을 때, 화면을 옮기지 않고 그 자리에서 만든다 */}
+          <L label="직급"
+             aside={canEditRoles
+               ? <button type="button" className="linkish" onClick={() => setRoleEdit(true)}>직급 고치기</button>
+               : null}>
             <select className="input" value={f["직급코드"] ?? ""} onChange={(e) => set("직급코드", e.target.value)}>
               {pickable.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
             </select>
@@ -458,15 +476,31 @@ function StaffForm({
         </div>
       </div>
     </div>
+
+      {/* 직급 고치기 — 직원 창 위에 겹쳐 연다. 화면을 옮기면 적어 둔 것이 날아간다 */}
+      {roleEdit && (
+        <div className="modal-back top" onClick={() => setRoleEdit(false)}>
+          <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+            <h3>직급 만들기 · 고치기</h3>
+            <RoleEdit roles={allRoles} myRole={myRole} />
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setRoleEdit(false)}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
 /* ── 상세 · 수정 ───────────────────────────── */
 function Detail({
-  item, roles, branches, me, myRole, can, onIssue, onClose,
+  item, roles, allRoles, canEditRoles, branches, me, myRole, can, onIssue, onClose,
 }: {
   item: Staff;
   roles: Named[];
+  allRoles: { code: string; name: string; use: boolean }[];
+  canEditRoles: boolean;
   branches: Named[];
   me: string;
   myRole: string;
@@ -498,6 +532,8 @@ function Detail({
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [confirmPw, setConfirmPw] = useState(false);
+  /** 직급을 고치는 창을 이 위에 겹쳐 연다 */
+  const [roleEdit, setRoleEdit] = useState(false);
 
   const isSelf = item.id === me;
   const lockedRole = item.roleCode === "R1" && myRole !== "R1";
@@ -542,6 +578,7 @@ function Detail({
   }
 
   return (
+    <>
     <div className="modal-back" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <div className="detail-head">
@@ -600,9 +637,11 @@ function Detail({
             <input className="input" inputMode="tel" value={f.휴대폰} disabled={!editable}
                    onChange={(e) => setF({ ...f, 휴대폰: e.target.value })} />
           </L>
-          {/* 목록에 없는 직급이 필요할 때 갈 곳을 그 자리에 둔다 */}
+          {/* 고치려는 직급이 목록에 없을 때, 화면을 옮기지 않고 그 자리에서 고친다 */}
           <L label="직급"
-             aside={<a className="linkish" href="/dashboard/permissions">직급 고치기</a>}>
+             aside={canEditRoles
+               ? <button type="button" className="linkish" onClick={() => setRoleEdit(true)}>직급 고치기</button>
+               : null}>
             <select className="input" value={f.직급코드} disabled={!editable || isSelf}
                     onChange={(e) => setF({ ...f, 직급코드: e.target.value })}>
               {pickable.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
@@ -790,6 +829,20 @@ function Detail({
         )}
       </div>
     </div>
+
+      {/* 직급 고치기 — 직원 창 위에 겹쳐 연다. 화면을 옮기면 적어 둔 것이 날아간다 */}
+      {roleEdit && (
+        <div className="modal-back top" onClick={() => setRoleEdit(false)}>
+          <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+            <h3>직급 만들기 · 고치기</h3>
+            <RoleEdit roles={allRoles} myRole={myRole} />
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setRoleEdit(false)}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

@@ -17,7 +17,8 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
-import { today } from "@/lib/time";
+import { today, korDate } from "@/lib/time";
+import { addDays } from "@/lib/dateCalc";
 import type { ProductMeta } from "@/lib/productMeta";
 import { stageNow, baseDate } from "@/lib/stage";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
@@ -261,10 +262,34 @@ function monthsBack(from: string, count: number): string[] {
   return Array.from({ length: count }, (_, i) => shiftMonth(from, -(count - 1 - i)));
 }
 
+function daysBack(from: string, count: number): string[] {
+  return Array.from({ length: count }, (_, i) => addDays(from, -(count - 1 - i)));
+}
+
 export default function Client(p: Props) {
   const now = today();
   const thisMonth = now.slice(0, 7);
   const [month, setMonth] = useState(thisMonth);
+  /*
+   * 달로 볼까, 날로 볼까
+   *
+   * 달 매출은 「이번 달 어떻게 되고 있나」에 답하고, 날 매출은 「어제 얼마
+   * 팔렸나」에 답한다. 둘은 다른 질문인데 화면이 달밖에 몰라서, 하루치를
+   * 알려면 꺾은선 위의 점을 짚어 어림해야 했다.
+   *
+   * 거르는 방식이 같아서 하나로 다룬다 — 결제일시가 「2026-08」로 시작하면
+   * 그 달, 「2026-08-20」으로 시작하면 그 날이다. 앞자리만 길어질 뿐이다.
+   */
+  const [mode, setMode] = useState<"month" | "day">("month");
+  const [day, setDay] = useState(now);
+  const isDay = mode === "day";
+  /** 지금 보고 있는 구간 — 「2026-08」 또는 「2026-08-20」 */
+  const span = isDay ? day : month;
+  /** 바로 앞 구간 — 달이면 지난달, 날이면 어제 */
+  const prevSpan = isDay ? addDays(day, -1) : shiftMonth(month, -1);
+  /** 견줄 만한 옛 구간 — 달이면 작년 같은 달, 날이면 지난주 같은 요일 */
+  const agoSpan = isDay ? addDays(day, -7) : shiftMonth(month, -12);
+  const spansBack = (n: number) => (isDay ? daysBack(day, n) : monthsBack(month, n));
   /* 머리 위에서 고른 지점을 기본으로 본다. 지점을 골라 놓고도 전 지점
      숫자가 뜨면, 무엇을 보고 있는지 화면이 두 가지로 말하는 셈이다 */
   const [branch, setBranch] = useState(p.currentBranch || "전체");
@@ -294,6 +319,8 @@ export default function Client(p: Props) {
     }
   }
 
+  /** 화면에 적는 구간 이름 — 「이 달」인지 「이 날」인지 */
+  const 때 = isDay ? "이 날" : "이 달";
   const branchName = (c: string) => p.branches.find((b) => b.code === c)?.name ?? c;
   const productOf = (code: string) => p.products.find((x) => x.code === code);
 
@@ -322,18 +349,18 @@ export default function Client(p: Props) {
     };
   }, [p.payments, p.goals, branch]);
 
-  const cur = monthStat(month);
-  const prev = monthStat(shiftMonth(month, -1));
-  /** 전년 같은 달 — 헬스장은 계절을 타므로 지난달보다 이쪽이 더 맞는 비교다 */
-  const yoy = monthStat(shiftMonth(month, -12));
+  const cur = monthStat(span);
+  const prev = monthStat(prevSpan);
+  /** 견줄 옛 구간 — 헬스장은 계절을 타므로 달은 작년 같은 달이 더 맞다 */
+  const yoy = monthStat(agoSpan);
   const trend = useMemo(() => monthsBack(month, 12).map((m) => monthStat(m)), [month, monthStat]);
 
-  /** 이번 달 지점별 값 */
+  /** 지금 보고 있는 구간의 지점별 값 */
   const branchNow = useMemo(
     () =>
       p.branches.map((b) => {
-        const c = monthStat(month, b.code);
-        const q = monthStat(shiftMonth(month, -1), b.code);
+        const c = monthStat(span, b.code);
+        const q = monthStat(prevSpan, b.code);
         return {
           ...b,
           sum: c.sum,
@@ -342,10 +369,17 @@ export default function Client(p: Props) {
           rate: c.goal > 0 ? Math.round((c.sum / c.goal) * 100) : null,
           mom: q.sum > 0 ? Math.round(((c.sum - q.sum) / q.sum) * 100) : null,
           avg: c.count > 0 ? Math.round(c.sum / c.count) : 0,
-          spark: monthsBack(month, 6).map((m) => monthStat(m, b.code).sum),
+          spark: spansBack(6).map((m) => monthStat(m, b.code).sum),
         };
       }),
-    [p.branches, month, monthStat]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [p.branches, span, prevSpan, isDay, monthStat]
+  );
+
+  /** 날로 볼 때, 그 날이 든 달의 누계 — 목표 칸을 비워 두지 않으려고 */
+  const dayMonth = useMemo(
+    () => (isDay ? monthStat(day.slice(0, 7)) : null),
+    [isDay, day, monthStat]
   );
 
   const delta = (a: number, b: number) => (b > 0 ? Math.round(((a - b) / b) * 100) : null);
@@ -353,13 +387,13 @@ export default function Client(p: Props) {
 
   /** 이번 달이면 지금까지 지난 날 기준으로 월말 매출을 어림한다 */
   const pace = useMemo(() => {
-    if (month !== thisMonth) return null;
+    if (isDay || month !== thisMonth) return null;
     const day = Number(now.slice(8, 10));
     if (day < 3 || cur.sum <= 0) return null;
     const [y, mm] = month.split("-").map(Number);
     const last = new Date(Date.UTC(y, mm, 0)).getUTCDate();
     return { day, last, left: last - day, expect: Math.round((cur.sum / day) * last) };
-  }, [month, thisMonth, now, cur.sum]);
+  }, [isDay, month, thisMonth, now, cur.sum]);
 
   /**
    * 결제수단
@@ -553,9 +587,9 @@ export default function Client(p: Props) {
   const leadRows = useMemo(
     () =>
       p.leads.filter(
-        (c) => baseDate(c).startsWith(month) && (branch === "전체" || c.지점코드 === branch)
+        (c) => baseDate(c).startsWith(span) && (branch === "전체" || c.지점코드 === branch)
       ),
-    [p.leads, month, branch]
+    [p.leads, span, branch]
   );
 
   const tally = (rows: Lead[]) => {
@@ -580,10 +614,11 @@ export default function Client(p: Props) {
     () =>
       p.branches
         .map((b) => ({ ...b, ...tally(p.leads.filter(
-          (c) => baseDate(c).startsWith(month) && c.지점코드 === b.code
+          (c) => baseDate(c).startsWith(span) && c.지점코드 === b.code
         )) }))
         .sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1)),
-    [p.branches, p.leads, month, now]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [p.branches, p.leads, span, now]
   );
 
   /**
@@ -716,7 +751,7 @@ export default function Client(p: Props) {
   const dist = useMemo(() => {
     const 사람 = p.people
       .filter((m) => branch === "전체" || m.지점코드 === branch)
-      .filter((m) => who === "all" || (m.가입일 ?? "").startsWith(month));
+      .filter((m) => who === "all" || (m.가입일 ?? "").startsWith(span));
 
     const 세기 = (k: keyof Person, 정해둔?: string[]) => {
       const map = new Map<string, number>();
@@ -755,13 +790,20 @@ export default function Client(p: Props) {
       직업: 세기("직업", p.options["직업"]),
       방문경로: 세기("방문경로", 경로목록),
     };
-  }, [p.people, p.options, branch, month, who]);
+  }, [p.people, p.options, branch, span, who]);
 
+  /* 주별 꺾은선은 달을 볼 때만 쓴다. 그래서 여기만 늘 달을 본다 */
   const byDay = useMemo(() => {
+    const monthLive = p.payments.filter(
+      (x) =>
+        (x.결제일시 ?? "").startsWith(month) &&
+        (branch === "전체" || x.지점코드 === branch) &&
+        !isRefund(x)
+    );
     const [y, m] = month.split("-").map(Number);
     const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
     const map: Record<string, Payment[]> = {};
-    cur.live.forEach((x) => {
+    monthLive.forEach((x) => {
       const d = (x.결제일시 ?? "").slice(0, 10);
       if (d) (map[d] ??= []).push(x);
     });
@@ -772,7 +814,7 @@ export default function Client(p: Props) {
       return { day: i + 1, key, sum, count: rows.length, six: sixOf(bucketOf(rows), sum) };
     });
     return { list, top: Math.max(1, ...list.map((d) => d.sum)) };
-  }, [cur.live, month, bucketOf]);
+  }, [p.payments, branch, month, bucketOf]);
 
   if (p.problem) {
     return (
@@ -798,18 +840,42 @@ export default function Client(p: Props) {
             {branch !== "전체" && ` · ${branchName(branch)}`}
           </p>
         </div>
+        {/*
+          달로 볼까, 날로 볼까
+
+          「어제 얼마 팔렸나」와 「이번 달 어떻게 되고 있나」는 다른 질문이다.
+          고르는 자리를 같은 줄에 둔다 — 무엇을 보고 있는지가 늘 머리 위에 있어야 한다.
+        */}
         <div className="filter-right">
-          <button className="icon-btn" onClick={() => setMonth(shiftMonth(month, -1))}
-                  aria-label="지난달">‹</button>
-          <select className="select" value={month} onChange={(e) => setMonth(e.target.value)}>
-            {monthsBack(thisMonth, 24).slice().reverse().map((m) => (
-              <option key={m} value={m}>
-                {m.slice(0, 4)}년 {Number(m.slice(5, 7))}월
-              </option>
-            ))}
-          </select>
-          <button className="icon-btn" disabled={month >= thisMonth}
-                  onClick={() => setMonth(shiftMonth(month, 1))} aria-label="다음달">›</button>
+          <div className="seg">
+            <button className={mode === "month" ? "on" : ""} onClick={() => setMode("month")}>달</button>
+            <button className={mode === "day" ? "on" : ""} onClick={() => setMode("day")}>날</button>
+          </div>
+
+          {isDay ? (
+            <>
+              <button className="icon-btn" onClick={() => setDay(addDays(day, -1))}
+                      aria-label="어제">‹</button>
+              <input className="select" type="date" value={day} max={now}
+                     onChange={(e) => setDay(e.target.value || now)} />
+              <button className="icon-btn" disabled={day >= now}
+                      onClick={() => setDay(addDays(day, 1))} aria-label="내일">›</button>
+            </>
+          ) : (
+            <>
+              <button className="icon-btn" onClick={() => setMonth(shiftMonth(month, -1))}
+                      aria-label="지난달">‹</button>
+              <select className="select" value={month} onChange={(e) => setMonth(e.target.value)}>
+                {monthsBack(thisMonth, 24).slice().reverse().map((m) => (
+                  <option key={m} value={m}>
+                    {m.slice(0, 4)}년 {Number(m.slice(5, 7))}월
+                  </option>
+                ))}
+              </select>
+              <button className="icon-btn" disabled={month >= thisMonth}
+                      onClick={() => setMonth(shiftMonth(month, 1))} aria-label="다음달">›</button>
+            </>
+          )}
         </div>
       </div>
 
@@ -829,11 +895,14 @@ export default function Client(p: Props) {
         </div>
       )}
 
-      {/* 이번 달 — 숫자 하나가 주인공이라 그래프를 쓰지 않는다 */}
+      {/* 고른 구간 — 숫자 하나가 주인공이라 그래프를 쓰지 않는다 */}
       <div className="hero">
         <div className="hero-main">
           <span className="lb">
-            {Number(month.slice(5, 7))}월 매출 · {branch === "전체" ? "전 지점" : branchName(branch)}
+            {isDay
+              ? `${korDate(day)}${day === now ? " · 오늘" : ""}`
+              : `${Number(month.slice(5, 7))}월 매출`}
+            {" · "}{branch === "전체" ? "전 지점" : branchName(branch)}
           </span>
           <b className="big num">
             {koShort(cur.sum)}<em>원</em>
@@ -842,12 +911,39 @@ export default function Client(p: Props) {
         </div>
 
         <div className="hero-delta">
-          <div><span>지난달</span><Delta v={delta(cur.sum, prev.sum)} /></div>
-          <div><span>작년 {Number(month.slice(5, 7))}월</span><Delta v={delta(cur.sum, yoy.sum)} /></div>
+          <div><span>{isDay ? "어제" : "지난달"}</span><Delta v={delta(cur.sum, prev.sum)} /></div>
+          <div>
+            <span>{isDay ? "지난주 같은 요일" : `작년 ${Number(month.slice(5, 7))}월`}</span>
+            <Delta v={delta(cur.sum, yoy.sum)} />
+          </div>
         </div>
 
+        {/*
+          날로 볼 때는 목표 자리에 그 달 누계를 넣는다
+
+          하루짜리 목표는 두지 않는다. 그런데 칸을 비워 두면 「목표가 없나」로
+          읽힌다. 그 날이 든 달의 누계와 목표를 보여주면, 오늘 하루가 이 달
+          어디쯤인지가 같은 자리에서 읽힌다.
+        */}
         <div className="hero-goal">
-          {cur.goal > 0 ? (
+          {isDay ? (
+            dayMonth && dayMonth.goal > 0 ? (
+              <>
+                <div className="r">
+                  <span>{Number(day.slice(5, 7))}월 누계 {koShort(dayMonth.sum)}원</span>
+                  <b className="num">{Math.round((dayMonth.sum / dayMonth.goal) * 100)}%</b>
+                </div>
+                <div className="mtrack">
+                  <i style={{ width: `${Math.min(100, (dayMonth.sum / dayMonth.goal) * 100)}%` }} />
+                </div>
+                <p className="sub">목표 {koShort(dayMonth.goal)}원</p>
+              </>
+            ) : (
+              <p className="sub">
+                {Number(day.slice(5, 7))}월 누계 <b className="num">{money(dayMonth?.sum ?? 0)}원</b>
+              </p>
+            )
+          ) : cur.goal > 0 ? (
             <>
               <div className="r">
                 <span>목표 {koShort(cur.goal)}원</span>
@@ -904,7 +1000,7 @@ export default function Client(p: Props) {
           <span className="lb">등록성공률</span>
           <b className="vl num">{lead.winRate === null ? "-" : `${lead.winRate}%`}</b>
           <span className="sub">
-            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.done}건 등록` : "이 달 상담 없음"}
+            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.done}건 등록` : `${때} 상담 없음`}
           </span>
           <div className="mini">
             <i className="good" style={{ width: `${lead.winRate ?? 0}%` }} />
@@ -914,7 +1010,7 @@ export default function Client(p: Props) {
           <span className="lb">등록실패율</span>
           <b className="vl num">{lead.failRate === null ? "-" : `${lead.failRate}%`}</b>
           <span className="sub">
-            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.fail}건 미등록` : "이 달 상담 없음"}
+            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.fail}건 미등록` : `${때} 상담 없음`}
           </span>
           <div className="mini">
             <i className={lead.failRate !== null && lead.failRate >= 50 ? "bad" : "warn"}
@@ -942,7 +1038,7 @@ export default function Client(p: Props) {
         </div>
         <div className="chips">
           <button className={`chip${who === "month" ? " on" : ""}`} onClick={() => setWho("month")}>
-            이 달 등록
+            {때} 등록
           </button>
           <button className={`chip${who === "all" ? " on" : ""}`} onClick={() => setWho("all")}>
             전체 회원
@@ -952,7 +1048,7 @@ export default function Client(p: Props) {
       {dist.total === 0 ? (
         <div className="viz">
           <p className="dim mini-note">
-            {who === "month" ? "이 달에 등록한 회원이 없습니다." : "회원이 없습니다."}
+            {who === "month" ? `${때}에 등록한 회원이 없습니다.` : "회원이 없습니다."}
           </p>
         </div>
       ) : (
@@ -965,16 +1061,20 @@ export default function Client(p: Props) {
         </div>
       )}
 
-      {/* 월별 흐름 — 시간에 따른 변화라 꺾은선 */}
-      <h2 className="sec-title">월별 흐름</h2>
-      <p className="sec-sub">최근 12개월 · 점선은 그달의 목표 · 눌러서 그달로 넘어갑니다</p>
-      <div className="viz">
-        <LineChart rows={trend} current={month} onPick={setMonth} />
-        <div className="vkey">
-          <span><i className="ln s1" />월 매출</span>
-          <span><i className="ln dash" />월 목표</span>
-        </div>
-      </div>
+      {/* 월별 흐름 — 시간에 따른 변화라 꺾은선. 하루를 볼 때는 자리를 비운다 */}
+      {!isDay && (
+        <>
+          <h2 className="sec-title">월별 흐름</h2>
+          <p className="sec-sub">최근 12개월 · 점선은 그달의 목표 · 눌러서 그달로 넘어갑니다</p>
+          <div className="viz">
+            <LineChart rows={trend} current={month} onPick={setMonth} />
+            <div className="vkey">
+              <span><i className="ln s1" />월 매출</span>
+              <span><i className="ln dash" />월 목표</span>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="viz-2">
         {/* 매출 구성 — 전체를 나눠 갖는 비중이라 도넛 */}
@@ -982,7 +1082,7 @@ export default function Client(p: Props) {
           <h3 className="viz-title">무엇을 팔았나</h3>
           <p className="viz-sub">회원권만 신규 · 재등록으로 가른 다섯 갈래</p>
           {cur.sum <= 0 ? (
-            <p className="dim mini-note">이 달에 잡힌 매출이 없습니다.</p>
+            <p className="dim mini-note">{때}에 잡힌 매출이 없습니다.</p>
           ) : (
             <div className="dwrap">
               <Donut rows={six} center={`${money(cur.sum)}원`}
@@ -1055,17 +1155,28 @@ export default function Client(p: Props) {
       */}
       <h2 className="sec-title">자세히 보기</h2>
 
-      <h3 className="viz-title mt">일별</h3>
-      <div className="viz">
-        {cur.count === 0 ? (
-          <p className="dim mini-note">이 달에 등록된 결제가 없습니다.</p>
-        ) : (
-          <>
-            <WeekLines list={byDay.list} month={month} />
+      {/*
+        주별 꺾은선은 달을 볼 때만 쓴다
 
-          </>
-        )}
-      </div>
+        하루를 골라 놓고 그 주의 이레치 그래프를 같이 띄우면, 위에 적힌 숫자와
+        그래프가 서로 다른 구간을 말하게 된다. 대신 그 날로 넘어가는 길을 둔다.
+      */}
+      {!isDay && (
+        <>
+          <h3 className="viz-title mt">일별</h3>
+          <p className="viz-sub">
+            하루치만 자세히 보시려면 머리 위에서 <b>「날」</b>로 바꿔 주세요.
+          </p>
+          <div className="viz">
+            {byDay.list.every((d) => d.count === 0) ? (
+              <p className="dim mini-note">{때}에 등록된 결제가 없습니다.</p>
+            ) : (
+              <WeekLines list={byDay.list} month={month}
+                         onPickDay={(k) => { setDay(k); setMode("day"); }} />
+            )}
+          </div>
+        </>
+      )}
 
       {byStaff.length > 0 && (
         <>
@@ -1122,7 +1233,7 @@ export default function Client(p: Props) {
       {cur.rows.length === 0 ? (
         <div className="empty">
           <Icon name="card" size={26} />
-          <b>이 달에 등록된 결제가 없습니다</b>
+          <b>{때}에 등록된 결제가 없습니다</b>
           <p>회원 등록이나 상품 추가로 결제가 쌓이면 여기에 나옵니다.</p>
         </div>
       ) : (
@@ -1188,7 +1299,7 @@ export default function Client(p: Props) {
         <>
           <h2 className="sec-title">지점별</h2>
           <p className="sec-sub">
-            막대는 이번 달 매출, 세로선은 그 지점의 목표 · 맨 오른쪽 작은 선은 최근 6개월 흐름
+            막대는 {때} 매출, 세로선은 그 지점의 목표
           </p>
           <div className="viz">
             {branchNow
@@ -1209,7 +1320,7 @@ export default function Client(p: Props) {
                         {b.goal > 0 && <u style={{ left: `${(b.goal / top) * 100}%` }} />}
                       </span>
                     ) : (
-                      <span className="norow">이 달 매출 없음</span>
+                      <span className="norow">{때} 매출 없음</span>
                     )}
                     <span className="am num">
                       {b.sum > 0 ? money(b.sum) : "-"}
@@ -1234,7 +1345,7 @@ export default function Client(p: Props) {
             <h3 className="viz-title">지점별 무엇을 팔았나</h3>
             <p className="viz-sub">지점마다 매출을 100%로 놓고 갈래별 비중</p>
             {branchMix.every((b) => b.sum <= 0) ? (
-              <p className="dim mini-note">이 달에 잡힌 매출이 없습니다.</p>
+              <p className="dim mini-note">{때}에 잡힌 매출이 없습니다.</p>
             ) : (
               <>
                 <div className="cmp-rows">
@@ -1296,7 +1407,7 @@ export default function Client(p: Props) {
               <span className="nm">{b.name}</span>
               {b.winRate === null ? (
                 <span className="norow">
-                  {b.base > 0 ? `상담 ${b.base}건 모두 진행중` : "이 달 상담 없음"}
+                  {b.base > 0 ? `상담 ${b.base}건 모두 진행중` : `${때} 상담 없음`}
                 </span>
               ) : (
                 <span className="tr"><i style={{ width: `${b.winRate}%` }} /></span>
@@ -1318,13 +1429,13 @@ export default function Client(p: Props) {
       </div>
 
       {/* 이 달의 상담왕 */}
-      <h2 className="sec-title">이 달의 상담왕</h2>
+      <h2 className="sec-title">{때}의 상담왕</h2>
       <p className="sec-sub">
         상담 · 실패는 <b>상담 탭의 상담자</b>, 등록 · 매출은{" "}
         <b>결제 탭의 담당직원</b> 기준입니다
       </p>
       {champions.length === 0 ? (
-        <div className="viz"><p className="dim mini-note">이 달에 쌓인 상담·결제가 없습니다.</p></div>
+        <div className="viz"><p className="dim mini-note">{때}에 쌓인 상담·결제가 없습니다.</p></div>
       ) : (
         <div className="table-wrap t2wrap">
           <table className="grid t2">
@@ -1423,7 +1534,7 @@ export default function Client(p: Props) {
             refundList.length === 0 && (
               <div className="viz">
                 <p className="dim mini-note">
-                  이 달 환불이 없습니다 · 기록할 칸(진행상태 · 사유 · 신청일 · 완료일)은
+                  {때} 환불이 없습니다 · 기록할 칸(진행상태 · 사유 · 신청일 · 완료일)은
                   준비돼 있습니다.
                 </p>
               </div>
@@ -2049,9 +2160,11 @@ function niceTop(v: number): number {
  *
  * 값이 0인 날에는 점도 글자도 안 붙인다. 색은 도넛과 같은 차례다.
  */
-function WeekLines({ list, month }: {
+function WeekLines({ list, month, onPickDay }: {
   list: { day: number; key: string; sum: number; count: number; six: { key: string; sum: number }[] }[];
   month: string;
+  /** 짚은 날로 넘어가기 — 그래프에서 튀는 날을 봤을 때 바로 파고들 수 있어야 한다 */
+  onPickDay?: (key: string) => void;
 }) {
   const keys = list[0]?.six.map((k) => k.key) ?? [];
 
@@ -2221,6 +2334,12 @@ function WeekLines({ list, month }: {
             <b className="dt">
               {Number(month.slice(5, 7))}월 {cur.day}일({cur.요일}) · {money(cur.sum)}원 ·{" "}
               {cur.count}건
+              {/* 튀는 날을 봤으면 그 날을 파고들 수 있어야 한다 */}
+              {onPickDay && cur.count > 0 && (
+                <button className="mini-tab dl-go" onClick={() => onPickDay(cur.key)}>
+                  이 날 자세히
+                </button>
+              )}
             </b>
             <ul>
               {cur.six.map((k, i) => (
@@ -2323,7 +2442,7 @@ function MiniLine({ rows }: { rows: number[] }) {
 function Ratio({ rows }: { rows: { key: string; sum: number }[] }) {
   const total = rows.reduce((s, r) => s + r.sum, 0);
   // 빈 막대를 그리면 "0원"인지 "고장난 것"인지 알 수 없다. 글자로 말한다
-  if (total <= 0) return <span className="norow">이 달 자료 없음</span>;
+  if (total <= 0) return <span className="norow">자료 없음</span>;
 
   return (
     <span className="ratio">
