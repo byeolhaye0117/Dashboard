@@ -5,6 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
+import OptionEdit from "@/components/OptionEdit";
 import { korDate, today, daysBetween, weekdayIndex } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
@@ -782,6 +783,43 @@ const defaultKind = (method: string): "현금" | "카드" =>
   method === "현금" || method === "계좌" ? "현금" : "카드";
 
 /**
+ * 줄마다 고른 가격 종류를 보고 결제 수단을 맞춘다
+ *
+ * ── 왜 필요했나 ─────────────────────────────────────────────
+ * 여태 한 방향으로만 흘렀다. 결제 수단을 고르면 모든 줄의 가격이 그 종류로
+ * 맞춰졌다. 그런데 실제로는 반대로 가는 일이 잦다 — 회원권은 계좌로 받고
+ * PT는 카드로 긁는다. 줄마다 가격을 따로 골라 놓고도 아래 결제 수단은
+ * 「카드」 하나로 남아, 나중에 매출표에서 계좌로 받은 돈이 카드로 잡혔다.
+ *
+ * 섞여 있으면 나눠 낸 것으로 본다. 「카드+현금」처럼 시트에 정해 둔 이름이
+ * 있으면 그것을 쓰고, 없으면 카드+계좌로 간다.
+ */
+function methodFor(
+  lines: { 가격구분: "현금" | "카드" }[],
+  now: string,
+  methods: string[]
+): string {
+  if (lines.length === 0) return now;
+  const 카드 = lines.some((l) => l.가격구분 === "카드");
+  const 현금쪽 = lines.some((l) => l.가격구분 === "현금");
+
+  if (카드 && !현금쪽) return methods.includes("카드") ? "카드" : now;
+  if (현금쪽 && !카드) {
+    /* 현금가는 현금과 계좌 둘 다를 뜻한다. 이미 그 둘 중 하나를 고르셨으면
+       그대로 둔다 — 계좌로 받기로 해 두었는데 현금으로 바꿔 놓으면 안 된다 */
+    if (now === "현금" || now === "계좌") return now;
+    return methods.find((m) => m === "계좌") ?? methods.find((m) => m === "현금") ?? now;
+  }
+
+  /* 섞였다. 지금 고른 현금쪽 이름을 살려서 짝을 찾는다 */
+  const 짝 = now === "현금" ? "현금" : "계좌";
+  const 섞임 = (a: string, b: string) =>
+    methods.find((m) => m.includes("+") && m.includes(a) && m.includes(b));
+  return 섞임("카드", 짝) ?? 섞임("카드", 짝 === "계좌" ? "현금" : "계좌")
+    ?? methods.find((m) => m.includes("+")) ?? now;
+}
+
+/**
  * 이 줄의 값
  *
  * 사물함처럼 개월을 골라 사는 상품은 상품에 적힌 기본 개월을 한 단위로 보고
@@ -1256,8 +1294,35 @@ function PurchaseFields({
     });
   }
 
-  const setLine = (i: number, key: keyof Line, v: string) =>
-    setB({ ...b, lines: b.lines.map((l, k) => (k === i ? { ...l, [key]: v } : l)) });
+  const setLine = (i: number, key: keyof Line, v: string) => {
+    const lines = b.lines.map((l, k) => (k === i ? { ...l, [key]: v } : l));
+    if (key !== "가격구분") return setB({ ...b, lines });
+
+    /* 줄의 가격 종류를 바꾸면 아래 결제 수단도 따라간다. 회원권은 계좌,
+       PT는 카드로 골라 놓고 아래는 「카드」로 남아 있으면, 매출표에서
+       계좌로 받은 돈까지 카드 매출로 잡힌다 */
+    const methods = options["결제유형"] ?? PAY_METHODS;
+    const 수단 = methodFor(lines, b.결제수단, methods);
+    if (수단 === b.결제수단) return setB({ ...b, lines });
+
+    /* 나눠 낸 것이 되었으면 각 수단에 얼마씩인지 미리 채워 둔다 —
+       줄마다 값과 미수금이 적혀 있으니 계산할 수 있다. 손으로 다시
+       더하게 두면 그러다 틀린다 */
+    const 쪽합 = (카드쪽: boolean) =>
+      lines
+        .filter((l) => (l.가격구분 === "카드") === 카드쪽)
+        .reduce((s, l) => s + Math.max(0, linePrice(l, pOf(l.상품코드)) - onlyNum(l.미수금)), 0);
+
+    setB({
+      ...b,
+      lines,
+      결제수단: 수단,
+      카드액: 수단.includes("+") ? String(쪽합(true)) : "",
+      계좌액: 수단.includes("+") ? String(쪽합(false)) : "",
+      /* 나눠 낸 값이 곧 오늘 받는 돈이라 손으로 적은 값은 물린다 */
+      직접입력: 수단.includes("+") ? false : b.직접입력,
+    });
+  };
 
   /** 개월을 바꾸면 종료일도 같이 옮긴다 */
   const setMonths = (i: number, v: string) =>
@@ -1863,7 +1928,8 @@ function AddPurchase({
               칸 안에 넣으면 방금 적은 값처럼 보이고, 아예 안 적으면
               「비어 있는데 왜 안 물어보지」가 된다 */}
           <Free label="방문 경로" k="방문경로" f={info} set={setI}
-                now={member.방문경로} opts={options["문의채널"] ?? options["방문경로"]} />
+                now={member.방문경로} opts={options["문의채널"] ?? options["방문경로"]}
+                optKind={options["문의채널"] ? "문의채널" : "방문경로"} />
           <Free label="거주 동네" k="거주동네" f={info} set={setI}
                 now={member.거주동네} opts={options["거주동네"]} />
           <Free label="직업" k="직업" f={info} set={setI}
@@ -2017,6 +2083,7 @@ function NewForm({
           */}
           <Free label="방문 경로" k="방문경로" f={f} set={set}
                 opts={options["문의채널"] ?? options["방문경로"]}
+                optKind={options["문의채널"] ? "문의채널" : "방문경로"}
                 placeholder="예) 네이버플레이스 · 지인소개" />
         </div>
 
@@ -2242,6 +2309,7 @@ function Detail({
                     placeholder="예) 쌍용동" />
               <Free label="방문 경로" k="방문경로" f={f} set={setV}
                     opts={options["문의채널"] ?? options["방문경로"]}
+                    optKind={options["문의채널"] ? "문의채널" : "방문경로"}
                     placeholder="예) 네이버플레이스 · 지인소개" />
               <Free label="직업" k="직업" f={f} set={setV} opts={options["직업"]}
                     placeholder="예) 간호사 · 3교대 근무" />
@@ -4193,9 +4261,11 @@ function L({ label, children, req, full, aside }: {
  * 그래서 목록을 직접 그린다. 칸을 누르면 적힌 것이 있어도 전부 펼쳐지고,
  * 새로 치기 시작하면 그때부터 걸러 준다.
  */
-function Free({ label, k, f, set, opts, placeholder, now }: {
+function Free({ label, k, f, set, opts, placeholder, now, optKind }: {
   label: string; k: string; f: Record<string, string>;
   set: (k: string, v: string) => void; opts?: string[]; placeholder?: string;
+  /** 선택목록 시트의 「구분」 이름 — 안 주면 칸 이름을 그대로 쓴다 */
+  optKind?: string;
   /**
    * 지금 시트에 적혀 있는 값
    *
@@ -4208,6 +4278,10 @@ function Free({ label, k, f, set, opts, placeholder, now }: {
   const [open, setOpen] = useState(false);
   /* 칸을 연 뒤에 새로 친 적이 있는지. 치기 전에는 안 거르고 전부 보여 준다 */
   const [typed, setTyped] = useState(false);
+  /* 목록을 고치는 창 — 화면을 옮기면 반쯤 적어 둔 회원이 통째로 날아간다 */
+  const [fix, setFix] = useState(false);
+  /* 창에서 고친 목록. 손대기 전에는 서버가 준 것을 그대로 쓴다 */
+  const [mine, setMine] = useState<string[] | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   /* 칸 밖을 누르면 접는다 — 목록을 펼쳐 둔 채로 다른 칸을 적으면 가린다 */
@@ -4221,7 +4295,7 @@ function Free({ label, k, f, set, opts, placeholder, now }: {
   }, [open]);
 
   const v = f[k] ?? "";
-  const all = (opts ?? []).filter(Boolean);
+  const all = (mine ?? opts ?? []).filter(Boolean);
   const word = v.trim();
   const shown = typed && word ? all.filter((o) => o.includes(word)) : all;
 
@@ -4232,7 +4306,8 @@ function Free({ label, k, f, set, opts, placeholder, now }: {
        aside={
          <>
            {now ? <span className="nowv">{now}</span> : null}
-           <a className="linkish" href="/dashboard/options">목록 고치기</a>
+           <button type="button" className="linkish"
+                   onClick={() => { setOpen(false); setFix(true); }}>목록 고치기</button>
          </>
        }>
       <div className="combo" ref={box}>
@@ -4262,6 +4337,11 @@ function Free({ label, k, f, set, opts, placeholder, now }: {
           </div>
         )}
       </div>
+
+      {fix && (
+        <OptionEdit kind={optKind ?? k} title={label}
+                    onChange={setMine} onClose={() => setFix(false)} />
+      )}
     </L>
   );
 }
