@@ -841,189 +841,25 @@ export default function Client(p: Props) {
 
         {/* ── 밀린 리뷰 · 쌓인 답글 ───────────── */}
         <div className="mcol">
-          <div className="mcard ph-1">
-            <div className="mcard-head">
-              <b>답글 밀린 리뷰</b>
-              {open && <span className="sub">{open.length}개</span>}
-              <button className="more" type="button" disabled={pulling || !p.hasPlace || !place}
-                      onClick={pull}>
-                {pulling ? "가져오는 중…" : open ? "다시 불러오기" : "불러오기"}
-              </button>
-            </div>
+          {/*
+            밀린 리뷰는 있을 때만 자리를 차지한다
 
-            {place && !placeBox && (
-              <p className="stat-note" style={{ margin: "0 0 4px" }}>
-                플레이스 주소 등록됨
-                <button type="button" className="linkish" onClick={() => setPlaceBox(true)}>
-                  주소 고치기
+            이제 화면을 열면 알아서 가져온다. 그래서 다 달아두신 날에는 이 칸이
+            「없습니다」 한 줄만 띄운 채 자리를 지키고 있었다. 없다는 말을 하려고
+            칸을 하나 두는 셈이라, 없으면 아예 안 그린다.
+          */}
+          {open && open.length > 0 && (
+            <div className="mcard ph-1">
+              <div className="mcard-head">
+                <b>답글 밀린 리뷰</b>
+                <span className="sub">{open.length}개</span>
+                <button className="more" type="button" disabled={pulling}
+                        onClick={pull}>
+                  {pulling ? "가져오는 중…" : "다시 불러오기"}
                 </button>
-                {/* 저장돼 있다고 맞는 것은 아니다. 좌표로 재서 보여준다 */}
-                <button type="button" className="linkish" disabled={auditing} onClick={runAudit}>
-                  {auditing ? "점검 중…" : "지점별 점검"}
-                </button>
-              </p>
-            )}
-
-            {audit && (
-              <ul className="findlist" style={{ marginBottom: 8 }}>
-                {audit.map((r) => {
-                  const 멀기 = (r.meters ?? 0) < 1000
-                    ? `${r.meters}m` : `${((r.meters ?? 0) / 1000).toFixed(1)}km`;
-                  const 색 =
-                    r.state === "맞음" ? "ok" : r.state === "다름" ? "bad" : "warn";
-                  const 말 =
-                    r.state === "맞음" ? "이 지점 가게가 맞습니다"
-                    /* 가게는 맞는데 지점 좌표가 어긋난 것 — 주소 잘못이 아니라
-                       출퇴근 GPS 쪽 일이다. 섞어 말하면 주소를 고치려 드신다 */
-                    : r.state === "이름맞음"
-                      ? `가게는 맞습니다. 다만 지점 관리에 적힌 좌표가 ${멀기} 떨어져 있어 출퇴근 GPS 가 빠듯할 수 있습니다`
-                    : r.state === "다름" ? `다른 가게로 보입니다 · ${멀기} 떨어져 있고 상호도 다릅니다`
-                    : r.state === "없음" ? "주소가 아직 없습니다"
-                    : r.state === "좌표없음" ? "지점 관리에 위도·경도가 없어 못 쟀습니다"
-                    : r.state === "못읽음" ? `네이버에서 못 읽었습니다 — ${r.error ?? ""}`
-                    : "좌표를 못 받아 못 쟀습니다";
-                  return (
-                    <li key={r.code}>
-                      <div className={`auditrow ${색}`}>
-                        <b className="nm">{r.name}</b>
-                        <span className="ad">{r.상호 || r.address || (r.placeId ? `ID ${r.placeId}` : "-")}</span>
-                        <span className="mt">{말}</span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {(!place || placeBox) && (
-              <>
-                {saved && saved.length > 0 && (
-                  <>
-                    <p className="stat-note" style={{ margin: "0 0 4px" }}>
-                      플레이스 도구에 저장해 두신 가게입니다. 이 지점 것을 눌러주세요.
-                    </p>
-                    <ul className="findlist">
-                      {saved.map((x) => (
-                        <li key={x.id}>
-                          <button type="button" onClick={() => { setPlace(x.placeId); setFound(null); }}>
-                            <b className="nm">{x.name}</b>
-                            <span className="mt">
-                              {x.at ? `${x.at} 저장` : "저장 기록"}
-                              {x.score !== null ? ` · 진단 ${x.score}점` : ""}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-
-                {saved !== null && saved.length === 0 && (
-                  <p className="stat-note" style={{ margin: "0 0 4px" }}>
-                    {savedErr
-                      ? savedErr
-                      : "플레이스 도구에 저장해 둔 가게가 없습니다. 도구에서 지점을 진단하고 「저장」을 눌러두시면 여기에 뜹니다. 그동안은 아래에서 이름으로 찾으세요."}
-                  </p>
-                )}
-
-                <div className="inline-form" style={{ marginBottom: 4 }}>
-                  <input className="input" value={q}
-                         placeholder={`이름으로 찾기 (예: ${branchName})`}
-                         onChange={(e) => setQ(e.target.value)}
-                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); findPlace(); } }} />
-                  <button type="button" className="btn-ghost"
-                          disabled={finding || !p.hasPlace || (!p.can.update && !p.can.create)}
-                          onClick={findPlace}>
-                    {finding ? "찾는 중…" : "찾기"}
-                  </button>
-                </div>
-
-                {found && found.length > 0 && (
-                  <>
-                    {noGeo && (
-                      <p className="stat-note" style={{ margin: "0 0 4px" }}>
-                        이 지점의 <b>위도·경도가 지점 관리에 없습니다.</b> 좌표가 있으면
-                        거리로 딱 집어 드릴 수 있는데, 지금은 이름과 주소만 보고 고르셔야 합니다.
-                      </p>
-                    )}
-                    <ul className="findlist">
-                      {found.map((x) => {
-                        const 맞음 = x.meters !== null && x.meters <= nearM;
-                        return (
-                      <li key={x.id}>
-                        <button type="button" className={맞음 ? "hit" : ""}
-                                onClick={() => { setPlace(x.id); setFound(null); }}>
-                          <b className="nm">
-                            {x.name}
-                            {맞음 && <span className="tag good">이 지점</span>}
-                          </b>
-                          {x.address && <span className="ad">{x.address}</span>}
-                          <span className="mt">
-                            {x.meters !== null
-                              ? `지점에서 ${x.meters < 1000
-                                  ? `${x.meters}m`
-                                  : `${(x.meters / 1000).toFixed(1)}km`}`
-                              : "거리 확인 못 함"}
-                            {x.reviews ? ` · 리뷰 ${x.reviews.toLocaleString("ko-KR")}개` : ""}
-                          </span>
-                        </button>
-                      </li>
-                        );
-                      })}
-                    </ul>
-                  </>
-                )}
-              </>
-            )}
-
-            <div className="inline-form" style={{ marginBottom: 4,
-                                                  display: place && !placeBox ? "none" : "flex" }}>
-              <input className="input" value={place}
-                     placeholder="네이버 플레이스 주소나 ID (예: 11716617)"
-                     onChange={(e) => setPlace(e.target.value)} />
-              <button type="button" className="btn-ghost"
-                      disabled={saving || (!p.can.update && !p.can.create)}
-                      onClick={async () => {
-                        if (saving) return;
-                        setSaving(true);
-                        setNote(null);
-                        const r = await keep({ 플레이스ID: place });
-                        setNote(
-                          r.ok
-                            ? { bad: false, text: "저장했습니다. 이제 「불러오기」를 눌러보세요." }
-                            : { bad: true, text: r.error }
-                        );
-                        if (r.ok) setPlaceBox(false);
-                        setSaving(false);
-                      }}>
-                {saving ? "저장 중…" : "저장"}
-              </button>
-            </div>
-
-            {note && (
-              <div className={note.bad ? "alert-bad" : "alert-soft"} style={{ margin: "8px 0 4px" }}>
-                {note.text}
               </div>
-            )}
 
-            {!p.hasPlace ? (
-              <p className="stat-note">
-                진단 서버 주소가 아직 없습니다. Vercel 환경변수에 <b>PLACE_API_BASE</b> 와{" "}
-                <b>PLACE_API_KEY</b> 를 넣으면 이 칸이 살아납니다.
-              </p>
-            ) : !place ? (
-              <p className="stat-note">
-                {branchName}의 플레이스 주소를 위 칸에 넣고 저장해주세요. 지점마다 따로 저장됩니다.
-              </p>
-            ) : open === null ? (
-              /* 가져오는 중이라는 말은 머리글의 단추가 이미 하고 있다
-                 (「가져오는 중…」). 여기서 한 번 더 하면 같은 말이 두 줄이다.
-                 못 가져왔을 때는 알림 칸이 왜 안 됐는지를 대신 말한다 */
-              null
-            ) : open.length === 0 ? (
-              <p className="empty">답글이 안 달린 리뷰가 없습니다.</p>
-            ) : (
-              open.map((r, i) => {
+              {open.map((r, i) => {
                 const done = madeKeys.has(keyOf(r.body));
                 return (
                   <div key={i} className="mrow">
@@ -1041,9 +877,9 @@ export default function Client(p: Props) {
                     </div>
                   </div>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
 
           {/*
             우리 지점만 아는 것
@@ -1057,10 +893,11 @@ export default function Client(p: Props) {
           */}
           <div className="mcard ph-5">
             <div className="mcard-head">
-              <b>우리 {branchName}만 아는 것</b>
+              <b>{branchName} 설정</b>
               <span className="sub">
-                {[fac.length && `시설 ${fac.length}`, price && "가격", edge && "다른 점",
-                  ownLines.length && `사실 ${ownLines.length}`].filter(Boolean).join(" · ") || "아직 없음"}
+                {[place && "주소", fac.length && `시설 ${fac.length}`, price && "가격",
+                  edge && "다른 점", ownLines.length && `사실 ${ownLines.length}`]
+                  .filter(Boolean).join(" · ") || "아직 없음"}
               </span>
               <button className="more" type="button" onClick={() => setOwnBox(!ownBox)}>
                 {ownBox ? "접기" : "펴기"}
@@ -1069,12 +906,186 @@ export default function Client(p: Props) {
 
             {!ownBox ? (
               <p className="stat-note" style={{ margin: 0 }}>
-                {ownLines.length || fac.length
-                  ? "적어 두신 것이 답글 재료로 들어갑니다."
-                  : "네이버가 모르는 것을 적어 두면 답글이 눈에 띄게 달라집니다. 「펴기」를 눌러주세요."}
+                {place
+                  ? "플레이스 주소와 우리 지점만 아는 것을 여기서 고칩니다."
+                  : "이 지점의 플레이스 주소가 아직 없습니다. 「펴기」를 눌러 넣어주세요."}
               </p>
             ) : (
               <>
+                {/*
+                  플레이스 주소 — 「답글 밀린 리뷰」 칸에 있던 것을 옮겨 왔다
+
+                  그 칸은 이제 밀린 리뷰가 있을 때만 뜬다. 주소를 고치려는데
+                  칸 자체가 없는 일이 생기므로, 늘 있는 이 자리로 옮긴다.
+                  한 번 넣으면 고칠 일이 거의 없어서 접어 두는 자리가 맞다.
+                */}
+                <p className="csec">
+                  플레이스 주소
+                  <span>이 지점 답글의 재료를 어디서 긁어올지 정합니다</span>
+                </p>
+                {/* 진단 서버가 아예 안 꽂혀 있으면 무엇을 넣어도 안 된다.
+                    그 말을 안 하면 주소만 계속 다시 넣어 보시게 된다 */}
+                {!p.hasPlace && (
+                  <p className="stat-note" style={{ margin: "0 0 6px" }}>
+                    진단 서버 주소가 아직 없습니다. Vercel 환경변수에 <b>PLACE_API_BASE</b> 와{" "}
+                    <b>PLACE_API_KEY</b> 를 넣으면 이 칸이 살아납니다.
+                  </p>
+                )}
+              {place && !placeBox && (
+                <p className="stat-note" style={{ margin: "0 0 4px" }}>
+                  플레이스 주소 등록됨
+                  <button type="button" className="linkish" onClick={() => setPlaceBox(true)}>
+                    주소 고치기
+                  </button>
+                  {/* 저장돼 있다고 맞는 것은 아니다. 좌표로 재서 보여준다 */}
+                  <button type="button" className="linkish" disabled={auditing} onClick={runAudit}>
+                    {auditing ? "점검 중…" : "지점별 점검"}
+                  </button>
+                </p>
+              )}
+
+              {audit && (
+                <ul className="findlist" style={{ marginBottom: 8 }}>
+                  {audit.map((r) => {
+                    const 멀기 = (r.meters ?? 0) < 1000
+                      ? `${r.meters}m` : `${((r.meters ?? 0) / 1000).toFixed(1)}km`;
+                    const 색 =
+                      r.state === "맞음" ? "ok" : r.state === "다름" ? "bad" : "warn";
+                    const 말 =
+                      r.state === "맞음" ? "이 지점 가게가 맞습니다"
+                      /* 가게는 맞는데 지점 좌표가 어긋난 것 — 주소 잘못이 아니라
+                         출퇴근 GPS 쪽 일이다. 섞어 말하면 주소를 고치려 드신다 */
+                      : r.state === "이름맞음"
+                        ? `가게는 맞습니다. 다만 지점 관리에 적힌 좌표가 ${멀기} 떨어져 있어 출퇴근 GPS 가 빠듯할 수 있습니다`
+                      : r.state === "다름" ? `다른 가게로 보입니다 · ${멀기} 떨어져 있고 상호도 다릅니다`
+                      : r.state === "없음" ? "주소가 아직 없습니다"
+                      : r.state === "좌표없음" ? "지점 관리에 위도·경도가 없어 못 쟀습니다"
+                      : r.state === "못읽음" ? `네이버에서 못 읽었습니다 — ${r.error ?? ""}`
+                      : "좌표를 못 받아 못 쟀습니다";
+                    return (
+                      <li key={r.code}>
+                        <div className={`auditrow ${색}`}>
+                          <b className="nm">{r.name}</b>
+                          <span className="ad">{r.상호 || r.address || (r.placeId ? `ID ${r.placeId}` : "-")}</span>
+                          <span className="mt">{말}</span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {(!place || placeBox) && (
+                <>
+                  {saved && saved.length > 0 && (
+                    <>
+                      <p className="stat-note" style={{ margin: "0 0 4px" }}>
+                        플레이스 도구에 저장해 두신 가게입니다. 이 지점 것을 눌러주세요.
+                      </p>
+                      <ul className="findlist">
+                        {saved.map((x) => (
+                          <li key={x.id}>
+                            <button type="button" onClick={() => { setPlace(x.placeId); setFound(null); }}>
+                              <b className="nm">{x.name}</b>
+                              <span className="mt">
+                                {x.at ? `${x.at} 저장` : "저장 기록"}
+                                {x.score !== null ? ` · 진단 ${x.score}점` : ""}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+
+                  {saved !== null && saved.length === 0 && (
+                    <p className="stat-note" style={{ margin: "0 0 4px" }}>
+                      {savedErr
+                        ? savedErr
+                        : "플레이스 도구에 저장해 둔 가게가 없습니다. 도구에서 지점을 진단하고 「저장」을 눌러두시면 여기에 뜹니다. 그동안은 아래에서 이름으로 찾으세요."}
+                    </p>
+                  )}
+
+                  <div className="inline-form" style={{ marginBottom: 4 }}>
+                    <input className="input" value={q}
+                           placeholder={`이름으로 찾기 (예: ${branchName})`}
+                           onChange={(e) => setQ(e.target.value)}
+                           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); findPlace(); } }} />
+                    <button type="button" className="btn-ghost"
+                            disabled={finding || !p.hasPlace || (!p.can.update && !p.can.create)}
+                            onClick={findPlace}>
+                      {finding ? "찾는 중…" : "찾기"}
+                    </button>
+                  </div>
+
+                  {found && found.length > 0 && (
+                    <>
+                      {noGeo && (
+                        <p className="stat-note" style={{ margin: "0 0 4px" }}>
+                          이 지점의 <b>위도·경도가 지점 관리에 없습니다.</b> 좌표가 있으면
+                          거리로 딱 집어 드릴 수 있는데, 지금은 이름과 주소만 보고 고르셔야 합니다.
+                        </p>
+                      )}
+                      <ul className="findlist">
+                        {found.map((x) => {
+                          const 맞음 = x.meters !== null && x.meters <= nearM;
+                          return (
+                        <li key={x.id}>
+                          <button type="button" className={맞음 ? "hit" : ""}
+                                  onClick={() => { setPlace(x.id); setFound(null); }}>
+                            <b className="nm">
+                              {x.name}
+                              {맞음 && <span className="tag good">이 지점</span>}
+                            </b>
+                            {x.address && <span className="ad">{x.address}</span>}
+                            <span className="mt">
+                              {x.meters !== null
+                                ? `지점에서 ${x.meters < 1000
+                                    ? `${x.meters}m`
+                                    : `${(x.meters / 1000).toFixed(1)}km`}`
+                                : "거리 확인 못 함"}
+                              {x.reviews ? ` · 리뷰 ${x.reviews.toLocaleString("ko-KR")}개` : ""}
+                            </span>
+                          </button>
+                        </li>
+                          );
+                        })}
+                      </ul>
+                    </>
+                  )}
+                </>
+              )}
+
+              <div className="inline-form" style={{ marginBottom: 4,
+                                                    display: place && !placeBox ? "none" : "flex" }}>
+                <input className="input" value={place}
+                       placeholder="네이버 플레이스 주소나 ID (예: 11716617)"
+                       onChange={(e) => setPlace(e.target.value)} />
+                <button type="button" className="btn-ghost"
+                        disabled={saving || (!p.can.update && !p.can.create)}
+                        onClick={async () => {
+                          if (saving) return;
+                          setSaving(true);
+                          setNote(null);
+                          const r = await keep({ 플레이스ID: place });
+                          setNote(
+                            r.ok
+                              ? { bad: false, text: "저장했습니다. 이제 「불러오기」를 눌러보세요." }
+                              : { bad: true, text: r.error }
+                          );
+                          if (r.ok) setPlaceBox(false);
+                          setSaving(false);
+                        }}>
+                  {saving ? "저장 중…" : "저장"}
+                </button>
+              </div>
+
+              {note && (
+                <div className={note.bad ? "alert-bad" : "alert-soft"} style={{ margin: "8px 0 4px" }}>
+                  {note.text}
+                </div>
+              )}
+
                 <p className="csec">보유 시설<span>체크한 것만 답글에 쓸 수 있습니다</span></p>
                 <div className="pickbox">
                   {FACILITIES.map((f) => (
