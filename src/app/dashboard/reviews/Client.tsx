@@ -163,6 +163,18 @@ export default function Client(p: Props) {
    * 검색 결과에 쌍용·성정·용곡이 나란히 뜨고 이름만으로는 못 가른다. 잘못
    * 박히면 그 지점 답글마다 남의 가게 시설이 사실인 양 적힌다 — 빈 칸보다 나쁘다.
    */
+  /*
+   * 플레이스 도구에 저장해 둔 가게
+   *
+   * 이름으로 검색하면 「MTO피트니스」에 쌍용·성정·용곡이 나란히 떠서 고르기가
+   * 어렵다. 그런데 대표님은 이미 도구에서 지점마다 주소를 넣어 진단을 돌리고
+   * 「저장」까지 눌러 두셨다. 그게 확인이 끝난 목록이다 —
+   * 검색해서 다시 맞히려 들 이유가 없다. 이쪽을 먼저 보여준다.
+   */
+  const [saved, setSaved] = useState<
+    { id: string; placeId: string; name: string; at: string; score: number | null }[] | null
+  >(null);
+  const [savedErr, setSavedErr] = useState("");
   const [finding, setFinding] = useState(false);
   const [found, setFound] = useState<
     { id: string; rank: number; name: string; category: string; address: string; reviews: number | null }[] | null
@@ -359,6 +371,33 @@ export default function Client(p: Props) {
     setMsg("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  /* 주소 칸이 비어 있을 때만 불러온다 — 이미 넣어 두셨으면 볼 일이 없다 */
+  useEffect(() => {
+    if (!branch || !p.hasPlace) return;
+    if (place.trim() && !placeBox) return;
+    if (saved !== null) return;
+    let 살아있음 = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/reviews", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "saved", 지점코드: branch }),
+        });
+        const j = await res.json();
+        if (!살아있음) return;
+        if (!res.ok) throw new Error(j.error ?? "읽지 못했습니다.");
+        setSaved(j.items ?? []);
+      } catch (e: any) {
+        if (!살아있음) return;
+        setSaved([]);
+        setSavedErr(String(e.message ?? e));
+      }
+    })();
+    return () => { 살아있음 = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branch, place, placeBox, p.hasPlace]);
 
   async function findPlace() {
     if (finding) return;
@@ -715,6 +754,35 @@ export default function Client(p: Props) {
 
             {(!place || placeBox) && (
               <>
+                {saved && saved.length > 0 && (
+                  <>
+                    <p className="stat-note" style={{ margin: "0 0 4px" }}>
+                      플레이스 도구에 저장해 두신 가게입니다. 이 지점 것을 눌러주세요.
+                    </p>
+                    <ul className="findlist">
+                      {saved.map((x) => (
+                        <li key={x.id}>
+                          <button type="button" onClick={() => { setPlace(x.placeId); setFound(null); }}>
+                            <b className="nm">{x.name}</b>
+                            <span className="mt">
+                              {x.at ? `${x.at} 저장` : "저장 기록"}
+                              {x.score !== null ? ` · 진단 ${x.score}점` : ""}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+
+                {saved !== null && saved.length === 0 && (
+                  <p className="stat-note" style={{ margin: "0 0 4px" }}>
+                    {savedErr
+                      ? savedErr
+                      : "플레이스 도구에 저장해 둔 가게가 없습니다. 도구에서 지점을 진단하고 「저장」을 눌러두시면 여기에 뜹니다. 그동안은 아래에서 이름으로 찾으세요."}
+                  </p>
+                )}
+
                 <div className="inline-form" style={{ marginBottom: 4 }}>
                   <input className="input" value={q}
                          placeholder={`이름으로 찾기 (예: ${branchName})`}

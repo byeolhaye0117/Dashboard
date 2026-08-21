@@ -311,3 +311,67 @@ export async function findPlaces(keyword: string, n = 5): Promise<FoundPlace[]> 
     reviews: Number(x?.reviews) || null,
   })).filter((x: FoundPlace) => x.id);
 }
+
+/** 플레이스 도구의 「저장 내역」에 남아 있는 가게 */
+export type SavedPlace = {
+  id: string;
+  /** 플레이스 ID — 도구가 주소에서 뽑아 둔 값 */
+  placeId: string;
+  name: string;
+  /** 마지막으로 저장한 때 */
+  at: string;
+  /** 그때 잰 진단 점수 */
+  score: number | null;
+};
+
+/**
+ * 플레이스 도구에 저장해 둔 가게 목록
+ *
+ * ── 왜 검색보다 이쪽이 먼저인가 ────────────────────────────
+ * 이름으로 검색하면 「MTO피트니스」에 쌍용·성정·용곡이 나란히 떠서 고르기가
+ * 어렵다. 그런데 대표님은 이미 도구에서 지점마다 주소를 넣어 진단을 돌리고
+ * 「저장」까지 눌러 두셨다. 그게 확인이 끝난 목록이다 — 검색해서 다시
+ * 맞히려 들 이유가 없다.
+ *
+ * 렌더 무료 플랜은 디스크가 임시라 이 목록이 배포·재시작 때 비워질 수 있다.
+ * 비어 있어도 고장이 아니므로, 그럴 때는 이름으로 찾는 쪽으로 안내한다.
+ */
+export async function listSavedPlaces(): Promise<SavedPlace[]> {
+  const key = (process.env.PLACE_API_KEY ?? "").trim();
+  if (!key) throw new Error("환경변수 PLACE_API_KEY 가 없습니다. 진단 서버의 접근 키를 넣어주세요.");
+
+  let res: Response;
+  try {
+    res = await fetch(`${base()}/api/saves`, {
+      headers: { "x-access-key": key }, cache: "no-store",
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (e: any) {
+    if (e?.name === "TimeoutError") {
+      throw new Error("진단 서버가 응답하지 않습니다. 무료 서버라 자고 있을 수 있습니다. 1분 뒤 다시 눌러주세요.");
+    }
+    throw new Error(`진단 서버에 닿지 못했습니다. (${e?.message ?? e})`);
+  }
+
+  if (res.status === 401) throw new Error("진단 서버 접근 키가 틀렸습니다. PLACE_API_KEY 를 확인해주세요.");
+  if (!res.ok) throw new Error(`진단 서버가 막았습니다. (${res.status})`);
+
+  const json: any = await res.json().catch(() => null);
+  if (!json || json.ok === false) throw new Error(String(json?.error ?? "읽지 못했습니다."));
+
+  const rows: SavedPlace[] = (Array.isArray(json.saves) ? json.saves : []).map((x: any) => ({
+    id: String(x?.id ?? ""),
+    placeId: String(x?.place ?? "").trim(),
+    name: String(x?.name ?? "").trim(),
+    at: String(x?.at ?? "").slice(0, 10),
+    score: Number.isFinite(Number(x?.score)) ? Number(x.score) : null,
+  }));
+
+  /* 주소를 안 넣고 이름만으로 저장한 기록이 섞여 있다 — 그건 플레이스 ID 가
+     아니라 가게 이름이라 여기서는 쓸 수 없다 (placeKey 참고) */
+  const 숫자만 = rows.filter((x) => /^\d{5,}$/.test(x.placeId));
+
+  /* 같은 가게를 여러 번 저장하셨을 수 있다. 제일 최근 것만 남긴다 */
+  const 본것 = new Set<string>();
+  return 숫자만.filter((x) => !본것.has(x.placeId) && 본것.add(x.placeId));
+}

@@ -7,7 +7,9 @@ import {
   saveReply, softDeleteReply, countToday, listSettings, saveSetting,
   type ReviewSetting,
 } from "@/lib/reviews";
-import { collectPlace, findPlaces, writeReply, NoReplyApi, type Collected } from "@/lib/place";
+import {
+  collectPlace, findPlaces, listSavedPlaces, writeReply, NoReplyApi, type Collected,
+} from "@/lib/place";
 import { ask } from "@/lib/ai";
 import {
   buildReplyPrompt, parseReply, auditReply, replySafe, replyFacts, promptFacts,
@@ -133,6 +135,23 @@ export async function POST(req: Request) {
       }
       await saveSetting(branch, patch, session.staffId);
       return NextResponse.json({ ok: true });
+    }
+
+    /* ── 플레이스 도구에 저장해 둔 가게 ──
+       대표님이 이미 지점마다 주소를 넣어 진단을 돌리고 저장까지 해 두셨다.
+       확인이 끝난 목록이라, 검색해서 다시 맞히려 들 이유가 없다 */
+    if (action === "saved") {
+      if (!branch || !inScope(branch)) {
+        return NextResponse.json({ error: "담당 지점만 볼 수 있습니다." }, { status: 403 });
+      }
+      if (!mine.update && !mine.create) {
+        return NextResponse.json({ error: "플레이스 주소를 정할 권한이 없습니다." }, { status: 403 });
+      }
+      try {
+        return NextResponse.json({ ok: true, items: await listSavedPlaces() });
+      } catch (e: any) {
+        return NextResponse.json({ error: e.message ?? "읽지 못했습니다." }, { status: 502 });
+      }
     }
 
     /* ── 이름으로 플레이스 찾기 ──
