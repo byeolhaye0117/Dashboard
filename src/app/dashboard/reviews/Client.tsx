@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import {
-  ENDINGS, keywordsFor, suggestTone, MODEL_WON, OWN_MAX,
+  keywordsFor, suggestTone, MODEL_WON, OWN_MAX,
 } from "@/lib/reviewMeta";
 /* 시설 목록은 답글 코어에 있다 — 플레이스 홈페이지와 같은 목록을 써야
    한쪽에서 체크한 것이 다른 쪽 답글에도 들어간다 */
@@ -112,8 +112,14 @@ export default function Client(p: Props) {
    * "앞으로도 최선을 다하겠습니다. 감사합니다."로 닫았다. 그 차이였다.
    *
    * 플레이스 진단 화면도 이 칸은 비워 둔 채로 쓴다. 같게 맞춘다.
+   *
+   * 고르는 자리도 없앴다. 「넣지 않기」가 늘 옳은 답이면 고르게 할 일이
+   * 아니다 — 답이 하나인 물음을 화면에 두면 자리만 차지하고, 잘못 고를
+   * 길만 하나 열린다. 지점 설정에 적어 두신 끝인사도 이제 안 불러온다.
+   *
+   * 다시 고르실 일이 생기면 여기를 상태로 되돌리고 ENDINGS 를 그리면 된다.
    */
-  const [ending, setEnding] = useState("");
+  const ending = "";
   const [picked, setPicked] = useState<string[]>([]);
   /** 화면에서 직접 더 넣은 키워드 */
   const [extra, setExtra] = useState<string[]>([]);
@@ -184,7 +190,6 @@ export default function Client(p: Props) {
     if (!branch) return;
     const s = p.settings.find((x) => x.지점코드 === branch);
     setPlace(s?.플레이스ID ?? "");
-    setEnding(s?.끝인사 ?? "");
     const saved = s?.키워드 ?? [];
     const base = keywordsFor(branchName);
     setExtra(saved.filter((w) => !base.includes(w)));
@@ -505,28 +510,6 @@ export default function Client(p: Props) {
                      }} />
               <button type="button" className="btn-ghost" onClick={addKw}>넣기</button>
             </div>
-
-            <p className="csec">
-              답글 끝인사
-              <span>안 넣는 쪽을 권합니다 — AI 가 그 리뷰에 맞게 닫습니다</span>
-            </p>
-            <div className="pick-row" style={{ flexWrap: "wrap" }}>
-              <button type="button" className={`pickone${ending === "" ? " on" : ""}`}
-                      onClick={() => setEnding("")}>
-                <span className="nm">넣지 않기</span>
-                <span className="dim">권함</span>
-              </button>
-              {ENDINGS.map((x) => (
-                <button key={x} type="button"
-                        className={`pickone${ending === x ? " on" : ""}`}
-                        onClick={() => setEnding(x)}>
-                  <span className="nm">{x}</span>
-                </button>
-              ))}
-            </div>
-            <input className="input" style={{ marginTop: 8 }} value={ending}
-                   placeholder="끝인사를 직접 쓰셔도 됩니다"
-                   onChange={(e) => setEnding(e.target.value)} />
 
             {msg && <div className="alert-bad" style={{ marginTop: 12 }}>{msg}</div>}
             {ok && <div className="alert-soft" style={{ marginTop: 12 }}>{ok}</div>}
