@@ -175,6 +175,18 @@ export default function Client(p: Props) {
     { id: string; placeId: string; name: string; at: string; score: number | null }[] | null
   >(null);
   const [savedErr, setSavedErr] = useState("");
+  /*
+   * 지점마다 주소가 제대로 박혀 있나
+   *
+   * 저장돼 있다고 맞는 것은 아니다. 쌍용점을 용곡점 자리에 넣어 두면 그
+   * 지점 답글마다 남의 가게 시설이 적히는데 화면은 아무 말도 못 한다.
+   * 지점 좌표와 견줘서 한 번에 보여준다.
+   */
+  const [audit, setAudit] = useState<
+    { code: string; name: string; placeId: string; 상호?: string; address?: string;
+      meters?: number | null; state: string; error?: string }[] | null
+  >(null);
+  const [auditing, setAuditing] = useState(false);
   const [finding, setFinding] = useState(false);
   const [found, setFound] = useState<
     {
@@ -406,6 +418,26 @@ export default function Client(p: Props) {
     return () => { 살아있음 = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch, place, placeBox, p.hasPlace]);
+
+  async function runAudit() {
+    if (auditing) return;
+    setAuditing(true);
+    setAudit(null);
+    try {
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "audit", 지점코드: branch }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "점검하지 못했습니다.");
+      setAudit(j.rows ?? []);
+    } catch (e: any) {
+      setNote({ bad: true, text: String(e.message ?? e) });
+    } finally {
+      setAuditing(false);
+    }
+  }
 
   async function findPlace() {
     if (finding) return;
@@ -759,7 +791,38 @@ export default function Client(p: Props) {
                 <button type="button" className="linkish" onClick={() => setPlaceBox(true)}>
                   주소 고치기
                 </button>
+                {/* 저장돼 있다고 맞는 것은 아니다. 좌표로 재서 보여준다 */}
+                <button type="button" className="linkish" disabled={auditing} onClick={runAudit}>
+                  {auditing ? "점검 중…" : "지점별 점검"}
+                </button>
               </p>
+            )}
+
+            {audit && (
+              <ul className="findlist" style={{ marginBottom: 8 }}>
+                {audit.map((r) => {
+                  const 색 =
+                    r.state === "맞음" ? "ok" : r.state === "다름" ? "bad" : "warn";
+                  const 말 =
+                    r.state === "맞음" ? `맞습니다 · ${r.meters}m`
+                    : r.state === "다름" ? `다른 가게입니다 · ${
+                        (r.meters ?? 0) < 1000 ? `${r.meters}m` : `${((r.meters ?? 0) / 1000).toFixed(1)}km`
+                      } 떨어져 있습니다`
+                    : r.state === "없음" ? "주소가 아직 없습니다"
+                    : r.state === "좌표없음" ? "지점 관리에 위도·경도가 없어 못 쟀습니다"
+                    : r.state === "못읽음" ? `네이버에서 못 읽었습니다 — ${r.error ?? ""}`
+                    : "좌표를 못 받아 못 쟀습니다";
+                  return (
+                    <li key={r.code}>
+                      <div className={`auditrow ${색}`}>
+                        <b className="nm">{r.name}</b>
+                        <span className="ad">{r.상호 || r.address || (r.placeId ? `ID ${r.placeId}` : "-")}</span>
+                        <span className="mt">{말}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
 
             {(!place || placeBox) && (

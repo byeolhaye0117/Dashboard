@@ -2318,3 +2318,15 @@ td .ktag {
   background: var(--good); color: #fff; font-size: 10.5px; font-weight: 800;
   vertical-align: middle;
 }
+
+/* 지점별 주소 점검 결과 — 맞는지 다른지가 색으로 먼저 읽혀야 한다 */
+.findlist .auditrow {
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface);
+}
+.findlist .auditrow.ok { border-color: var(--good); background: var(--good-soft); }
+.findlist .auditrow.bad { border-color: var(--bad); background: var(--bad-soft); }
+.findlist .auditrow.warn { border-color: var(--warn); background: var(--warn-soft); }
+.findlist .auditrow .nm { display: block; font-size: 13px; font-weight: 800; }
+.findlist .auditrow .ad { display: block; margin-top: 2px; font-size: 11.5px; color: var(--ink-2); }
+.findlist .auditrow .mt { display: block; margin-top: 1px; font-size: 11px; color: var(--ink-2); font-weight: 700; }

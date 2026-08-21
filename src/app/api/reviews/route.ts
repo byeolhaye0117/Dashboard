@@ -163,6 +163,61 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    /*
+     * ── 지점마다 주소가 제대로 박혀 있나 점검 ──
+     *
+     * 저장돼 있다고 맞는 것은 아니다. 「MTO피트니스」로 찾다가 쌍용점을
+     * 용곡점 자리에 넣어 두면, 그 지점 답글마다 남의 가게 시설이 사실인 양
+     * 적히는데 화면은 아무 말도 못 한다.
+     *
+     * 지점 좌표가 있으니 계산으로 가릴 수 있다. 저장된 주소를 열어 좌표를
+     * 받아 지점 좌표와 견준다 — 멀면 다른 가게다.
+     */
+    if (action === "audit") {
+      if (!mine.update && !mine.create) {
+        return NextResponse.json({ error: "점검할 권한이 없습니다." }, { status: 403 });
+      }
+      const bs = (await getBranches()).filter((x) => inScope(x.code));
+      const settings = await listSettings();
+      const rows = [];
+      for (const b of bs) {
+        const pid = (settings.find((s) => s.지점코드 === b.code)?.플레이스ID ?? "").trim();
+        if (!pid) {
+          rows.push({ code: b.code, name: b.name, placeId: "", state: "없음" });
+          continue;
+        }
+        if (!(b.lat && b.lng)) {
+          rows.push({ code: b.code, name: b.name, placeId: pid, state: "좌표없음" });
+          continue;
+        }
+        try {
+          const got = await collectPlace(pid);
+          const d: any = got.raw?.data ?? {};
+          const lng = Number(d.x), lat = Number(d.y);
+          const meters =
+            Number.isFinite(lat) && Number.isFinite(lng) && lat && lng
+              ? Math.round(거리m(b.lat, b.lng, lat, lng))
+              : null;
+          rows.push({
+            code: b.code, name: b.name, placeId: pid,
+            상호: String(got.name || "").trim(),
+            address: String(d.roadAddress || d.address || "").trim(),
+            meters,
+            state:
+              meters === null ? "잴수없음"
+              : meters <= (b.radius || 200) ? "맞음"
+              : "다름",
+          });
+        } catch (e: any) {
+          rows.push({
+            code: b.code, name: b.name, placeId: pid, state: "못읽음",
+            error: String(e?.message ?? e).slice(0, 120),
+          });
+        }
+      }
+      return NextResponse.json({ ok: true, rows });
+    }
+
     /* ── 플레이스 도구에 저장해 둔 가게 ──
        대표님이 이미 지점마다 주소를 넣어 진단을 돌리고 저장까지 해 두셨다.
        확인이 끝난 목록이라, 검색해서 다시 맞히려 들 이유가 없다 */
