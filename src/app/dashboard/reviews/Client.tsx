@@ -199,6 +199,10 @@ export default function Client(p: Props) {
   /** 이 안에 들면 그 지점으로 본다 (지점 관리의 허용 반경) */
   const [nearM, setNearM] = useState(200);
   const [noGeo, setNoGeo] = useState(false);
+  /* 긁어온 가게가 지금 지점의 것이 맞나 — 눈으로 확인하는 자리 */
+  const [same, setSame] = useState<
+    { 지점: string; 상호: string; meters: number | null; 이름맞음: boolean; 맞음: boolean } | null
+  >(null);
   const [q, setQ] = useState("");
   const [note, setNote] = useState<{ bad: boolean; text: string } | null>(null);
 
@@ -371,6 +375,7 @@ export default function Client(p: Props) {
       setRealName(String(json.상호 ?? ""));
       setHead(String(json.머리글 ?? ""));
       setNear(json.landmarks ?? []);
+      setSame(json.일치 ?? null);
       setNote({
         bad: false,
         text: (json.openReviews ?? []).length
@@ -682,6 +687,27 @@ export default function Client(p: Props) {
               쓴 답글은 견본을 베껴서, 우리 지점에 없는 시설이 적힌다.
             */}
             {/*
+              어느 가게 재료로 쓰고 있나 — 눈으로 확인하는 자리
+
+              재료가 어느 가게 것인지는 화면에 안 보였다. 쌍용점 자리에
+              용곡점 주소가 박혀 있어도 답글은 멀쩡히 나오고, 다만 남의 가게
+              시설이 적힌다. 지점 이름과 긁어온 상호를 나란히 놓는다.
+            */}
+            {same && (
+              <p className={`samerow${same.맞음 ? " ok" : " bad"}`}>
+                <b>{same.지점}</b>
+                <span className="ar">→</span>
+                <b>{same.상호 || "상호 못 읽음"}</b>
+                <span className="vd">
+                  {same.맞음
+                    ? "같은 지점이 맞습니다"
+                    : "다른 가게로 보입니다 — 주소를 확인해주세요"}
+                  {same.meters !== null && ` · ${same.meters}m`}
+                </span>
+              </p>
+            )}
+
+            {/*
               가져오는 중과 못 가져온 것은 다른 말이다
 
               화면을 열면 알아서 가져오는데, 무료 서버를 깨우느라 30~60초가
@@ -702,11 +728,15 @@ export default function Client(p: Props) {
               )
             )}
 
+            {/* 재료가 들어오기 전에 누르면 견본을 베낀 답글이 나간다.
+                기다리시게 하는 편이 낫다 — 그 사이에 눌러 두면 하루 몫만 깎인다 */}
             <button type="button" className="btn-dark" style={{ width: "100%", marginTop: 8 }}
-                    disabled={busy || !p.can.create || !p.hasKey || !branch || left === 0}
+                    disabled={busy || pulling || !p.can.create || !p.hasKey || !branch || left === 0}
                     onClick={make}>
               {busy
                 ? "쓰는 중입니다…"
+                : pulling
+                ? "리뷰를 가져오는 중입니다…"
                 : left === 0
                 ? `오늘 한도(${limit}개)를 다 썼습니다`
                 : "이 리뷰에 맞춘 답글 만들기"}
@@ -984,8 +1014,9 @@ export default function Client(p: Props) {
               </p>
             ) : open === null ? (
               <p className="stat-note">
-                「불러오기」를 누르면 네이버에서 <b>답글이 안 달린 리뷰</b>만 골라 옵니다.
-                무료 서버라 자고 있으면 처음 한 번은 30~60초 걸립니다.
+                {pulling
+                  ? "아직 리뷰를 가져오는 중입니다…"
+                  : "리뷰를 아직 못 가져왔습니다. 위 「다시 불러오기」를 눌러주세요."}
               </p>
             ) : open.length === 0 ? (
               <p className="empty">답글이 안 달린 리뷰가 없습니다.</p>

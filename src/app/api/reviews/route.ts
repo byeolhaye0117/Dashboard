@@ -361,6 +361,34 @@ export async function POST(req: Request) {
         머리글: 재료.머리글,
         landmarks: got.landmarks,
         feeds: got.feeds,
+        /*
+         * 지금 보고 있는 지점의 가게가 맞나
+         *
+         * 재료가 어느 가게 것인지는 화면에 안 보였다. 쌍용점 자리에 용곡점
+         * 주소가 박혀 있어도 답글은 멀쩡히 나오고, 다만 남의 가게 시설이
+         * 적힌다. 눈으로 확인할 자리를 준다 — 지점 이름과 긁어온 상호를
+         * 나란히 놓고, 좌표까지 견줘서 맞는지 적는다.
+         */
+        일치: (() => {
+          const b = bs.find((x) => x.code === branch);
+          const 상호 = String(재료.상호 ?? "").trim();
+          const 꼬리 = (b?.name ?? "").replace(/점$/, "").trim();
+          const 이름맞음 = Boolean(꼬리) && 상호.replace(/\s/g, "").includes(꼬리);
+          const d: any = got.raw?.data ?? {};
+          const lng = Number(d.x), lat = Number(d.y);
+          const meters =
+            b?.lat && b?.lng && Number.isFinite(lat) && Number.isFinite(lng) && lat && lng
+              ? Math.round(거리m(b.lat, b.lng, lat, lng))
+              : null;
+          const 가까움 = meters !== null && meters <= (b?.radius || 200);
+          return {
+            지점: b?.name ?? branch,
+            상호,
+            meters,
+            이름맞음,
+            맞음: 이름맞음 || 가까움,
+          };
+        })(),
       });
     }
 
