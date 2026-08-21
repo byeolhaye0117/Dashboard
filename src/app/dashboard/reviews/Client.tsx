@@ -801,11 +801,13 @@ export default function Client(p: Props) {
                       <li key={x.id}>
                         <button type="button" onClick={() => { setPlace(x.id); setFound(null); }}>
                           <b className="nm">{x.name}</b>
-                          <span className="ad">{x.address || "주소 없음"}</span>
-                          <span className="mt">
-                            {x.category || "분류 없음"}
-                            {x.reviews ? ` · 리뷰 ${x.reviews.toLocaleString("ko-KR")}개` : ""}
-                          </span>
+                          {x.address && <span className="ad">{x.address}</span>}
+                          {(x.category || x.reviews) && (
+                            <span className="mt">
+                              {x.category}
+                              {x.reviews ? `${x.category ? " · " : ""}리뷰 ${x.reviews.toLocaleString("ko-KR")}개` : ""}
+                            </span>
+                          )}
                         </button>
                       </li>
                     ))}

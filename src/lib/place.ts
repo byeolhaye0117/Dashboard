@@ -280,7 +280,16 @@ export async function findPlaces(keyword: string, n = 5): Promise<FoundPlace[]> 
   const kw = (keyword ?? "").trim();
   if (!kw) throw new Error("찾을 이름을 적어주세요.");
 
-  const url = `${base()}/api/find?keyword=${encodeURIComponent(kw)}&n=${n}`;
+  /*
+   * 진단 서버가 두 갈래로 갈려 있다
+   *
+   * 렌더에 떠 있는 쪽은 `q` 를 받아 `places: [{id, name}]` 를 준다.
+   * 다른 갈래는 `keyword` 를 받아 `items: [{id, name, address, reviews}]` 를 준다.
+   * 어느 쪽이 떠 있든 되게, 둘 다 보내고 둘 다 읽는다 — 서버 사정으로
+   * 화면이 안 되는 일은 없어야 한다.
+   */
+  const url = `${base()}/api/find?q=${encodeURIComponent(kw)}`
+    + `&keyword=${encodeURIComponent(kw)}&n=${n}`;
   let res: Response;
   try {
     res = await fetch(url, { headers: { "x-access-key": key }, cache: "no-store",
@@ -302,14 +311,19 @@ export async function findPlaces(keyword: string, n = 5): Promise<FoundPlace[]> 
   if (!json) throw new Error("응답을 읽지 못했습니다.");
   if (json.ok === false) throw new Error(String(json.error ?? "찾지 못했습니다."));
 
-  return (Array.isArray(json.items) ? json.items : []).map((x: any) => ({
+  const rows = Array.isArray(json.items) ? json.items
+    : Array.isArray(json.places) ? json.places
+    : [];
+
+  return rows.map((x: any, i: number) => ({
     id: String(x?.id ?? ""),
-    rank: Number(x?.rank) || 0,
+    rank: Number(x?.rank) || i + 1,
     name: String(x?.name ?? "").trim(),
+    /* 떠 있는 쪽은 이름과 아이디만 준다. 없는 칸은 화면에서 감춘다 */
     category: String(x?.category ?? "").trim(),
     address: String(x?.address ?? "").trim(),
     reviews: Number(x?.reviews) || null,
-  })).filter((x: FoundPlace) => x.id);
+  })).filter((x: FoundPlace) => x.id).slice(0, n);
 }
 
 /** 플레이스 도구의 「저장 내역」에 남아 있는 가게 */
