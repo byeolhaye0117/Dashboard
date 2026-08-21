@@ -376,12 +376,15 @@ export default function Client(p: Props) {
       setHead(String(json.머리글 ?? ""));
       setNear(json.landmarks ?? []);
       setSame(json.일치 ?? null);
-      setNote({
-        bad: false,
-        text: (json.openReviews ?? []).length
-          ? `답글이 안 달린 리뷰 ${json.openReviews.length}개를 찾았습니다.`
-          : "답글이 안 달린 리뷰가 없습니다. 다 달아두셨네요.",
-      });
+      /*
+       * 잘 됐으면 아무 말도 안 한다
+       *
+       * 「N개를 찾았습니다」는 바로 위 머리글에 개수가 이미 적혀 있고,
+       * 「없습니다」는 그 아래 빈 자리가 이미 그렇게 말한다. 같은 말을
+       * 세 군데서 하면 읽는 사람이 「이 셋이 왜 다르지」를 확인하게 된다.
+       * 알림 자리는 잘못됐을 때를 위해 비워 둔다.
+       */
+      setNote(null);
     } catch (e: any) {
       setNote({ bad: true, text: String(e.message ?? e) });
     } finally {
