@@ -2237,21 +2237,3 @@ td .ktag {
   .rolelist li { flex-wrap: wrap; }
   .rolelist .ops { margin-left: 0; width: 100%; }
 }
-
-/* 달 / 날 고르개 — 무엇을 보고 있는지가 늘 머리 위에 있어야 한다 */
-.seg {
-  display: inline-flex; flex: 0 0 auto;
-  border: 1px solid var(--line); border-radius: 9px;
-  background: var(--surface-2); padding: 2px;
-}
-.seg button {
-  border: 0; background: none; cursor: pointer;
-  padding: 5px 14px; border-radius: 7px;
-  font-size: 12.5px; font-weight: 700; color: var(--muted);
-}
-.seg button:hover { color: var(--ink-2); }
-/* 고른 쪽은 확실히 갈려야 한다. 살짝만 밝게 하면 둘이 같아 보인다 */
-.seg button.on { background: var(--ink); color: var(--ink-on); }
-
-/* 짚은 날에서 그 날로 넘어가는 길 */
-.dl-tip .dl-go { margin-left: 8px; vertical-align: middle; }
