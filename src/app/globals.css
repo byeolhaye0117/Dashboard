@@ -2237,3 +2237,61 @@ td .ktag {
   .rolelist li { flex-wrap: wrap; }
   .rolelist .ops { margin-left: 0; width: 100%; }
 }
+
+/* ── 하루치 갈래별 가로 막대 ─────────────────────────────
+   하루는 점 하나라 꺾은선을 그릴 수 없다. 그 날 판 것이 무엇이었는지를
+   보는 그림이라 눕힌 막대로 그린다. */
+.dbars { list-style: none; margin: 10px 0 0; padding: 0; }
+.dbars li {
+  display: grid; grid-template-columns: 116px 1fr 84px 40px;
+  gap: 10px; align-items: center; padding: 6px 0;
+}
+.dbars li.zero { opacity: .45; }
+.dbars .nm {
+  display: flex; align-items: center; gap: 7px; min-width: 0;
+  font-size: 12.5px; font-weight: 700; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dbars .sw { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 2px; }
+.dbars .bt { height: 14px; border-radius: 4px; background: var(--surface-3); }
+.dbars .bt > i { display: block; height: 100%; border-radius: 4px; background: var(--s1); }
+.dbars .bt > i.s1 { background: var(--s1); }
+.dbars .bt > i.s2 { background: var(--s2); }
+.dbars .bt > i.s3 { background: var(--s3); }
+.dbars .bt > i.s4 { background: var(--s4); }
+.dbars .bt > i.s5 { background: var(--s5); }
+.dbars .am { text-align: right; font-size: 12.5px; font-weight: 700; }
+.dbars .pc { text-align: right; font-size: 11px; color: var(--muted); }
+
+/* 일간 / 주간 고르개 */
+.seg {
+  display: inline-flex; flex: 0 0 auto;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: var(--surface-2); padding: 2px;
+}
+.seg button {
+  border: 0; background: none; cursor: pointer;
+  padding: 5px 14px; border-radius: 7px;
+  font-size: 12.5px; font-weight: 700; color: var(--muted);
+}
+.seg button:hover { color: var(--ink-2); }
+/* 고른 쪽은 확실히 갈려야 한다. 살짝만 밝게 하면 둘이 같아 보인다 */
+.seg button.on { background: var(--ink); color: var(--ink-on); }
+.viz-seg { margin-bottom: 10px; }
+
+/* 오늘을 보고 있을 때 — 날을 넘기다 보면 어디가 오늘인지 놓친다 */
+.wk-today {
+  margin-left: 6px; padding: 2px 7px; border-radius: 999px;
+  background: var(--point-soft); color: var(--point);
+  font-size: 11px; font-weight: 700;
+}
+
+/* 폰에서는 네 칸이 한 줄에 안 들어가 금액이 잘렸다.
+   이름과 금액을 윗줄에 두고 막대를 그 밑에 통째로 눕힌다 */
+@media (max-width: 560px) {
+  .dbars li { grid-template-columns: 1fr auto auto; gap: 5px 8px; padding: 8px 0; }
+  .dbars .nm { grid-column: 1; grid-row: 1; }
+  .dbars .am { grid-column: 2; grid-row: 1; }
+  .dbars .pc { grid-column: 3; grid-row: 1; min-width: 30px; }
+  .dbars .bt { grid-column: 1 / -1; grid-row: 2; }
+}

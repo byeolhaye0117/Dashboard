@@ -268,6 +268,8 @@ export default function Client(p: Props) {
   /* 머리 위에서 고른 지점을 기본으로 본다. 지점을 골라 놓고도 전 지점
      숫자가 뜨면, 무엇을 보고 있는지 화면이 두 가지로 말하는 셈이다 */
   const [branch, setBranch] = useState(p.currentBranch || "전체");
+  /* 날짜별 그래프를 하루로 볼지 이레로 볼지 */
+  const [span, setSpan] = useState<"day" | "week">("day");
   /* 지우기는 한 번 더 묻는다. 돈이 오간 기록이라 되돌리기가 번거롭다 */
   const [wipe, setWipe] = useState<Payment | null>(null);
   /** 결제 한 줄을 눌러 여는 상세 — 무엇을 얼마에 팔았는지 */
@@ -1065,7 +1067,16 @@ export default function Client(p: Props) {
         {byDay.list.every((d) => d.count === 0) ? (
           <p className="dim mini-note">이 달에 등록된 결제가 없습니다.</p>
         ) : (
-          <WeekLines list={byDay.list} month={month} />
+          <>
+            {/* 하루를 볼지 이레를 볼지 — 자리를 더 차지하지 않게 단추로 바꾼다 */}
+            <div className="seg viz-seg">
+              <button className={span === "day" ? "on" : ""} onClick={() => setSpan("day")}>일간</button>
+              <button className={span === "week" ? "on" : ""} onClick={() => setSpan("week")}>주간</button>
+            </div>
+            {span === "day"
+              ? <DayBars list={byDay.list} month={month} now={now} />
+              : <WeekLines list={byDay.list} month={month} />}
+          </>
         )}
       </div>
 
@@ -2051,6 +2062,95 @@ function niceTop(v: number): number {
  *
  * 값이 0인 날에는 점도 글자도 안 붙인다. 색은 도넛과 같은 차례다.
  */
+/**
+ * 하루치 — 갈래별 가로 막대
+ *
+ * ── 왜 꺾은선이 아닌가 ─────────────────────────────────────
+ * 하루는 점 하나다. 점 하나로 꺾은선을 그릴 수는 없다. 하루를 볼 때 궁금한
+ * 것은 흐름이 아니라 속이다 — 그 날 판 것이 회원권인지 PT인지.
+ * 전체를 나눠 갖는 비중이라 가로 막대로 눕힌다. 「회원권 · 재등록」처럼
+ * 이름이 긴 갈래가 있어서 세로 막대로는 이름이 접힌다.
+ *
+ * ── 막대 길이는 이 달 최고치에 맞춘다 ────────────────────
+ * 그 날 안에서 제일 큰 것에 맞추면 막대가 늘 꽉 찬다. 그러면 5만원 판 날과
+ * 500만원 판 날이 똑같이 생겨서, 날을 넘길 때마다 눈이 속는다.
+ * 이 달에서 제일 많이 판 날에 맞춰 두면 넘겨도 길이를 그대로 견줄 수 있다.
+ * 대신 막대가 안 보일 만큼 짧아지는 날이 있어서, 금액은 늘 옆에 적는다.
+ */
+function DayBars({ list, month, now }: {
+  list: { day: number; key: string; sum: number; count: number; six: { key: string; sum: number }[] }[];
+  month: string;
+  /** 오늘 — 이 달을 보고 있으면 오늘부터 연다 */
+  now: string;
+}) {
+  const m = Number(month.slice(5, 7));
+  const 요일 = ["월", "화", "수", "목", "금", "토", "일"];
+  const mon0 = (day: number) =>
+    (new Date(Date.UTC(Number(month.slice(0, 4)), m - 1, day)).getUTCDay() + 6) % 7;
+
+  /* 앞으로 넘길 수 있는 마지막 날 — 오지도 않은 날을 넘겨 보게 두지 않는다 */
+  const last = useMemo(() => {
+    const i = list.findIndex((d) => d.key > now);
+    return i < 0 ? list.length - 1 : Math.max(0, i - 1);
+  }, [list, now]);
+
+  /* 처음 열 때 — 이 달이면 오늘, 지난 달이면 돈이 오간 마지막 날.
+     빈 날에서 시작하면 「자료가 없나」 하고 닫게 된다 */
+  const 처음 = useMemo(() => {
+    const t = list.findIndex((d) => d.key === now);
+    if (t >= 0) return t;
+    for (let i = last; i >= 0; i--) if (list[i].sum > 0) return i;
+    return last;
+  }, [list, now, last]);
+
+  const [di, setDi] = useState(처음);
+  const at = Math.min(Math.max(0, di), last);
+  const d = list[at];
+  if (!d) return null;
+
+  /* 이 달에서 한 갈래가 하루에 올린 최고 금액 */
+  const top = Math.max(1, ...list.flatMap((x) => x.six.map((k) => k.sum)));
+
+  return (
+    <div className="dlwrap">
+      <div className="wk-head">
+        <button className="icon-btn" aria-label="어제" disabled={at === 0}
+                onClick={() => setDi(at - 1)}>‹</button>
+        <b className="wk-lb">
+          {m}월 {d.day}일({요일[mon0(d.day)]})
+          {d.key === now && <span className="wk-today">오늘</span>}
+        </b>
+        <button className="icon-btn" aria-label="내일" disabled={at >= last}
+                onClick={() => setDi(at + 1)}>›</button>
+        <span className="wk-sum num">{money(d.sum)}원 · {d.count}건</span>
+      </div>
+
+      {d.sum <= 0 ? (
+        <p className="dim mini-note">이 날은 결제가 없습니다.</p>
+      ) : (
+        <>
+          <ul className="dbars">
+            {d.six.map((k, i) => (
+              <li key={k.key} className={k.sum > 0 ? "" : "zero"}>
+                <span className="nm"><i className={`sw s${i + 1}`} />{k.key}</span>
+                <span className="bt">
+                  <i className={`s${i + 1}`}
+                     style={{ width: k.sum > 0 ? `max(3px, ${(k.sum / top) * 100}%)` : 0 }} />
+                </span>
+                <span className="am num">{k.sum > 0 ? money(k.sum) : "-"}</span>
+                <span className="pc num">
+                  {k.sum > 0 ? `${Math.round((k.sum / d.sum) * 100)}%` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="dim mini-note">막대 길이는 이 달 최고치 기준입니다.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function WeekLines({ list, month }: {
   list: { day: number; key: string; sum: number; count: number; six: { key: string; sum: number }[] }[];
   month: string;
