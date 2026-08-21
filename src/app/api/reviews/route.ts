@@ -198,14 +198,34 @@ export async function POST(req: Request) {
             Number.isFinite(lat) && Number.isFinite(lng) && lat && lng
               ? Math.round(거리m(b.lat, b.lng, lat, lng))
               : null;
+          /*
+           * 이름을 먼저 본다
+           *
+           * 거리 하나로 판정했더니 두정점이 「다른 가게」로 나왔다. 상호는
+           * 「여성전용착한헬스&PT 두정점」으로 정확히 맞는데 277m 떨어져
+           * 있어서다. 지점 좌표는 대표님이 찍으신 값이고 네이버 좌표는 건물
+           * 기준이라 원래 100m 안팎씩 어긋난다 — 그걸 틀렸다고 하면 안 된다.
+           *
+           * 상호에 지점 이름이 들어 있으면 그 가게가 맞다. 그때 거리는
+           * 「주소가 틀렸다」가 아니라 「지점 좌표를 다시 찍으셔야 한다」는
+           * 뜻이라, 그렇게 나눠서 말한다.
+           */
+          const 상호 = String(got.name || "").trim();
+          const 꼬리 = b.name.replace(/점$/, "").trim();
+          const 이름맞음 = Boolean(꼬리) && 상호.replace(/\s/g, "").includes(꼬리);
+          const 가까움 = meters !== null && meters <= (b.radius || 200);
+
           rows.push({
             code: b.code, name: b.name, placeId: pid,
-            상호: String(got.name || "").trim(),
+            상호,
             address: String(d.roadAddress || d.address || "").trim(),
             meters,
+            이름맞음,
             state:
-              meters === null ? "잴수없음"
-              : meters <= (b.radius || 200) ? "맞음"
+              이름맞음 && 가까움 ? "맞음"
+              : 이름맞음 ? "이름맞음"
+              : 가까움 ? "맞음"
+              : meters === null ? "잴수없음"
               : "다름",
           });
         } catch (e: any) {

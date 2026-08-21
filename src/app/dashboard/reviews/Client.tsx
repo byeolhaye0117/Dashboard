@@ -10,7 +10,7 @@
  * AI 가 쓴 것은 초안이다. 그대로 올리라고 만들지 않았다 —
  * 복사해서 읽어보고 고쳐 올리는 것을 전제로 한다.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import {
@@ -184,7 +184,7 @@ export default function Client(p: Props) {
    */
   const [audit, setAudit] = useState<
     { code: string; name: string; placeId: string; 상호?: string; address?: string;
-      meters?: number | null; state: string; error?: string }[] | null
+      meters?: number | null; 이름맞음?: boolean; state: string; error?: string }[] | null
   >(null);
   const [auditing, setAuditing] = useState(false);
   const [finding, setFinding] = useState(false);
@@ -418,6 +418,26 @@ export default function Client(p: Props) {
     return () => { 살아있음 = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch, place, placeBox, p.hasPlace]);
+
+  /*
+   * 화면을 열면 알아서 불러온다
+   *
+   * 여태는 「불러오기」를 눌러야 재료가 왔다. 그런데 그걸 안 누르고 리뷰만
+   * 붙여넣으면 재료 없이 답글이 나가고, 그러면 AI 가 견본을 베낀다.
+   * 눌러야만 되는 일이면 언젠가는 안 누른다.
+   *
+   * 지점당 한 번만 부른다. 무료 서버를 깨우는 데 30~60초가 걸려서, 화면을
+   * 오갈 때마다 부르면 그만큼 기다리게 되고 네이버도 계속 두드리게 된다.
+   * 다시 받고 싶으시면 「다시 불러오기」를 누르시면 된다.
+   */
+  const 부른곳 = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!branch || !p.hasPlace || !place.trim()) return;
+    if (부른곳.current.has(branch)) return;
+    부른곳.current.add(branch);
+    pull();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branch, place, p.hasPlace]);
 
   async function runAudit() {
     if (auditing) return;
@@ -781,7 +801,7 @@ export default function Client(p: Props) {
               {open && <span className="sub">{open.length}개</span>}
               <button className="more" type="button" disabled={pulling || !p.hasPlace || !place}
                       onClick={pull}>
-                {pulling ? "가져오는 중…" : "불러오기"}
+                {pulling ? "가져오는 중…" : open ? "다시 불러오기" : "불러오기"}
               </button>
             </div>
 
@@ -801,13 +821,17 @@ export default function Client(p: Props) {
             {audit && (
               <ul className="findlist" style={{ marginBottom: 8 }}>
                 {audit.map((r) => {
+                  const 멀기 = (r.meters ?? 0) < 1000
+                    ? `${r.meters}m` : `${((r.meters ?? 0) / 1000).toFixed(1)}km`;
                   const 색 =
                     r.state === "맞음" ? "ok" : r.state === "다름" ? "bad" : "warn";
                   const 말 =
-                    r.state === "맞음" ? `맞습니다 · ${r.meters}m`
-                    : r.state === "다름" ? `다른 가게입니다 · ${
-                        (r.meters ?? 0) < 1000 ? `${r.meters}m` : `${((r.meters ?? 0) / 1000).toFixed(1)}km`
-                      } 떨어져 있습니다`
+                    r.state === "맞음" ? "이 지점 가게가 맞습니다"
+                    /* 가게는 맞는데 지점 좌표가 어긋난 것 — 주소 잘못이 아니라
+                       출퇴근 GPS 쪽 일이다. 섞어 말하면 주소를 고치려 드신다 */
+                    : r.state === "이름맞음"
+                      ? `가게는 맞습니다. 다만 지점 관리에 적힌 좌표가 ${멀기} 떨어져 있어 출퇴근 GPS 가 빠듯할 수 있습니다`
+                    : r.state === "다름" ? `다른 가게로 보입니다 · ${멀기} 떨어져 있고 상호도 다릅니다`
                     : r.state === "없음" ? "주소가 아직 없습니다"
                     : r.state === "좌표없음" ? "지점 관리에 위도·경도가 없어 못 쟀습니다"
                     : r.state === "못읽음" ? `네이버에서 못 읽었습니다 — ${r.error ?? ""}`
