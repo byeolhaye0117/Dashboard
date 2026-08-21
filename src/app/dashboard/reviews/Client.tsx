@@ -153,6 +153,21 @@ export default function Client(p: Props) {
   const [saving, setSaving] = useState(false);
   /* 주소는 한 번 넣으면 끝이다. 늘 펼쳐 두면 「불러오기」가 그만큼 아래로 밀린다 */
   const [placeBox, setPlaceBox] = useState(false);
+  /*
+   * 이름으로 찾기
+   *
+   * 지점마다 플레이스 주소를 손으로 넣어야 했다. 네 지점이면 네 번, 새 지점이
+   * 생기면 또 한 번이고, 그때마다 네이버에서 주소를 복사해 와야 한다.
+   *
+   * 고르는 것은 대표님이 하신다. 「MTO피트니스」처럼 지점이 여럿인 상호는
+   * 검색 결과에 쌍용·성정·용곡이 나란히 뜨고 이름만으로는 못 가른다. 잘못
+   * 박히면 그 지점 답글마다 남의 가게 시설이 사실인 양 적힌다 — 빈 칸보다 나쁘다.
+   */
+  const [finding, setFinding] = useState(false);
+  const [found, setFound] = useState<
+    { id: string; rank: number; name: string; category: string; address: string; reviews: number | null }[] | null
+  >(null);
+  const [q, setQ] = useState("");
   const [note, setNote] = useState<{ bad: boolean; text: string } | null>(null);
 
   /* 하루 한도 — 지점마다 따로. 값은 「리뷰설정」 탭에서 정한다 */
@@ -343,6 +358,32 @@ export default function Client(p: Props) {
     setOut(null);
     setMsg("");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function findPlace() {
+    if (finding) return;
+    const kw = (q.trim() || branchName).trim();
+    if (!kw) return;
+    setFinding(true);
+    setFound(null);
+    setNote(null);
+    try {
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "find", 지점코드: branch, 검색어: kw }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "찾지 못했습니다.");
+      setFound(j.items ?? []);
+      if (!(j.items ?? []).length) {
+        setNote({ bad: true, text: "그 이름으로는 못 찾았습니다. 상호에 동네 이름을 붙여 다시 찾아보세요." });
+      }
+    } catch (e: any) {
+      setNote({ bad: true, text: String(e.message ?? e) });
+    } finally {
+      setFinding(false);
+    }
   }
 
   async function make() {
@@ -670,6 +711,39 @@ export default function Client(p: Props) {
                   주소 고치기
                 </button>
               </p>
+            )}
+
+            {(!place || placeBox) && (
+              <>
+                <div className="inline-form" style={{ marginBottom: 4 }}>
+                  <input className="input" value={q}
+                         placeholder={`이름으로 찾기 (예: ${branchName})`}
+                         onChange={(e) => setQ(e.target.value)}
+                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); findPlace(); } }} />
+                  <button type="button" className="btn-ghost"
+                          disabled={finding || !p.hasPlace || (!p.can.update && !p.can.create)}
+                          onClick={findPlace}>
+                    {finding ? "찾는 중…" : "찾기"}
+                  </button>
+                </div>
+
+                {found && found.length > 0 && (
+                  <ul className="findlist">
+                    {found.map((x) => (
+                      <li key={x.id}>
+                        <button type="button" onClick={() => { setPlace(x.id); setFound(null); }}>
+                          <b className="nm">{x.name}</b>
+                          <span className="ad">{x.address || "주소 없음"}</span>
+                          <span className="mt">
+                            {x.category || "분류 없음"}
+                            {x.reviews ? ` · 리뷰 ${x.reviews.toLocaleString("ko-KR")}개` : ""}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
 
             <div className="inline-form" style={{ marginBottom: 4,

@@ -253,3 +253,61 @@ export async function writeReply(input: {
     전체: Number(json.total) || 0,
   };
 }
+
+/** 이름으로 찾은 가게 후보 */
+export type FoundPlace = {
+  id: string;
+  rank: number;
+  name: string;
+  category: string;
+  address: string;
+  reviews: number | null;
+};
+
+/**
+ * 검색어로 네이버 플레이스 후보를 찾는다
+ *
+ * 지점마다 플레이스 주소를 손으로 넣어야 했다. 지점이 넷이면 네 번,
+ * 새 지점이 생기면 또 한 번이고, 그때마다 네이버에서 주소를 복사해 와야 한다.
+ *
+ * 고르는 것은 사람이 한다. 「MTO피트니스」처럼 지점이 여럿인 상호는 검색
+ * 결과에 쌍용·성정·용곡이 나란히 뜨고 이름만으로는 못 가른다. 잘못 박히면
+ * 그 지점 답글마다 남의 가게 시설이 사실인 양 적힌다 — 빈 칸보다 나쁘다.
+ */
+export async function findPlaces(keyword: string, n = 5): Promise<FoundPlace[]> {
+  const key = (process.env.PLACE_API_KEY ?? "").trim();
+  if (!key) throw new Error("환경변수 PLACE_API_KEY 가 없습니다. 진단 서버의 접근 키를 넣어주세요.");
+  const kw = (keyword ?? "").trim();
+  if (!kw) throw new Error("찾을 이름을 적어주세요.");
+
+  const url = `${base()}/api/find?keyword=${encodeURIComponent(kw)}&n=${n}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { "x-access-key": key }, cache: "no-store",
+                             signal: AbortSignal.timeout(90_000) });
+  } catch (e: any) {
+    if (e?.name === "TimeoutError") {
+      throw new Error("진단 서버가 응답하지 않습니다. 무료 서버라 자고 있을 수 있습니다. 1분 뒤 다시 눌러주세요.");
+    }
+    throw new Error(`진단 서버에 닿지 못했습니다. (${e?.message ?? e})`);
+  }
+
+  if (res.status === 401) throw new Error("진단 서버 접근 키가 틀렸습니다. PLACE_API_KEY 를 확인해주세요.");
+  if (res.status === 404) {
+    throw new Error("진단 서버에 찾기 창구(/api/find)가 없습니다. naver_place 가 최신인지 확인해주세요.");
+  }
+  if (!res.ok) throw new Error(`진단 서버가 막았습니다. (${res.status})`);
+
+  const json: any = await res.json().catch(() => null);
+  if (!json) throw new Error("응답을 읽지 못했습니다.");
+  if (json.ok === false) throw new Error(String(json.error ?? "찾지 못했습니다."));
+
+  return (Array.isArray(json.items) ? json.items : []).map((x: any) => ({
+    id: String(x?.id ?? ""),
+    rank: Number(x?.rank) || 0,
+    name: String(x?.name ?? "").trim(),
+    category: String(x?.category ?? "").trim(),
+    address: String(x?.address ?? "").trim(),
+    reviews: Number(x?.reviews) || null,
+  })).filter((x: FoundPlace) => x.id);
+}

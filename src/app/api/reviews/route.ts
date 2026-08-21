@@ -7,7 +7,7 @@ import {
   saveReply, softDeleteReply, countToday, listSettings, saveSetting,
   type ReviewSetting,
 } from "@/lib/reviews";
-import { collectPlace, writeReply, NoReplyApi, type Collected } from "@/lib/place";
+import { collectPlace, findPlaces, writeReply, NoReplyApi, type Collected } from "@/lib/place";
 import { ask } from "@/lib/ai";
 import {
   buildReplyPrompt, parseReply, auditReply, replySafe, replyFacts, promptFacts,
@@ -133,6 +133,24 @@ export async function POST(req: Request) {
       }
       await saveSetting(branch, patch, session.staffId);
       return NextResponse.json({ ok: true });
+    }
+
+    /* ── 이름으로 플레이스 찾기 ──
+       주소를 손으로 넣지 않아도 되게 후보를 뽑아 준다. 고르는 것은 사람이
+       한다 — 잘못 박히면 그 지점 답글마다 남의 가게 시설이 적힌다 */
+    if (action === "find") {
+      if (!branch || !inScope(branch)) {
+        return NextResponse.json({ error: "담당 지점만 볼 수 있습니다." }, { status: 403 });
+      }
+      if (!mine.update && !mine.create) {
+        return NextResponse.json({ error: "플레이스 주소를 정할 권한이 없습니다." }, { status: 403 });
+      }
+      try {
+        const items = await findPlaces(String(body.검색어 ?? ""), 5);
+        return NextResponse.json({ ok: true, items });
+      } catch (e: any) {
+        return NextResponse.json({ error: e.message ?? "찾지 못했습니다." }, { status: 502 });
+      }
     }
 
     /* ── 밀린 리뷰 불러오기 ── */
