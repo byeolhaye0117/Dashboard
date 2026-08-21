@@ -1016,11 +1016,10 @@ export default function Client(p: Props) {
                 {branchName}의 플레이스 주소를 위 칸에 넣고 저장해주세요. 지점마다 따로 저장됩니다.
               </p>
             ) : open === null ? (
-              <p className="stat-note">
-                {pulling
-                  ? "아직 리뷰를 가져오는 중입니다…"
-                  : "리뷰를 아직 못 가져왔습니다. 위 「다시 불러오기」를 눌러주세요."}
-              </p>
+              /* 가져오는 중이라는 말은 머리글의 단추가 이미 하고 있다
+                 (「가져오는 중…」). 여기서 한 번 더 하면 같은 말이 두 줄이다.
+                 못 가져왔을 때는 알림 칸이 왜 안 됐는지를 대신 말한다 */
+              null
             ) : open.length === 0 ? (
               <p className="empty">답글이 안 달린 리뷰가 없습니다.</p>
             ) : (
