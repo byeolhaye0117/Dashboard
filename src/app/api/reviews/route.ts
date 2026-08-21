@@ -63,6 +63,32 @@ function 재료만들기(
   };
 }
 
+
+/** 두 좌표 사이 거리 (m) — 지점 좌표와 견줘 「그 지점이 맞나」를 가른다 */
+function 거리m(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const r = (d: number) => (d * Math.PI) / 180;
+  const dLat = r(lat2 - lat1);
+  const dLng = r(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/** 주소 두 개가 같은 곳을 가리키나 — 띄어쓰기·시도 표기가 제각각이라 토막으로 본다 */
+function 주소닮음(a: string, b: string): number {
+  const 토막 = (v: string) =>
+    String(v ?? "")
+      .replace(/[()]/g, " ")
+      .split(/\s+/)
+      .map((x) => x.trim())
+      .filter((x) => x.length >= 2);
+  const A = 토막(a), B = new Set(토막(b));
+  if (!A.length || !B.size) return 0;
+  return A.filter((x) => B.has(x)).length;
+}
+
 export async function POST(req: Request) {
   const session = await readSession();
   if (!session) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
@@ -165,8 +191,65 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "플레이스 주소를 정할 권한이 없습니다." }, { status: 403 });
       }
       try {
-        const items = await findPlaces(String(body.검색어 ?? ""), 5);
-        return NextResponse.json({ ok: true, items });
+        /*
+         * 이름만으로는 못 가른다
+         *
+         * 「MTO피트니스」로 찾으면 쌍용·성정·용곡이 나란히 뜬다. 그런데 우리는
+         * 지점마다 주소와 좌표를 이미 갖고 있다 — 출퇴근 GPS 를 그걸로 잰다.
+         * 후보를 몇 곳 열어 좌표를 받아 지점 좌표와 견주면, 어느 것이 그
+         * 지점인지 짐작이 아니라 계산으로 나온다.
+         */
+        const 지점 = (await getBranches()).find((x) => x.code === branch);
+        const kw = String(body.검색어 ?? "").trim() || 지점?.name || "";
+        const 후보 = await findPlaces(kw, 8);
+
+        /* 여는 데 한 곳당 몇 초씩 걸린다. 위에서부터 넷만 확인한다 —
+           그 아래까지 열다가 화면이 먼저 끊긴다 */
+        const 확인할것 = 후보.slice(0, 4);
+        const items = [];
+        for (const c of 확인할것) {
+          let addr = c.address;
+          let name = c.name;
+          let reviews = c.reviews;
+          let meters: number | null = null;
+          try {
+            const got = await collectPlace(c.id);
+            const d: any = got.raw?.data ?? {};
+            addr = String(d.roadAddress || d.address || addr || "").trim();
+            name = String(got.name || name || "").trim();
+            reviews = Number(d.visitorReviewCount) || reviews;
+            /* 네이버는 x 가 경도, y 가 위도다 */
+            const lng = Number(d.x), lat = Number(d.y);
+            if (지점?.lat && 지점?.lng && Number.isFinite(lat) && Number.isFinite(lng) && lat && lng) {
+              meters = Math.round(거리m(지점.lat, 지점.lng, lat, lng));
+            }
+          } catch {
+            /* 못 열어도 이름과 아이디는 있다 — 목록에서 빼지는 않는다 */
+          }
+          items.push({
+            ...c, name, address: addr, reviews, meters,
+            닮음: 주소닮음(addr, 지점?.address ?? ""),
+          });
+        }
+        /* 확인 못 한 나머지도 뒤에 붙인다 — 넷 안에 없을 수도 있다 */
+        후보.slice(4).forEach((c) => items.push({ ...c, meters: null, 닮음: 0 }));
+
+        /* 가까운 것 먼저, 거리를 모르면 주소가 많이 겹치는 것 먼저 */
+        items.sort((a, b) => {
+          if (a.meters !== null && b.meters !== null) return a.meters - b.meters;
+          if (a.meters !== null) return -1;
+          if (b.meters !== null) return 1;
+          return b.닮음 - a.닮음;
+        });
+
+        return NextResponse.json({
+          ok: true,
+          items,
+          /* 이 안에 들면 그 지점으로 본다. 출퇴근에 쓰는 반경을 그대로 쓴다 */
+          맞는거리: 지점?.radius || 200,
+          지점주소: 지점?.address ?? "",
+          좌표있음: Boolean(지점?.lat && 지점?.lng),
+        });
       } catch (e: any) {
         return NextResponse.json({ error: e.message ?? "찾지 못했습니다." }, { status: 502 });
       }

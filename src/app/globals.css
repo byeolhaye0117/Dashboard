@@ -2310,3 +2310,11 @@ td .ktag {
 .findlist .nm { display: block; font-size: 13px; font-weight: 800; letter-spacing: -.02em; }
 .findlist .ad { display: block; margin-top: 2px; font-size: 11.5px; color: var(--ink-2); }
 .findlist .mt { display: block; margin-top: 1px; font-size: 11px; color: var(--muted); }
+
+/* 지점 좌표와 맞아떨어진 후보 — 이름만으로는 못 가르니 이걸로 가른다 */
+.findlist button.hit { border-color: var(--good); background: var(--good-soft); }
+.findlist .nm .tag.good {
+  margin-left: 6px; padding: 2px 7px; border-radius: 999px;
+  background: var(--good); color: #fff; font-size: 10.5px; font-weight: 800;
+  vertical-align: middle;
+}

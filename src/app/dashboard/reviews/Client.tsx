@@ -177,8 +177,16 @@ export default function Client(p: Props) {
   const [savedErr, setSavedErr] = useState("");
   const [finding, setFinding] = useState(false);
   const [found, setFound] = useState<
-    { id: string; rank: number; name: string; category: string; address: string; reviews: number | null }[] | null
+    {
+      id: string; rank: number; name: string; category: string; address: string;
+      reviews: number | null;
+      /** 지점 좌표에서 몇 미터 떨어져 있나 — 이름이 아니라 이걸로 가른다 */
+      meters: number | null;
+    }[] | null
   >(null);
+  /** 이 안에 들면 그 지점으로 본다 (지점 관리의 허용 반경) */
+  const [nearM, setNearM] = useState(200);
+  const [noGeo, setNoGeo] = useState(false);
   const [q, setQ] = useState("");
   const [note, setNote] = useState<{ bad: boolean; text: string } | null>(null);
 
@@ -415,6 +423,8 @@ export default function Client(p: Props) {
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? "찾지 못했습니다.");
       setFound(j.items ?? []);
+      setNearM(Number(j.맞는거리) || 200);
+      setNoGeo(!j.좌표있음);
       if (!(j.items ?? []).length) {
         setNote({ bad: true, text: "그 이름으로는 못 찾았습니다. 상호에 동네 이름을 붙여 다시 찾아보세요." });
       }
@@ -796,22 +806,39 @@ export default function Client(p: Props) {
                 </div>
 
                 {found && found.length > 0 && (
-                  <ul className="findlist">
-                    {found.map((x) => (
+                  <>
+                    {noGeo && (
+                      <p className="stat-note" style={{ margin: "0 0 4px" }}>
+                        이 지점의 <b>위도·경도가 지점 관리에 없습니다.</b> 좌표가 있으면
+                        거리로 딱 집어 드릴 수 있는데, 지금은 이름과 주소만 보고 고르셔야 합니다.
+                      </p>
+                    )}
+                    <ul className="findlist">
+                      {found.map((x) => {
+                        const 맞음 = x.meters !== null && x.meters <= nearM;
+                        return (
                       <li key={x.id}>
-                        <button type="button" onClick={() => { setPlace(x.id); setFound(null); }}>
-                          <b className="nm">{x.name}</b>
+                        <button type="button" className={맞음 ? "hit" : ""}
+                                onClick={() => { setPlace(x.id); setFound(null); }}>
+                          <b className="nm">
+                            {x.name}
+                            {맞음 && <span className="tag good">이 지점</span>}
+                          </b>
                           {x.address && <span className="ad">{x.address}</span>}
-                          {(x.category || x.reviews) && (
-                            <span className="mt">
-                              {x.category}
-                              {x.reviews ? `${x.category ? " · " : ""}리뷰 ${x.reviews.toLocaleString("ko-KR")}개` : ""}
-                            </span>
-                          )}
+                          <span className="mt">
+                            {x.meters !== null
+                              ? `지점에서 ${x.meters < 1000
+                                  ? `${x.meters}m`
+                                  : `${(x.meters / 1000).toFixed(1)}km`}`
+                              : "거리 확인 못 함"}
+                            {x.reviews ? ` · 리뷰 ${x.reviews.toLocaleString("ko-KR")}개` : ""}
+                          </span>
                         </button>
                       </li>
-                    ))}
-                  </ul>
+                        );
+                      })}
+                    </ul>
+                  </>
                 )}
               </>
             )}
