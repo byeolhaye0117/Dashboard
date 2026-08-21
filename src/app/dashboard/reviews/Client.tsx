@@ -142,6 +142,9 @@ export default function Client(p: Props) {
      네이버 어디에도 없어서, 이게 있고 없고가 「다른 헬스장에도 붙는 글」과
      「우리 글」을 가른다. 플레이스 진단 화면의 같은 칸과 짝이다. */
   const [fac, setFac] = useState<string[]>([]);
+  /* 네이버가 이미 알고 있는 시설 — 스마트플레이스에 등록해 두신 것이
+     공개 화면에 나오고, 「불러오기」가 그걸 긁어 온다 */
+  const [naverFac, setNaverFac] = useState<string[]>([]);
   const [price, setPrice] = useState("");
   const [edge, setEdge] = useState("");
   const [own, setOwn] = useState("");
@@ -227,6 +230,23 @@ export default function Client(p: Props) {
   const [shown, setShown] = useState<string | null>(null);
   /* 복사했다는 말은 누른 단추에서 나와야 한다 — 딴 데 띄우면 눌렀는지도 모른다 */
   const [copied, setCopied] = useState<{ key: string; ok: boolean } | null>(null);
+
+  /*
+   * 네이버가 아는 시설 ↔ 화면의 체크 목록 맞추기
+   *
+   * 「주차 가능」과 「주차」, 「여성 전용존」과 「여성전용」처럼 표기가 다르다.
+   * 띄어쓰기를 지우고 서로 들어 있는지 본다 — 정확히 같기를 기다리면 하나도 안 맞는다.
+   */
+  const 네이버가아는것 = useMemo(() => {
+    const 납작 = (v: string) => String(v ?? "").replace(/\s/g, "");
+    const 있는것 = naverFac.map(납작).filter(Boolean);
+    return new Set(
+      FACILITIES.filter((f) => {
+        const a = 납작(f);
+        return 있는것.some((b) => b.includes(a) || a.includes(b));
+      })
+    );
+  }, [naverFac]);
 
   const branchName = useMemo(
     () => p.branches.find((b) => b.code === branch)?.name ?? "",
@@ -376,6 +396,7 @@ export default function Client(p: Props) {
       setHead(String(json.머리글 ?? ""));
       setNear(json.landmarks ?? []);
       setSame(json.일치 ?? null);
+      setNaverFac(json.편의시설 ?? []);
       /*
        * 잘 됐으면 아무 말도 안 한다
        *
@@ -1086,17 +1107,42 @@ export default function Client(p: Props) {
                 </div>
               )}
 
-                <p className="csec">보유 시설<span>체크한 것만 답글에 쓸 수 있습니다</span></p>
+                {/*
+                  네이버가 이미 아는 것은 그렇다고 표시한다
+
+                  스마트플레이스에 등록해 두신 편의시설은 공개 화면에 그대로
+                  나오고, 「불러오기」가 그걸 긁어 온다. 그런데 여기는 손으로
+                  켜게 두어서 이미 아는 것을 또 켜게 하고 있었다.
+                  체크는 여전히 사람이 한다 — 저장된 값을 말 없이 바꾸면
+                  대표님이 일부러 꺼 두신 것까지 되살아난다.
+                */}
+                <p className="csec">
+                  보유 시설
+                  <span>
+                    {네이버가아는것.size > 0
+                      ? `네이버에 등록된 ${네이버가아는것.size}가지는 ✓ 로 표시했습니다`
+                      : "체크한 것만 답글에 쓸 수 있습니다"}
+                  </span>
+                </p>
                 <div className="pickbox">
-                  {FACILITIES.map((f) => (
-                    <button key={f} type="button"
-                            className={`pickone${fac.includes(f) ? " on" : ""}`}
-                            onClick={() => setFac(fac.includes(f)
-                              ? fac.filter((x) => x !== f) : [...fac, f])}>
-                      <span className="nm">{f}</span>
-                    </button>
-                  ))}
+                  {FACILITIES.map((f) => {
+                    const 아는것 = 네이버가아는것.has(f);
+                    return (
+                      <button key={f} type="button"
+                              className={`pickone${fac.includes(f) ? " on" : ""}${아는것 ? " known" : ""}`}
+                              onClick={() => setFac(fac.includes(f)
+                                ? fac.filter((x) => x !== f) : [...fac, f])}>
+                        <span className="nm">{아는것 ? `✓ ${f}` : f}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+                {네이버가아는것.size > 0 && [...네이버가아는것].some((f) => !fac.includes(f)) && (
+                  <button type="button" className="mini-tab" style={{ marginTop: 6, flex: "0 0 auto" }}
+                          onClick={() => setFac([...new Set([...fac, ...네이버가아는것])])}>
+                    네이버에 등록된 것 모두 켜기
+                  </button>
+                )}
 
                 <p className="csec">1개월 이용권 가격<span>비워두셔도 됩니다</span></p>
                 <input className="input" value={price} placeholder="예) 89,000원"

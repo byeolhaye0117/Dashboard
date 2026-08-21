@@ -362,6 +362,22 @@ export async function POST(req: Request) {
         landmarks: got.landmarks,
         feeds: got.feeds,
         /*
+         * 네이버가 이미 알고 있는 편의시설
+         *
+         * 스마트플레이스에 등록해 두신 편의시설은 공개 플레이스 화면에 그대로
+         * 나오고, 우리는 그걸 긁고 있다. 그런데 화면의 「보유 시설」 체크는
+         * 손으로 켜게 두어서, 이미 아는 것을 또 켜게 하고 있었다.
+         * 무엇을 이미 아는지 넘겨서 화면이 표시하게 한다.
+         */
+        편의시설: (() => {
+          const m: any = got.raw?.material ?? {};
+          const 목록 = [
+            ...(Array.isArray(m.conveniences) ? m.conveniences : []),
+            ...(Array.isArray(m.menuNames) ? m.menuNames : []),
+          ];
+          return 목록.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 40);
+        })(),
+        /*
          * 지금 보고 있는 지점의 가게가 맞나
          *
          * 재료가 어느 가게 것인지는 화면에 안 보였다. 쌍용점 자리에 용곡점

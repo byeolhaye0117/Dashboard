@@ -2345,3 +2345,9 @@ td .ktag {
 .samerow .vd { width: 100%; font-weight: 700; color: var(--ink-2); }
 .samerow.ok .vd { color: var(--good); }
 .samerow.bad .vd { color: var(--bad); }
+
+/* 네이버(스마트플레이스)에 이미 등록돼 있는 시설 — 손으로 또 적을 것이 아니다 */
+.pickbox .pickone.known { border-color: var(--good); }
+.pickbox .pickone.known .nm { color: var(--good); }
+.pickbox .pickone.known.on { background: var(--good); border-color: var(--good); }
+.pickbox .pickone.known.on .nm { color: #fff; }
