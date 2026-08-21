@@ -44,7 +44,10 @@ function 재료만들기(
 ) {
   const 상호 = got.name || 지점이름;
   const o = {
-    name: 상호, area: "천안", type: "헬스장", keywords, repkw: [], intro: "",
+    name: 상호, area: "천안", type: "헬스장", keywords, repkw: [],
+    /* 네이버 소개글. 「28년째 같은 자리를」 같은 개업 연차가 여기에만 적혀
+       있는 경우가 있는데, 여태 빈 채로 넘겨서 그 한 줄을 놓치고 있었다 */
+    intro: String((got.raw as any)?.data?.description ?? ""),
     /* 네이버가 모르는 것들. 리뷰 화면의 「우리 지점만 아는 것」에서 온다 */
     fac: 설정?.시설 ?? [],
     price: 설정?.가격 ?? "",
@@ -327,6 +330,16 @@ export async function POST(req: Request) {
       id,
       주제,
       답글,
+      /*
+       * 재료 없이 썼는가
+       *
+       * 재료가 없으면 AI 는 지시문에 실린 견본 답글을 그대로 베낀다.
+       * 실제로 용곡점 답글에 쌍용점 견본의 「웨이트실과 프리웨이트실을 아예
+       * 공간부터 분리해두었고」가 문장째 들어갔다. 우리 지점 시설이 아니다.
+       * 조용히 넘어갈 일이 아니라 화면에 대고 말해야 한다.
+       */
+      재료없음: facts.length === 0,
+      플레이스없음: !(setting?.플레이스ID ?? "").trim(),
       used: used + 1,
       limit,
       /* 얼마짜리 단추를 눌렀는지 — 어림값이다 */

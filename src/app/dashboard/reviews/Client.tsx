@@ -165,6 +165,10 @@ export default function Client(p: Props) {
     통과?: number; 전체?: number;
     /** 진단 서버가 아니라 대시보드 사본으로 쓴 것인가 */
     사본?: boolean;
+    /** 네이버에서 긁어온 재료가 하나도 없이 쓴 것인가 */
+    재료없음?: boolean;
+    /** 이 지점에 플레이스 주소가 아직 없는가 */
+    플레이스없음?: boolean;
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -376,6 +380,8 @@ export default function Client(p: Props) {
         주제: json.주제 ?? [], 답글: json.답글,
         점검: json.점검 ?? [], 통과: json.통과 ?? 0, 전체: json.전체 ?? 0,
         사본: Boolean(json.사본),
+        재료없음: Boolean(json.재료없음),
+        플레이스없음: Boolean(json.플레이스없음),
       });
       setList((cur) => [
         {
@@ -527,6 +533,20 @@ export default function Client(p: Props) {
               )}
             </p>
 
+            {/*
+              재료가 없으면 누르기 전에 말한다
+
+              눌러 놓고 나서 알려주면 하루 몫만 하나 깎인다. 그리고 재료 없이
+              쓴 답글은 견본을 베껴서, 우리 지점에 없는 시설이 적힌다.
+            */}
+            {facts.length === 0 && (
+              <p className="left-line out">
+                {place.trim()
+                  ? <>아직 <b>「불러오기」</b>를 안 누르셨습니다 — 네이버에서 시설을 긁어와야 그 지점 답글이 됩니다</>
+                  : <>이 지점의 <b>플레이스 주소가 없습니다</b> — 아래 칸에 넣고 저장해주세요. 없으면 시설 없이 씁니다</>}
+              </p>
+            )}
+
             <button type="button" className="btn-dark" style={{ width: "100%", marginTop: 8 }}
                     disabled={busy || !p.can.create || !p.hasKey || !branch || left === 0}
                     onClick={make}>
@@ -600,6 +620,24 @@ export default function Client(p: Props) {
                   다시 만들기
                 </button>
               </div>
+              {/*
+                재료 없이 쓴 답글은 견본을 베낀다
+
+                실제로 용곡점 답글에 쌍용점 견본의 「웨이트실과 프리웨이트실을
+                아예 공간부터 분리해두었고」가 문장째 들어갔다. 우리 지점 시설이
+                아닌데 그대로 올라가면 손님이 그걸 보고 찾아오신다.
+                조용히 넘어갈 일이 아니라 답글 바로 위에서 말해야 한다.
+              */}
+              {out.재료없음 && (
+                <div className="alert-bad" style={{ marginTop: 10 }}>
+                  <b>네이버에서 가져온 시설 정보 없이 썼습니다.</b>{" "}
+                  {out.플레이스없음
+                    ? "이 지점의 플레이스 주소가 아직 없습니다. 아래 「답글 밀린 리뷰」 칸에 주소를 넣고 저장해주세요."
+                    : "「불러오기」를 먼저 누르시면 네이버에서 시설을 긁어와 그 지점 것으로 씁니다."}
+                  {" "}이대로 두면 답글에 <b>우리 지점에 없는 시설</b>이 적힐 수 있습니다 —
+                  꼭 읽어보고 고쳐서 올려주세요.
+                </div>
+              )}
               <p className="stat-note">
                 한 번 읽어보고 어색한 곳은 고쳐서 올려주세요.
                 {out.사본 && (
