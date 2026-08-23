@@ -2363,3 +2363,8 @@ td .ktag {
 .pickbox .pickone.known .nm { color: var(--good); }
 .pickbox .pickone.known.on { background: var(--good); border-color: var(--good); }
 .pickbox .pickone.known.on .nm { color: #fff; }
+
+/* 그래프와 한 상자에 담은 결제 내역 — 사이에 금 하나만 긋는다 */
+.viz-pays { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+.viz-pays .sec-head { margin-top: 0 !important; }
+.viz-pays .table-wrap { border: 0; border-radius: 0; background: none; }

@@ -1100,6 +1100,105 @@ export default function Client(p: Props) {
             {span === "day"
               ? <DayBars list={byDay.list} month={month} now={now} onPick={setPick} />
               : <WeekLines list={byDay.list} month={month} onPick={setPick} />}
+
+            {/*
+              결제 내역을 그래프와 한 상자에 담는다
+
+              위에서 날을 넘기면 아래가 따라 걸러지는데, 상자가 갈려 있으면
+              그 둘이 이어져 있다는 것이 안 보인다. 「고른 날」 단추도 저 밑에
+              따로 떠 있어서 무엇을 되돌리는 단추인지 알기 어려웠다.
+              한 상자에 넣으면 그래프와 목록이 같은 것을 말한다는 게 눈에 들어온다.
+            */}
+            <div className="viz-pays">
+        {/*
+          결제 내역은 위 그래프를 따라간다
+
+          그래프는 「8월 21일에 99,000원」이라고 말하는데 밑에서는 한 달치를
+          그대로 늘어놓고 있었다. 그 99,000원이 어느 줄인지 눈으로 찾아야 했다.
+          고른 구간을 머리글에 적고, 되돌아갈 자리도 옆에 둔다.
+        */}
+        <div className="sec-head" style={{ marginTop: 20 }}>
+          <div>
+            <h3 className="viz-title">결제 내역 {payRows.length}건</h3>
+            {pick && !allMonth && (
+              <p className="viz-sub" style={{ margin: "2px 0 0" }}>{pick.label} 것만 보고 있습니다</p>
+            )}
+          </div>
+          {pick && (
+            <div className="chips">
+              <button className={`chip${!allMonth ? " on" : ""}`} onClick={() => setAllMonth(false)}>
+                {span === "day" ? "고른 날" : "고른 주"}
+              </button>
+              <button className={`chip${allMonth ? " on" : ""}`} onClick={() => setAllMonth(true)}>
+                이 달 전체
+              </button>
+            </div>
+          )}
+        </div>
+        {payRows.length === 0 ? (
+          <div className="empty">
+            <Icon name="card" size={26} />
+            <b>{pick && !allMonth ? `${pick.label}에 등록된 결제가 없습니다` : "이 달에 등록된 결제가 없습니다"}</b>
+            <p>회원 등록이나 상품 추가로 결제가 쌓이면 여기에 나옵니다.</p>
+          </div>
+        ) : (
+          <div className="table-wrap t2wrap">
+            <table className="grid t2">
+              <thead>
+                <tr>
+                  <th>결제일</th>
+                  <th>회원</th>
+                  <th>지점</th>
+                  <th>유형</th>
+                  <th>수단</th>
+                  <th>결제 담당</th>
+                  {/* 「이 결제 누가 넣었지」는 시트를 열지 않고도 답할 수 있어야 한다 */}
+                  <th>등록자</th>
+                  <th className="r">금액</th>
+                  <th className="r">미수금</th>
+                  {p.canWipePay && <th />}
+                </tr>
+              </thead>
+              <tbody>
+                {payRows
+                  .slice()
+                  .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
+                  .map((x) => (
+                    /* 줄을 누르면 「이 36만원이 무엇이었나」가 열린다.
+                       지우기 단추는 눌러도 상세가 안 열리게 따로 막는다 */
+                    <tr key={x.id} onClick={() => setDetail(x)}>
+                      <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
+                      <td>{p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"}</td>
+                      <td className="dim">{branchName(x.지점코드)}</td>
+                      <td>
+                        <span className={`pill${isRefund(x) ? " bad" : ""}`}>
+                          {isRefund(x) ? "환불" : typeOf(x.매출유형)}
+                        </span>
+                      </td>
+                      <td className="dim">{x.결제수단 || "-"}</td>
+                      <td className="dim">{p.staffNames[x.담당직원사번] ?? "-"}</td>
+                      <td className="dim" title={x.등록일시 ?? ""}>
+                        {p.staffNames[x.등록자] ?? x.등록자 ?? "-"}
+                      </td>
+                      <td className="r big num">{money(num(x.결제금액))}</td>
+                      <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
+                        {num(x.미수금액) > 0 ? money(num(x.미수금액)) : "-"}
+                      </td>
+                      {p.canWipePay && (
+                        <td className="r">
+                          <button type="button" className="linkish"
+                                  onClick={(e) => { e.stopPropagation(); setWipe(x); }}>
+                            지우기
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+            </div>
           </>
         )}
       </div>
@@ -1153,95 +1252,6 @@ export default function Client(p: Props) {
             </table>
           </div>
         </>
-      )}
-
-      {/*
-        결제 내역은 위 그래프를 따라간다
-
-        그래프는 「8월 21일에 99,000원」이라고 말하는데 밑에서는 한 달치를
-        그대로 늘어놓고 있었다. 그 99,000원이 어느 줄인지 눈으로 찾아야 했다.
-        고른 구간을 머리글에 적고, 되돌아갈 자리도 옆에 둔다.
-      */}
-      <div className="sec-head" style={{ marginTop: 20 }}>
-        <div>
-          <h3 className="viz-title">결제 내역 {payRows.length}건</h3>
-          {pick && !allMonth && (
-            <p className="viz-sub" style={{ margin: "2px 0 0" }}>{pick.label} 것만 보고 있습니다</p>
-          )}
-        </div>
-        {pick && (
-          <div className="chips">
-            <button className={`chip${!allMonth ? " on" : ""}`} onClick={() => setAllMonth(false)}>
-              {span === "day" ? "고른 날" : "고른 주"}
-            </button>
-            <button className={`chip${allMonth ? " on" : ""}`} onClick={() => setAllMonth(true)}>
-              이 달 전체
-            </button>
-          </div>
-        )}
-      </div>
-      {payRows.length === 0 ? (
-        <div className="empty">
-          <Icon name="card" size={26} />
-          <b>{pick && !allMonth ? `${pick.label}에 등록된 결제가 없습니다` : "이 달에 등록된 결제가 없습니다"}</b>
-          <p>회원 등록이나 상품 추가로 결제가 쌓이면 여기에 나옵니다.</p>
-        </div>
-      ) : (
-        <div className="table-wrap t2wrap">
-          <table className="grid t2">
-            <thead>
-              <tr>
-                <th>결제일</th>
-                <th>회원</th>
-                <th>지점</th>
-                <th>유형</th>
-                <th>수단</th>
-                <th>결제 담당</th>
-                {/* 「이 결제 누가 넣었지」는 시트를 열지 않고도 답할 수 있어야 한다 */}
-                <th>등록자</th>
-                <th className="r">금액</th>
-                <th className="r">미수금</th>
-                {p.canWipePay && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {payRows
-                .slice()
-                .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
-                .map((x) => (
-                  /* 줄을 누르면 「이 36만원이 무엇이었나」가 열린다.
-                     지우기 단추는 눌러도 상세가 안 열리게 따로 막는다 */
-                  <tr key={x.id} onClick={() => setDetail(x)}>
-                    <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
-                    <td>{p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"}</td>
-                    <td className="dim">{branchName(x.지점코드)}</td>
-                    <td>
-                      <span className={`pill${isRefund(x) ? " bad" : ""}`}>
-                        {isRefund(x) ? "환불" : typeOf(x.매출유형)}
-                      </span>
-                    </td>
-                    <td className="dim">{x.결제수단 || "-"}</td>
-                    <td className="dim">{p.staffNames[x.담당직원사번] ?? "-"}</td>
-                    <td className="dim" title={x.등록일시 ?? ""}>
-                      {p.staffNames[x.등록자] ?? x.등록자 ?? "-"}
-                    </td>
-                    <td className="r big num">{money(num(x.결제금액))}</td>
-                    <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
-                      {num(x.미수금액) > 0 ? money(num(x.미수금액)) : "-"}
-                    </td>
-                    {p.canWipePay && (
-                      <td className="r">
-                        <button type="button" className="linkish"
-                                onClick={(e) => { e.stopPropagation(); setWipe(x); }}>
-                          지우기
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
       )}
 
       {/* 지점별 — 규모와 목표 달성 여부를 한 줄에서 같이 본다 */}
