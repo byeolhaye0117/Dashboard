@@ -933,48 +933,6 @@ export default function Client(p: Props) {
         </div>
       </div>
 
-      {/*
-        어떤 분들이 등록하셨나
-
-        매출은 「얼마」만 말한다. 「누가」를 같이 봐야 다음 달에 어디에 힘을
-        쓸지 정할 수 있다 — 20대 여성이 몰리는데 광고는 40대 남성에게 나가고
-        있으면 숫자만 보고는 모른다.
-      */}
-      <div className="sec-head">
-        <div>
-          <h2 className="sec-title">등록한 분들</h2>
-          <p className="sec-sub">
-            {who === "month"
-              ? `${Number(month.slice(5, 7))}월에 등록한 ${dist.total}명`
-              : `지금 다니시는 ${dist.total}명 전부`}
-            {" · 안 적힌 것은 「모름」으로 셉니다"}
-          </p>
-        </div>
-        <div className="chips">
-          <button className={`chip${who === "month" ? " on" : ""}`} onClick={() => setWho("month")}>
-            이 달 등록
-          </button>
-          <button className={`chip${who === "all" ? " on" : ""}`} onClick={() => setWho("all")}>
-            전체 회원
-          </button>
-        </div>
-      </div>
-      {dist.total === 0 ? (
-        <div className="viz">
-          <p className="dim mini-note">
-            {who === "month" ? "이 달에 등록한 회원이 없습니다." : "회원이 없습니다."}
-          </p>
-        </div>
-      ) : (
-        <div className="viz-2 viz-dist">
-          <Dist title="성별" rows={dist.성별} total={dist.total} />
-          <Dist title="나이대" rows={dist.나이대} total={dist.total} />
-          <Dist title="거주 동네" rows={dist.거주동네} total={dist.total} />
-          <Dist title="직업" rows={dist.직업} total={dist.total} />
-          <Dist title="방문 경로" rows={dist.방문경로} total={dist.total} />
-        </div>
-      )}
-
       {/* 월별 흐름 — 시간에 따른 변화라 꺾은선 */}
       <h2 className="sec-title">월별 흐름</h2>
       <p className="sec-sub">최근 12개월 · 점선은 그달의 목표 · 눌러서 그달로 넘어갑니다</p>
@@ -1079,6 +1037,48 @@ export default function Client(p: Props) {
           </>
         )}
       </div>
+
+      {/*
+        어떤 분들이 등록하셨나
+
+        매출은 「얼마」만 말한다. 「누가」를 같이 봐야 다음 달에 어디에 힘을
+        쓸지 정할 수 있다 — 20대 여성이 몰리는데 광고는 40대 남성에게 나가고
+        있으면 숫자만 보고는 모른다.
+      */}
+      <div className="sec-head">
+        <div>
+          <h2 className="sec-title">등록한 분들</h2>
+          <p className="sec-sub">
+            {who === "month"
+              ? `${Number(month.slice(5, 7))}월에 등록한 ${dist.total}명`
+              : `지금 다니시는 ${dist.total}명 전부`}
+            {" · 안 적힌 것은 「모름」으로 셉니다"}
+          </p>
+        </div>
+        <div className="chips">
+          <button className={`chip${who === "month" ? " on" : ""}`} onClick={() => setWho("month")}>
+            이 달 등록
+          </button>
+          <button className={`chip${who === "all" ? " on" : ""}`} onClick={() => setWho("all")}>
+            전체 회원
+          </button>
+        </div>
+      </div>
+      {dist.total === 0 ? (
+        <div className="viz">
+          <p className="dim mini-note">
+            {who === "month" ? "이 달에 등록한 회원이 없습니다." : "회원이 없습니다."}
+          </p>
+        </div>
+      ) : (
+        <div className="viz-2 viz-dist">
+          <Dist title="성별" rows={dist.성별} total={dist.total} />
+          <Dist title="나이대" rows={dist.나이대} total={dist.total} />
+          <Dist title="거주 동네" rows={dist.거주동네} total={dist.total} />
+          <Dist title="직업" rows={dist.직업} total={dist.total} />
+          <Dist title="방문 경로" rows={dist.방문경로} total={dist.total} />
+        </div>
+      )}
 
       {byStaff.length > 0 && (
         <>
