@@ -394,10 +394,22 @@ button { font-family: inherit; }
   padding: 16px 18px 14px; background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--r);
 }
+/*
+  나란한 두 칸은 키를 맞춘다
+
+  align-items: start 였다. 그래서 칸이 제 내용 길이만큼만 자랐고, 왼쪽은
+  갈래가 다섯 줄, 오른쪽은 세 줄이라 밑단이 어긋났다. 나란히 놓은 두 칸의
+  밑이 안 맞으면 그 자체가 「덜 만든 화면」으로 읽힌다.
+
+  칸을 세로 흐름으로 두고, 가운데 내용이 남는 자리를 먹게 한다. 그러면
+  도넛은 가운데에 서고 밑에 붙는 소계 줄은 두 칸 모두 바닥에 붙는다.
+*/
 .viz-2 {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 10px; align-items: start; margin-top: 14px;
+  gap: 10px; align-items: stretch; margin-top: 14px;
 }
+.viz-2 > .viz { display: flex; flex-direction: column; }
+.viz-2 > .viz > .dwrap { flex: 1 0 auto; }
 .viz-title { margin: 0; font-size: 13.5px; font-weight: 800; letter-spacing: -.015em; }
 .viz-title.mt { margin-top: 20px; }
 .viz-sub { margin: 2px 0 13px; font-size: 11.5px; color: var(--muted); }
