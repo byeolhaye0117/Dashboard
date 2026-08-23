@@ -270,6 +270,16 @@ export default function Client(p: Props) {
   const [branch, setBranch] = useState(p.currentBranch || "전체");
   /* 날짜별 그래프를 하루로 볼지 이레로 볼지 */
   const [span, setSpan] = useState<"day" | "week">("day");
+  /*
+   * 그래프에서 고른 구간 — 아래 결제 내역이 여기를 따라간다
+   *
+   * 그래프는 「8월 21일에 99,000원」이라고 말하는데, 그 밑의 결제 내역은
+   * 한 달치를 그대로 늘어놓고 있었다. 그 99,000원이 어느 줄인지 눈으로
+   * 찾아야 했다. 고른 날·주를 그대로 걸러 준다.
+   */
+  const [pick, setPick] = useState<{ from: string; to: string; label: string } | null>(null);
+  /** 「이 달 전체」로 되돌린 상태인가 */
+  const [allMonth, setAllMonth] = useState(false);
   /* 지우기는 한 번 더 묻는다. 돈이 오간 기록이라 되돌리기가 번거롭다 */
   const [wipe, setWipe] = useState<Payment | null>(null);
   /** 결제 한 줄을 눌러 여는 상세 — 무엇을 얼마에 팔았는지 */
@@ -350,6 +360,20 @@ export default function Client(p: Props) {
       }),
     [p.branches, month, monthStat]
   );
+
+  /**
+   * 아래 결제 내역이 보여줄 줄들
+   *
+   * 그래프에서 고른 날·주만 남긴다. 「이 달 전체」를 누르시면 한 달치로
+   * 돌아간다 — 걸러 놓고 못 돌아가면 그것대로 갇힌다.
+   */
+  const payRows = useMemo(() => {
+    if (allMonth || !pick) return cur.rows;
+    return cur.rows.filter((x) => {
+      const d = (x.결제일시 ?? "").slice(0, 10);
+      return d >= pick.from && d <= pick.to;
+    });
+  }, [cur.rows, pick, allMonth]);
 
   const delta = (a: number, b: number) => (b > 0 ? Math.round(((a - b) / b) * 100) : null);
   const rate = cur.goal > 0 ? Math.round((cur.sum / cur.goal) * 100) : null;
@@ -1074,8 +1098,8 @@ export default function Client(p: Props) {
               <button className={span === "week" ? "on" : ""} onClick={() => setSpan("week")}>주간</button>
             </div>
             {span === "day"
-              ? <DayBars list={byDay.list} month={month} now={now} />
-              : <WeekLines list={byDay.list} month={month} />}
+              ? <DayBars list={byDay.list} month={month} now={now} onPick={setPick} />
+              : <WeekLines list={byDay.list} month={month} onPick={setPick} />}
           </>
         )}
       </div>
@@ -1131,11 +1155,35 @@ export default function Client(p: Props) {
         </>
       )}
 
-      <h3 className="viz-title mt">결제 내역 {cur.rows.length}건</h3>
-      {cur.rows.length === 0 ? (
+      {/*
+        결제 내역은 위 그래프를 따라간다
+
+        그래프는 「8월 21일에 99,000원」이라고 말하는데 밑에서는 한 달치를
+        그대로 늘어놓고 있었다. 그 99,000원이 어느 줄인지 눈으로 찾아야 했다.
+        고른 구간을 머리글에 적고, 되돌아갈 자리도 옆에 둔다.
+      */}
+      <div className="sec-head" style={{ marginTop: 20 }}>
+        <div>
+          <h3 className="viz-title">결제 내역 {payRows.length}건</h3>
+          {pick && !allMonth && (
+            <p className="viz-sub" style={{ margin: "2px 0 0" }}>{pick.label} 것만 보고 있습니다</p>
+          )}
+        </div>
+        {pick && (
+          <div className="chips">
+            <button className={`chip${!allMonth ? " on" : ""}`} onClick={() => setAllMonth(false)}>
+              {span === "day" ? "고른 날" : "고른 주"}
+            </button>
+            <button className={`chip${allMonth ? " on" : ""}`} onClick={() => setAllMonth(true)}>
+              이 달 전체
+            </button>
+          </div>
+        )}
+      </div>
+      {payRows.length === 0 ? (
         <div className="empty">
           <Icon name="card" size={26} />
-          <b>이 달에 등록된 결제가 없습니다</b>
+          <b>{pick && !allMonth ? `${pick.label}에 등록된 결제가 없습니다` : "이 달에 등록된 결제가 없습니다"}</b>
           <p>회원 등록이나 상품 추가로 결제가 쌓이면 여기에 나옵니다.</p>
         </div>
       ) : (
@@ -1157,7 +1205,7 @@ export default function Client(p: Props) {
               </tr>
             </thead>
             <tbody>
-              {cur.rows
+              {payRows
                 .slice()
                 .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
                 .map((x) => (
@@ -2077,11 +2125,13 @@ function niceTop(v: number): number {
  * 이 달에서 제일 많이 판 날에 맞춰 두면 넘겨도 길이를 그대로 견줄 수 있다.
  * 대신 막대가 안 보일 만큼 짧아지는 날이 있어서, 금액은 늘 옆에 적는다.
  */
-function DayBars({ list, month, now }: {
+function DayBars({ list, month, now, onPick }: {
   list: { day: number; key: string; sum: number; count: number; six: { key: string; sum: number }[] }[];
   month: string;
   /** 오늘 — 이 달을 보고 있으면 오늘부터 연다 */
   now: string;
+  /** 고른 날을 위로 알린다 — 아래 결제 내역이 그 날 것만 보이게 */
+  onPick?: (v: { from: string; to: string; label: string }) => void;
 }) {
   const m = Number(month.slice(5, 7));
   const 요일 = ["월", "화", "수", "목", "금", "토", "일"];
@@ -2106,6 +2156,15 @@ function DayBars({ list, month, now }: {
   const [di, setDi] = useState(처음);
   const at = Math.min(Math.max(0, di), last);
   const d = list[at];
+
+  /* 고른 날이 바뀌면 알린다. 그리는 것과 알리는 것을 같은 줄에서 하면
+     그릴 때마다 위가 다시 그려져 서로를 부른다 — 그래서 effect 로 뺀다 */
+  useEffect(() => {
+    if (!d) return;
+    onPick?.({ from: d.key, to: d.key, label: `${m}월 ${d.day}일(${요일[mon0(d.day)]})` });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d?.key]);
+
   if (!d) return null;
 
   /* 이 달에서 한 갈래가 하루에 올린 최고 금액 */
@@ -2151,9 +2210,11 @@ function DayBars({ list, month, now }: {
   );
 }
 
-function WeekLines({ list, month }: {
+function WeekLines({ list, month, onPick }: {
   list: { day: number; key: string; sum: number; count: number; six: { key: string; sum: number }[] }[];
   month: string;
+  /** 고른 주를 위로 알린다 — 아래 결제 내역이 그 주 것만 보이게 */
+  onPick?: (v: { from: string; to: string; label: string }) => void;
 }) {
   const keys = list[0]?.six.map((k) => k.key) ?? [];
 
@@ -2202,6 +2263,14 @@ function WeekLines({ list, month }: {
   const narrow = useNarrow();
   const at = Math.min(wi, weeks.length - 1);
   const week = weeks[at];
+
+  useEffect(() => {
+    if (!week) return;
+    const ds = week.days;
+    onPick?.({ from: ds[0].key, to: ds[ds.length - 1].key, label: week.label });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week?.days?.[0]?.key, week?.days?.length]);
+
   if (keys.length === 0 || !week) return null;
 
   const days = week.days;
