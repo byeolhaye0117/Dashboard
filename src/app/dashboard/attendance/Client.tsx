@@ -12,6 +12,7 @@ import { today, korDate, weekdayIndex, hourNow, minuteNow } from "@/lib/time";
 import {
   WORK_KINDS, KIND_MARK as MARK, toMinutes, hourText, worksOn, daysText,
 } from "@/lib/attendanceMeta";
+import { backdrop } from "@/lib/backdrop";
 
 type Row = {
   id: string;
@@ -689,7 +690,7 @@ function EditBox({ person, day, rounds, canRemove, onClose }: {
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{person.name} · {korDate(day)}</h3>
 

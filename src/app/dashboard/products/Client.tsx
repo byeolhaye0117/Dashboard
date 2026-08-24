@@ -12,6 +12,7 @@
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { KINDS as PRODUCT_KINDS } from "@/lib/productMeta";
+import { backdrop } from "@/lib/backdrop";
 
 /* 목록은 서버와 한 곳을 본다 — 따로 베껴 두었더니 어긋났다 */
 const KINDS: readonly string[] = PRODUCT_KINDS;
@@ -383,7 +384,7 @@ function BatchBox({ op, count, branches, busy, onClose, onRun }: {
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{TITLES[op]}</h3>
         <p className="stat-note" style={{ marginTop: 0 }}>
@@ -547,7 +548,7 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
   const onlyNum = (v: string) => v.replace(/[^0-9]/g, "");
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{item ? "상품 고치기" : "상품 만들기"}</h3>
         {item && <p className="modal-lead">{item.code}</p>}

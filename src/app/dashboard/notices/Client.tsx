@@ -11,6 +11,7 @@ import Icon from "@/components/Icon";
 import { korDate, today, addDays, daysBetween } from "@/lib/time";
 import { PRIORITIES, NO_PRIORITY, priorityName, priorityTone } from "@/lib/noticeMeta";
 import { PRESETS } from "@/lib/taskPresets";
+import { backdrop } from "@/lib/backdrop";
 
 type Notice = {
   id: string; 지점코드: string; 제목: string; 내용: string;
@@ -722,7 +723,7 @@ function NoticeBox(props: {
   const notYet = props.people.filter((x) => !readIds.has(x.id));
 
   return (
-    <div className="modal-back" onClick={props.onClose}>
+    <div className="modal-back" {...backdrop(props.onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{n.중요 && "★ "}{n.제목}</h3>
         <p className="page-sub" style={{ margin: "0 0 14px" }}>
@@ -851,7 +852,7 @@ function NoticeForm(props: {
   }
 
   return (
-    <div className="modal-back" onClick={props.onClose}>
+    <div className="modal-back" {...backdrop(props.onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{n ? "공지 고치기" : "공지 올리기"}</h3>
 
@@ -968,7 +969,7 @@ function TaskForm(props: {
   }
 
   return (
-    <div className="modal-back" onClick={props.onClose}>
+    <div className="modal-back" {...backdrop(props.onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>업무 고치기</h3>
 
@@ -1301,7 +1302,7 @@ function TaskAdd(props: {
   }
 
   return (
-    <div className="modal-back" onClick={props.onClose}>
+    <div className="modal-back" {...backdrop(props.onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>업무 배정</h3>
 
@@ -1636,7 +1637,7 @@ function TaskBatch(props: {
   }
 
   return (
-    <div className="modal-back" onClick={props.onClose}>
+    <div className="modal-back" {...backdrop(props.onClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{TITLES[props.op]}</h3>
         <p className="stat-note" style={{ marginTop: 0 }}>

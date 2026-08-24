@@ -17,6 +17,7 @@
  * 고를 때는 안 뜨고, 이미 적힌 것은 그대로 남는다.
  */
 import { useEffect, useState } from "react";
+import { backdrop } from "@/lib/backdrop";
 
 type Row = { 줄: number; 값: string; 씀: boolean };
 
@@ -77,7 +78,7 @@ export default function OptionEdit({ kind, title, onChange, onClose }: {
   }
 
   return (
-    <div className="modal-back top" onClick={onClose}>
+    <div className="modal-back top" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{title ?? kind} 목록 고치기</h3>
 

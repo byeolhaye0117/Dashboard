@@ -14,6 +14,7 @@ import Icon from "@/components/Icon";
 import NoticePop from "@/components/NoticePop";
 import { GROUP_ORDER, PHONE_TABS, MENUS, type MenuItem } from "@/lib/menuItems";
 import type { Session } from "@/lib/session";
+import { backdrop } from "@/lib/backdrop";
 
 type Props = {
   session: Session;
@@ -331,7 +332,7 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>비밀번호 변경</h3>
         <div className="field">

@@ -21,6 +21,7 @@ import { today } from "@/lib/time";
 import type { ProductMeta } from "@/lib/productMeta";
 import { stageNow, baseDate } from "@/lib/stage";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
+import { backdrop } from "@/lib/backdrop";
 
 type Payment = {
   id: string;
@@ -1553,7 +1554,7 @@ export default function Client(p: Props) {
       )}
 
       {wipe && (
-        <div className="modal-back" onClick={() => !wiping && setWipe(null)}>
+        <div className="modal-back" {...backdrop(() => !wiping && setWipe(null))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>이 결제를 지웁니다</h3>
             <div className="kv">
@@ -1679,7 +1680,7 @@ function PayDetail({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{memberName} · {money(합)}원</h3>
         <p className="page-sub" style={{ margin: "2px 0 12px" }}>

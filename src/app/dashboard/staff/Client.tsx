@@ -8,6 +8,7 @@ import Icon from "@/components/Icon";
 import RoleEdit from "@/components/RoleEdit";
 import { showPhone } from "@/lib/phone";
 import { WEEKDAYS, WEEKEND, daysText } from "@/lib/attendanceMeta";
+import { backdrop } from "@/lib/backdrop";
 
 type Staff = {
   id: string;
@@ -365,7 +366,7 @@ function IssuedBox({ name, password, onClose }: { name: string; password: string
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{name}님 비밀번호</h3>
         <p className="modal-lead">
@@ -432,7 +433,7 @@ function StaffForm({
 
   return (
     <>
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>직원 추가</h3>
         <p className="modal-lead">
@@ -479,7 +480,7 @@ function StaffForm({
 
       {/* 직급 고치기 — 직원 창 위에 겹쳐 연다. 화면을 옮기면 적어 둔 것이 날아간다 */}
       {roleEdit && (
-        <div className="modal-back top" onClick={() => setRoleEdit(false)}>
+        <div className="modal-back top" {...backdrop(() => setRoleEdit(false))}>
           <div className="modal wide" onClick={(e) => e.stopPropagation()}>
             <h3>직급 만들기 · 고치기</h3>
             <RoleEdit roles={allRoles} myRole={myRole} />
@@ -579,7 +580,7 @@ function Detail({
 
   return (
     <>
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <div className="detail-head">
           <div>
@@ -832,7 +833,7 @@ function Detail({
 
       {/* 직급 고치기 — 직원 창 위에 겹쳐 연다. 화면을 옮기면 적어 둔 것이 날아간다 */}
       {roleEdit && (
-        <div className="modal-back top" onClick={() => setRoleEdit(false)}>
+        <div className="modal-back top" {...backdrop(() => setRoleEdit(false))}>
           <div className="modal wide" onClick={(e) => e.stopPropagation()}>
             <h3>직급 만들기 · 고치기</h3>
             <RoleEdit roles={allRoles} myRole={myRole} />
@@ -924,7 +925,7 @@ function BulkForm({ names, ids, branches, onClose }: {
 
   if (result) {
     return (
-      <div className="modal-back" onClick={() => location.reload()}>
+      <div className="modal-back" {...backdrop(() => location.reload())}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <h3>{result.done.length}명을 바꿨습니다</h3>
           {result.done.length > 0 && (
@@ -955,7 +956,7 @@ function BulkForm({ names, ids, branches, onClose }: {
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{ids.length}명 한 번에 바꾸기</h3>
         <p className="page-sub" style={{ margin: "0 0 4px" }}>{names.join(" · ")}</p>

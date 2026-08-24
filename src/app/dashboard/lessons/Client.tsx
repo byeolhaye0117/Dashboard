@@ -15,6 +15,7 @@ import { korDate, today, addDays } from "@/lib/time";
 import {
   JOIN_STATES, STATE_TONE, KIND_PT, KIND_GROUP, addMinutes, toMinutes, lastSlot, fitsKind,
 } from "@/lib/lessonMeta";
+import { backdrop } from "@/lib/backdrop";
 
 type Lesson = {
   id: string; 지점코드: string; 수업구분: string; 상품코드: string;
@@ -642,7 +643,7 @@ function LessonBox(props: {
   const waiting = props.joins.filter((j) => j.진행상태 === "예정").length;
 
   return (
-    <div className="modal-back" onClick={props.onClose}>
+    <div className="modal-back" {...backdrop(props.onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{l.시작시각}{l.종료시각 ? `–${l.종료시각}` : ""} · {props.trainer}</h3>
         <p className="page-sub" style={{ margin: "0 0 14px" }}>
@@ -1043,7 +1044,7 @@ function GroupBoard(props: {
       {msg && <div className="alert-bad" style={{ marginTop: 12 }}>{msg}</div>}
 
       {zoom && (
-        <div className="modal-back" onClick={() => setZoom("")}>
+        <div className="modal-back" {...backdrop(() => setZoom(""))}>
           <img className="zoom" src={`/api/lesson-photo?id=${encodeURIComponent(zoom)}`} alt="수업 후 사진"
                onClick={(e) => e.stopPropagation()} />
         </div>
@@ -1433,7 +1434,7 @@ function AddBox(props: {
   const nameOf = new Map(props.members.map((m) => [m.id, m.name]));
 
   return (
-    <div className="modal-back" onClick={props.onClose}>
+    <div className="modal-back" {...backdrop(props.onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>1:1 PT 잡기</h3>
 

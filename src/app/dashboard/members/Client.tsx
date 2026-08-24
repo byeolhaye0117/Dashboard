@@ -13,6 +13,7 @@ import { termOf, type ProductMeta } from "@/lib/productMeta";
 import { SALE_TYPES } from "@/lib/saleTypes";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 import { REFUND_STAGES, REFUND_REASONS } from "@/lib/refund";
+import { backdrop } from "@/lib/backdrop";
 
 type Member = {
   id: string;
@@ -1756,7 +1757,7 @@ function MissingGate({ 빈칸, busy, onBack, onSkip }: {
   const [ing, setIng] = useState(false);
 
   return (
-    <div className="modal-back" onClick={onBack}>
+    <div className="modal-back" {...backdrop(onBack)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>아직 안 적힌 것이 있습니다</h3>
         {/* 무엇이 비었는지만 보여준다. 「지금 적어 두시면…」 같은 말은
@@ -1917,7 +1918,7 @@ function AddPurchase({
   }
 
   return (
-    <div className="modal-back top" onClick={onClose}>
+    <div className="modal-back top" {...backdrop(onClose)}>
       <div className="modal xl" onClick={(e) => e.stopPropagation()}>
         <h3>{member.이름}님 상품 추가</h3>
 
@@ -2030,7 +2031,7 @@ function NewForm({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal xl" onClick={(e) => e.stopPropagation()}>
         <h3>회원 등록</h3>
 
@@ -2285,7 +2286,7 @@ function Detail({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className={`modal ${editing ? "wide" : "xl"}`} onClick={(e) => e.stopPropagation()}>
         {/* 아래 단추 줄을 없앴으니 닫는 길이 눈에 보여야 한다 */}
         {!editing && (
@@ -3445,7 +3446,7 @@ function ExtraEdit({ x, pr, host, hostName, canRemove, onClose }: {
   ].filter(Boolean).join(" ~ ");
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{pr?.name ?? x.상품코드}</h3>
         <p className="page-sub" style={{ margin: "2px 0 12px" }}>
@@ -3663,7 +3664,7 @@ function TicketEdit({
   }
 
   return (
-    <div className="modal-back top" onClick={onClose}>
+    <div className="modal-back top" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{pr?.name ?? t.상품코드}</h3>
         <p className="modal-lead">{t.id}</p>
@@ -4109,7 +4110,7 @@ function PaymentEdit({
   }
 
   return (
-    <div className="modal-back top" onClick={onClose}>
+    <div className="modal-back top" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>결제 고치기</h3>
         <p className="modal-lead">{x.id}</p>

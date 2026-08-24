@@ -10,6 +10,7 @@ import { showPhone } from "@/lib/phone";
 import {
   stageOf, baseDate, monthOf, isSettled, DONE_STAGE, stageNow as stageAt,
 } from "@/lib/stage";
+import { backdrop } from "@/lib/backdrop";
 
 type Row = Record<string, string>;
 type Item = Row & { id: string };
@@ -545,7 +546,7 @@ function NewForm({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>상담 접수</h3>
         <p className="modal-lead">
@@ -769,7 +770,7 @@ function Detail({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <div className="detail-head">
           <div>
