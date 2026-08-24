@@ -2191,7 +2191,7 @@ function DayBars({ list, month, now, onPick }: {
         </b>
         <button className="icon-btn" aria-label="내일" disabled={at >= last}
                 onClick={() => setDi(at + 1)}>›</button>
-        <span className="wk-sum num">{money(d.sum)}원 · {d.count}건</span>
+        <span className="wk-sum num">{money(d.sum)}원<i>{d.count}건</i></span>
       </div>
 
       {d.sum <= 0 ? (
@@ -2323,7 +2323,7 @@ function WeekLines({ list, month, onPick }: {
         <b className="wk-lb">{week.label}</b>
         <button className="icon-btn" aria-label="다음주" disabled={at >= weeks.length - 1}
                 onClick={() => { setWi(at + 1); setHi(null); }}>›</button>
-        <span className="wk-sum num">{money(week.sum)}원 · {week.count}건</span>
+        <span className="wk-sum num">{money(week.sum)}원<i>{week.count}건</i></span>
       </div>
 
       <svg className="lc dl" viewBox={`0 0 ${W} ${H}`} role="img"
