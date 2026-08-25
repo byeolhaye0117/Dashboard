@@ -2467,6 +2467,14 @@ table.grid td.big .tot {
   이름은 제 선 색으로, 금액은 먹색으로 크게. 눈이 먼저 금액을 잡고 그 다음에
   어느 지점인지를 본다 — 반대로 두면 이름만 읽히고 숫자를 다시 찾아야 한다.
 */
+/* 이름표 왼쪽의 색 조각 — 11px 글자 색을 선 색과 견주기는 어렵다.
+   네모 한 칸이 훨씬 빨리 읽힌다 */
+.lc .gsw.s1 { fill: var(--s1); }
+.lc .gsw.s2 { fill: var(--s2); }
+.lc .gsw.s3 { fill: var(--s3); }
+.lc .gsw.s4 { fill: var(--s4); }
+.lc .gsw.s5 { fill: var(--s5); }
+.lc .gsw.s6 { fill: var(--s6); }
 .lc .gnm { font-size: 11px; font-weight: 700; }
 .lc .gnm.s1 { fill: var(--s1); }
 .lc .gnm.s2 { fill: var(--s2); }

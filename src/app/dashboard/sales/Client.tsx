@@ -2524,7 +2524,7 @@ function LineChart({ rows, series, current, onPick }: {
    * 그림 그릴 자리를 그만큼 줄이고, 이름표는 그 밖에 세운다. 서로 밟을 일이
    * 없어진다 — 겹침을 「잘 피하는」 것이 아니라 아예 안 생기게 하는 것이다.
    */
-  const 이름칸 = 여럿 ? (narrow ? 86 : 112) : 0;
+  const 이름칸 = 여럿 ? (narrow ? 96 : 124) : 0;
   const R = (narrow ? 352 : 744) - 이름칸;
   /* 천장은 그리는 선 전부를 담아야 한다. 지점별로 나눠 그리면 합계보다
      낮아지므로, 합계에 맞춰 두면 선들이 바닥에 깔린다 */
@@ -2647,6 +2647,16 @@ function LineChart({ rows, series, current, onPick }: {
             점과 높이가 어긋나므로 ㄱ자로 꺾어 잇는다 — 비스듬한 실은 여럿이
             엇갈리면 실뭉치처럼 보인다.
 
+            그런데 넷이 같은 세로줄에서 꺾으니 그 구간이 한 줄로 뭉쳐, 아래
+            셋(두정·용곡·성정)이 어느 이름표로 가는지 알 수 없었다. 이름표마다
+            꺾는 자리를 6씩 어긋나게 두어 저마다 제 길로 간다. 금액 큰 차례로
+            세우므로 이 길들은 서로 엇갈리지 않는다 — 나란히 안쪽부터 눕는다.
+
+            모서리는 둥글린다. 직각으로 꺾으면 눈금선처럼 딱딱해 보인다.
+
+            이름표 왼쪽에는 제 색 조각을 둔다. 이름 글자만으로는 11px 색을
+            선 색과 견주기 어렵다 — 네모 한 칸이 훨씬 빨리 읽힌다.
+
             ── 0원인 지점 ─────────────────────────────────────
             그 달에 판 것이 없어도 이름표는 세운다. 빠진 것인지 0인지 화면만
             봐서는 알 수 없다. 점은 속을 비워 그린다 — 꽉 찬 점을 축 위에
@@ -2657,8 +2667,25 @@ function LineChart({ rows, series, current, onPick }: {
             const 높이 = BASE - TOP;
             const 줄높이 = Math.min(36, 높이 / 칸);
             const 시작 = TOP + (높이 - 줄높이 * 칸) / 2 + 8;
-            const 꺾는곳 = R + 14;
-            const 왼쪽 = R + 30;
+            const 길폭 = narrow ? 5 : 6;
+            const 왼쪽 = R + 40;
+
+            /** 점에서 이름표까지 — 모서리를 둥글린 ㄱ자 */
+            const 꺾은길 = (x0: number, y0: number, lane: number, ly: number, x1: number) => {
+              const r = 5;
+              const f = (v: number) => v.toFixed(1);
+              /* 꺾을 자리가 모자라면 그냥 직각으로 간다 — 억지로 둥글리면
+                 곡선이 되돌아가 매듭처럼 보인다 */
+              if (Math.abs(ly - y0) < 2 * r + 1 || lane - x0 < r + 1 || x1 - lane < r + 1) {
+                return `M${f(x0)} ${f(y0)} H${f(lane)} V${f(ly)} H${f(x1)}`;
+              }
+              const d = ly > y0 ? 1 : -1;
+              return `M${f(x0)} ${f(y0)} H${f(lane - r)}`
+                + ` Q${f(lane)} ${f(y0)} ${f(lane)} ${f(y0 + r * d)}`
+                + ` V${f(ly - r * d)}`
+                + ` Q${f(lane)} ${f(ly)} ${f(lane + r)} ${f(ly)}`
+                + ` H${f(x1)}`;
+            };
 
             return series!
               .map((s2, si) => ({ si, name: s2.name, v: s2.values[iCur] ?? 0 }))
@@ -2669,11 +2696,13 @@ function LineChart({ rows, series, current, onPick }: {
                 return (
                   <g key={r.si}>
                     <path className={`lead s${r.si + 1}`}
-                          d={`M${(x(iCur) + 6).toFixed(1)} ${dy.toFixed(1)} H${꺾는곳.toFixed(1)} V${(ly - 3).toFixed(1)} H${(왼쪽 - 8).toFixed(1)}`} />
+                          d={꺾은길(x(iCur) + 7, dy, R + 6 + k * 길폭, ly - 4, 왼쪽 - 11)} />
                     <circle className={`dot s${r.si + 1}${r.v > 0 ? "" : " zero"}`}
                             cx={x(iCur)} cy={dy} r="4.5" />
-                    <text className={`gnm s${r.si + 1}`} x={왼쪽 - 8} y={ly}>{r.name}</text>
-                    <text className={`gvl${r.v > 0 ? "" : " off"}`} x={왼쪽 - 8} y={ly + 17}>
+                    <rect className={`gsw s${r.si + 1}`} x={왼쪽 - 10} y={ly - 7.5}
+                          width="7" height="7" rx="2" />
+                    <text className={`gnm s${r.si + 1}`} x={왼쪽 + 2} y={ly}>{r.name}</text>
+                    <text className={`gvl${r.v > 0 ? "" : " off"}`} x={왼쪽 - 10} y={ly + 17}>
                       {r.v > 0 ? koShort(r.v) : "0원"}
                     </text>
                   </g>
