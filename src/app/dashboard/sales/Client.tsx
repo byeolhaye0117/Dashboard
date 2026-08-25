@@ -871,9 +871,24 @@ export default function Client(p: Props) {
       done,
       fail,
       going: rows.length - settled,
-      /** 결판난 건 중 등록 비율 — 아직 진행중인 건은 빼고 본다 */
-      winRate: settled > 0 ? Math.round((done / settled) * 100) : null,
-      failRate: settled > 0 ? Math.round((fail / settled) * 100) : null,
+      /*
+       * 맡은 상담 전체를 분모로 둔다
+       *
+       * ── 왜 고쳤나 ──────────────────────────────────────────
+       * 결판난 건(등록+미등록)만으로 셌다. 13건을 맡아 10건을 등록시키고
+       * 3건이 아직 진행중이면 10÷10 = 100% 가 떴다. 그런데 그 밑에는
+       * 「상담 13건 중 10건 등록」이라고 적혀 있었다 — 위아래가 서로 다른
+       * 것을 세니 화면이 말이 안 됐다.
+       *
+       * 상담 화면은 처음부터 문의 전체로 나누고 있었다. 두 화면이 다른
+       * 성공률을 말하면 어느 쪽을 믿어야 할지 알 수 없다. 상담 화면에
+       * 맞춘다.
+       *
+       * 그래서 성공률 + 실패율이 100%가 안 된다 — 남는 만큼이 진행중이다.
+       * 그 수를 화면에 같이 적어 두어야 빠진 것처럼 보이지 않는다.
+       */
+      winRate: rows.length > 0 ? Math.round((done / rows.length) * 100) : null,
+      failRate: rows.length > 0 ? Math.round((fail / rows.length) * 100) : null,
     };
   };
 
@@ -1249,8 +1264,13 @@ export default function Client(p: Props) {
         <div className="tile">
           <span className="lb">등록성공률</span>
           <b className="vl num">{lead.winRate === null ? "-" : `${lead.winRate}%`}</b>
+          {/* 진행중인 건을 적어 둔다 — 성공률과 실패율을 더해 100이 안 되는
+              까닭이 이것이다. 안 적으면 어디로 샜나 싶다 */}
           <span className="sub">
-            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.done}건 등록` : "이 달 상담 없음"}
+            {lead.base > 0
+              ? `상담 ${lead.base}건 중 ${lead.done}건 등록` +
+                (lead.going > 0 ? ` · ${lead.going}건 진행중` : "")
+              : "이 달 상담 없음"}
           </span>
           <div className="mini">
             <i className="good" style={{ width: `${lead.winRate ?? 0}%` }} />
@@ -1260,7 +1280,10 @@ export default function Client(p: Props) {
           <span className="lb">등록실패율</span>
           <b className="vl num">{lead.failRate === null ? "-" : `${lead.failRate}%`}</b>
           <span className="sub">
-            {lead.base > 0 ? `상담 ${lead.base}건 중 ${lead.fail}건 미등록` : "이 달 상담 없음"}
+            {lead.base > 0
+              ? `상담 ${lead.base}건 중 ${lead.fail}건 미등록` +
+                (lead.going > 0 ? ` · ${lead.going}건 진행중` : "")
+              : "이 달 상담 없음"}
           </span>
           <div className="mini">
             <i className={lead.failRate !== null && lead.failRate >= 50 ? "bad" : "warn"}
@@ -1712,8 +1735,10 @@ export default function Client(p: Props) {
 
       {/* 문의 → 등록 전환율 */}
       <h2 className="sec-title">문의 → 등록 전환율</h2>
+      {/* 셈하는 법을 바꿨으면 이 글도 같이 바꿔야 한다. 화면에 적힌 설명이
+          실제 셈과 다르면, 숫자가 맞아도 대표님은 못 믿으신다 */}
       <p className="sec-sub">
-        결판이 난 상담만 셉니다 · 아직 진행중인 건은 전환율에서 뺍니다
+        맡은 상담 전체로 셉니다 · 아직 진행중인 건은 등록이 아니므로 분모에 그대로 둡니다
       </p>
       <div className="viz">
         {(branch === "전체" ? convByBranch : convByBranch.filter((b) => b.code === branch))
@@ -1722,9 +1747,7 @@ export default function Client(p: Props) {
                  title={`문의 ${b.base}건 · 등록 ${b.done} · 미등록 ${b.fail} · 진행중 ${b.going}`}>
               <span className="nm">{b.name}</span>
               {b.winRate === null ? (
-                <span className="norow">
-                  {b.base > 0 ? `상담 ${b.base}건 모두 진행중` : "이 달 상담 없음"}
-                </span>
+                <span className="norow">이 달 상담 없음</span>
               ) : (
                 <span className="tr"><i style={{ width: `${b.winRate}%` }} /></span>
               )}
@@ -1732,10 +1755,11 @@ export default function Client(p: Props) {
             </div>
           ))}
         {branch === "전체" && (
-          <div className="conv all" title={`문의 ${lead.base}건 · 등록 ${lead.done} · 미등록 ${lead.fail}`}>
+          <div className="conv all"
+               title={`문의 ${lead.base}건 · 등록 ${lead.done} · 미등록 ${lead.fail} · 진행중 ${lead.going}`}>
             <span className="nm">전 지점</span>
             {lead.winRate === null ? (
-              <span className="norow">결판난 상담이 아직 없습니다</span>
+              <span className="norow">이 달 상담 없음</span>
             ) : (
               <span className="tr"><i style={{ width: `${lead.winRate}%` }} /></span>
             )}
