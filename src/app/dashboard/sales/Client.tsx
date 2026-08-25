@@ -192,6 +192,22 @@ function koShort(n: number): string {
  * 어느 쪽이든 나눈 값의 합은 결제 금액과 정확히 같다 — 잔돈은 마지막
  * 줄에서 맞춘다. 나누다 남은 돈이 사라지면 매출이 안 맞는다.
  */
+/**
+ * 그 결제로 실제로 들어온 돈
+ *
+ * ── 왜 결제금액을 그대로 안 쓰나 ────────────────────────────
+ * 시트의 결제금액은 「받기로 한 전부」다. 230만원짜리에 105만원이 미수면
+ * 그 달에 실제로 들어온 돈은 125만원인데, 매출은 230만원으로 잡혔다.
+ * 대표님 말씀대로 미수금은 아직 안 받은 돈이라 매출로 세면 안 된다.
+ *
+ * 화면의 모든 매출이 이 함수를 지난다 — 한 곳만 고쳐서는 위 숫자와 아래
+ * 목록이 어긋난다. 실제로 그래프는 3,898,000원인데 밑의 결제 내역을
+ * 더하면 2,848,000원이었다.
+ */
+function 받은돈(x: { 결제금액?: string; 미수금액?: string }): number {
+  return Math.max(0, num(x.결제금액) - num(x.미수금액));
+}
+
 function shareOut(
   amt: number,
   ts: Ticket[],
@@ -320,7 +336,7 @@ export default function Client(p: Props) {
           (code ? x.지점코드 === code : branch === "전체" || x.지점코드 === branch)
       );
       const live = rows.filter((x) => !isRefund(x));
-      const sum = live.reduce((s, x) => s + num(x.결제금액), 0);
+      const sum = live.reduce((s, x) => s + 받은돈(x), 0);
       const unpaid = live.reduce((s, x) => s + num(x.미수금액), 0);
       const refund = rows
         .filter(isRefund)
@@ -414,8 +430,8 @@ export default function Client(p: Props) {
         ],
         named,
         /** 세 칸 어디에도 안 적힌 금액 — 시트에 나눠 적지 않은 건 */
-        unknown: Math.max(0, live.reduce((s, x) => s + num(x.결제금액), 0) - named),
-        mixed: { count: mixed.length, sum: mixed.reduce((s, x) => s + num(x.결제금액), 0) },
+        unknown: Math.max(0, live.reduce((s, x) => s + 받은돈(x), 0) - named),
+        mixed: { count: mixed.length, sum: mixed.reduce((s, x) => s + 받은돈(x), 0) },
       };
     },
     []
@@ -515,7 +531,7 @@ export default function Client(p: Props) {
       };
 
       live.forEach((pay) => {
-        const amt = num(pay.결제금액);
+        const amt = 받은돈(pay);
         if (amt <= 0) return;
         const 적힌유형 = typeOf(pay.매출유형);
         const ts = byPay[pay.id] ?? [];
@@ -566,7 +582,7 @@ export default function Client(p: Props) {
     () =>
       p.branches.map((b) => {
         const rows = cur.live.filter((x) => x.지점코드 === b.code);
-        const sum = rows.reduce((s, x) => s + num(x.결제금액), 0);
+        const sum = rows.reduce((s, x) => s + 받은돈(x), 0);
         return { ...b, sum, six: sixOf(bucketOf(rows), sum), method: methodOf(rows) };
       }),
     [p.branches, cur.live, bucketOf, methodOf]
@@ -639,7 +655,7 @@ export default function Client(p: Props) {
     cur.live.forEach((x) => {
       if (!x.담당직원사번) return;
       const v = put(x.담당직원사번);
-      v.sum += num(x.결제금액);
+      v.sum += 받은돈(x);
       v.count += 1;
     });
     return Object.entries(map)
@@ -717,7 +733,7 @@ export default function Client(p: Props) {
     cur.live.forEach((x) => {
       const id = x.담당직원사번 || "-";
       const v = (map[id] ??= { sum: 0, count: 0 });
-      v.sum += num(x.결제금액);
+      v.sum += 받은돈(x);
       v.count += 1;
     });
     return Object.entries(map)
@@ -803,7 +819,7 @@ export default function Client(p: Props) {
     const list = Array.from({ length: last }, (_, i) => {
       const key = `${month}-${String(i + 1).padStart(2, "0")}`;
       const rows = map[key] ?? [];
-      const sum = rows.reduce((a, x) => a + num(x.결제금액), 0);
+      const sum = rows.reduce((a, x) => a + 받은돈(x), 0);
       return { day: i + 1, key, sum, count: rows.length, six: sixOf(bucketOf(rows), sum) };
     });
     return { list, top: Math.max(1, ...list.map((d) => d.sum)) };
@@ -829,7 +845,7 @@ export default function Client(p: Props) {
         <div>
           <h1 className="page-title">매출</h1>
           <p className="page-sub">
-            결제 기준 · 환불 건 제외
+            실제로 받은 돈 기준 · 미수금 제외 · 환불 건 제외
             {branch !== "전체" && ` · ${branchName(branch)}`}
           </p>
         </div>
@@ -914,14 +930,27 @@ export default function Client(p: Props) {
         <div className="tile">
           <span className="lb">미수금</span>
           <b className={`vl num${cur.unpaid > 0 ? " bad" : ""}`}>{money(cur.unpaid)}원</b>
+          {/* 위 매출이 이미 실입금이라 「실입금 …」을 또 적으면 같은 말이다.
+              대신 아직 못 받은 돈이 계약의 얼마쯤인지를 적는다 */}
+          {/*
+            매출에서 뺀 돈이라는 것을 여기서 말한다
+
+            「받으면 매출 …」이라고 적으면 언제 잡히는지까지 말하는 셈인데,
+            지금은 받으신 날이 아니라 그 결제가 적힌 날의 달로 올라간다.
+            할 수 있는 말만 적는다 — 매출에서 빠져 있다는 것과, 다 받으면
+            얼마가 되는지.
+          */}
           <span className="sub">
             {cur.unpaid > 0
-              ? `${unpaidList.length}건 · 실입금 ${money(cur.sum - cur.unpaid)}원`
+              ? `${unpaidList.length}건 · 매출에서 뺐습니다 · 다 받으면 ${money(cur.sum + cur.unpaid)}원`
               : "전액 입금"}
           </span>
           <div className="mini">
             <i className={cur.unpaid > 0 ? "bad" : ""}
-               style={{ width: `${cur.sum > 0 ? Math.min(100, (cur.unpaid / cur.sum) * 100) : 0}%` }} />
+               style={{
+                 width: `${cur.sum + cur.unpaid > 0
+                   ? Math.min(100, (cur.unpaid / (cur.sum + cur.unpaid)) * 100) : 0}%`,
+               }} />
           </div>
         </div>
         <div className="tile">
