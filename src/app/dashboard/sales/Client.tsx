@@ -2536,28 +2536,37 @@ function LineChart({ rows, series, current, onPick }: {
             </g>
           ))}
           {/*
-            보고 있는 달의 금액을 지점마다 적는다
+            보고 있는 달의 지점 이름과 금액을 적는다
 
-            한 지점만 볼 때는 점 옆에 「1,076만」이 적혀 있는데 전 지점으로
-            바꾸면 그 숫자가 사라졌다. 선 색으로 어느 지점인지는 알아도
-            얼마인지는 눈으로 눈금을 읽어야 했다.
+            ── 왜 이름까지 적나 ────────────────────────────────
+            숫자만 적어 두었더니 「1,076만」이 어느 지점 것인지 알려면 밑의
+            이름표에서 색을 찾아 선을 눈으로 따라와야 했다. 글자가 겹쳐 밀려
+            올라간 줄은 제 점에서 떨어져 있어서 그마저도 어긋난다.
+            이름을 같이 적으면 그 자리에서 답이 된다.
+
+            ── 왜 0원도 적나 ──────────────────────────────────
+            그 달에 판 것이 없는 지점은 값이 0이라 빼고 있었다. 그래서 지점이
+            넷인데 숫자는 셋만 떴다. 빠진 것인지 0인지 화면만 봐서는 알 수
+            없다 — 0이면 0이라고 적는 편이 낫다.
 
             값이 비슷한 지점끼리 글자가 포개지므로 아래에서부터 밀어 올린다 —
             날짜별 꺾은선에서 쓰는 방법과 같다.
           */}
           {series!
-            .map((s2, si) => ({ si, v: s2.values[iCur] ?? 0 }))
-            .filter((r) => r.v > 0)
+            .map((s2, si) => ({ si, name: s2.name, v: s2.values[iCur] ?? 0 }))
             .map((r) => ({ ...r, y: y(r.v) }))
             .sort((a, b) => b.y - a.y)
-            .reduce((acc: { si: number; v: number; ly: number }[], r) => {
+            .reduce((acc: { si: number; name: string; v: number; ly: number }[], r) => {
               const 아래 = acc.length ? acc[acc.length - 1].ly : Infinity;
-              acc.push({ si: r.si, v: r.v, ly: Math.max(12, Math.min(r.y - 7, 아래 - 13)) });
+              acc.push({ ...r, ly: Math.max(12, Math.min(r.y - 7, 아래 - 13)) });
               return acc;
             }, [])
             .map((r) => (
               <text key={r.si} className="curlb" x={x(iCur) - 9} y={r.ly} textAnchor="end">
-                {koShort(r.v)}
+                <tspan className={`nm s${r.si + 1}`}>{r.name} </tspan>
+                <tspan className={r.v > 0 ? "vv" : "vv off"}>
+                  {r.v > 0 ? koShort(r.v) : "0원"}
+                </tspan>
               </text>
             ))}
         </>

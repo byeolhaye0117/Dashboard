@@ -2455,6 +2455,20 @@ table.grid td.big .tot {
 .lc .dot.s5 { fill: var(--s5); }
 .lc .dot.s6 { fill: var(--s6); }
 
+/* 점 옆에 적는 「지점 이름 + 금액」
+   이름은 제 선 색으로 둔다. 글자가 겹쳐 밀려 올라가면 제 점에서 떨어지므로,
+   색이 같아야 어느 선의 값인지 눈으로 잇을 수 있다 */
+.lc .curlb .nm { font-weight: 700; }
+.lc .curlb .nm.s1 { fill: var(--s1); }
+.lc .curlb .nm.s2 { fill: var(--s2); }
+.lc .curlb .nm.s3 { fill: var(--s3); }
+.lc .curlb .nm.s4 { fill: var(--s4); }
+.lc .curlb .nm.s5 { fill: var(--s5); }
+.lc .curlb .nm.s6 { fill: var(--s6); }
+.lc .curlb .vv { font-weight: 800; }
+/* 그 달에 판 것이 없는 지점 — 자리는 지키되 소리는 낮춘다 */
+.lc .curlb .vv.off { fill: var(--muted); font-weight: 700; }
+
 /* 상품 이름 칸 — 그 줄에서 제일 먼저 읽히는 값이라 굵게 */
 table.grid td.nm { font-weight: 700; }
 
