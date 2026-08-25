@@ -490,6 +490,18 @@ export default function Client(p: Props) {
     }
   }
 
+  /**
+   * 위 미수금 칸에서 아래 미수금 명단으로 내려간다
+   *
+   * 부드럽게 움직이는 이유는 멋이 아니라, 화면이 순간이동하면 지금 어디로
+   * 온 것인지 알 수 없어서다. 명단이 아직 안 그려진 순간(다른 달을 막 고른
+   * 직후)에는 아무 일도 안 하는 것이 낫다 — 엉뚱한 자리로 데려가지 않는다.
+   */
+  function 미수금으로() {
+    const 자리 = document.getElementById("unpaid-list");
+    if (자리) 자리.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   /** 화면에 적는 구간 이름 — 「이 달」인지 「이 날」인지 */
   const branchName = (c: string) => p.branches.find((b) => b.code === c)?.name ?? c;
   const productOf = (code: string) => p.products.find((x) => x.code === code);
@@ -1184,8 +1196,22 @@ export default function Client(p: Props) {
 
       {/* 매출 바로 밑에 오는 네 칸 — 돈이 새는 곳과 상담 성적 */}
       <div className="tiles four">
-        <div className="tile">
-          <span className="lb">미수금</span>
+        {/*
+          눌러서 명단으로 간다
+
+          이 칸을 보고 「누구 것이지」가 궁금해지는데, 명단은 화면 한참 아래에
+          있다. 매달 그걸 손으로 찾아 내려가야 했다. 눌러서 바로 가게 한다.
+          받을 것이 없으면 갈 곳도 없으므로 그때는 그냥 칸이다.
+        */}
+        <div className={`tile${cur.unpaid > 0 ? " tapme" : ""}`}
+             role={cur.unpaid > 0 ? "button" : undefined}
+             tabIndex={cur.unpaid > 0 ? 0 : undefined}
+             onClick={() => cur.unpaid > 0 && 미수금으로()}
+             onKeyDown={(e) => {
+               if (cur.unpaid <= 0) return;
+               if (e.key === "Enter" || e.key === " ") { e.preventDefault(); 미수금으로(); }
+             }}>
+          <span className="lb">미수금{cur.unpaid > 0 && <i className="goto">명단 보기 ↓</i>}</span>
           <b className={`vl num${cur.unpaid > 0 ? " bad" : ""}`}>{money(cur.unpaid)}원</b>
           {/* 위 매출이 이미 실입금이라 「실입금 …」을 또 적으면 같은 말이다.
               대신 아직 못 받은 돈이 계약의 얼마쯤인지를 적는다 */}
@@ -1774,7 +1800,7 @@ export default function Client(p: Props) {
       {/* 미수금 — 누가, 언제, 얼마 */}
       {unpaidList.length > 0 && (
         <>
-          <h2 className="sec-title">미수금 {unpaidList.length}건</h2>
+          <h2 className="sec-title" id="unpaid-list">미수금 {unpaidList.length}건</h2>
           <p className="sec-sub">
             받기로 한 날이 지난 건은 붉게 표시됩니다 ·
             <b> 받았습니다</b>를 눌러 받은 날을 적으시면 <b>그 날의 매출</b>로 올라갑니다
