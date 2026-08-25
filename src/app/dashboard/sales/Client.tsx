@@ -291,8 +291,33 @@ export default function Client(p: Props) {
   /* 머리 위에서 고른 지점을 기본으로 본다. 지점을 골라 놓고도 전 지점
      숫자가 뜨면, 무엇을 보고 있는지 화면이 두 가지로 말하는 셈이다 */
   const [branch, setBranch] = useState(p.currentBranch || "전체");
+  /*
+   * 보고 있던 날을 기억한다
+   *
+   * 결제를 고치면 화면을 새로 읽는다. 그때 그래프가 늘 오늘부터 다시 열려서,
+   * 8월 7일 것을 고치고 나면 8월 25일로 튕겨 돌아왔다. 고치던 날을 다시
+   * 찾아 들어가야 했다.
+   *
+   * 브라우저에 잠깐 적어 둔다 — 창을 닫으면 지워지는 자리라 다음에 새로
+   * 여실 때는 오늘부터 열린다. 그게 맞다.
+   */
+  const 기억 = (k: string, v?: string) => {
+    try {
+      if (typeof window === "undefined") return "";
+      if (v === undefined) return sessionStorage.getItem(`sales/${k}`) ?? "";
+      sessionStorage.setItem(`sales/${k}`, v);
+      return v;
+    } catch {
+      return "";
+    }
+  };
+
   /* 날짜별 그래프를 하루로 볼지 이레로 볼지 */
-  const [span, setSpan] = useState<"day" | "week">("day");
+  const [span, setSpan] = useState<"day" | "week">(
+    () => (기억("span") === "week" ? "week" : "day")
+  );
+  /** 새로 읽기 전에 보고 있던 날 */
+  const [wantDay] = useState(() => 기억("day"));
   /*
    * 그래프에서 고른 구간 — 아래 결제 내역이 여기를 따라간다
    *
@@ -1167,12 +1192,16 @@ export default function Client(p: Props) {
           <>
             {/* 하루를 볼지 이레를 볼지 — 자리를 더 차지하지 않게 단추로 바꾼다 */}
             <div className="seg viz-seg">
-              <button className={span === "day" ? "on" : ""} onClick={() => setSpan("day")}>일간</button>
-              <button className={span === "week" ? "on" : ""} onClick={() => setSpan("week")}>주간</button>
+              <button className={span === "day" ? "on" : ""}
+                      onClick={() => { setSpan("day"); 기억("span", "day"); }}>일간</button>
+              <button className={span === "week" ? "on" : ""}
+                      onClick={() => { setSpan("week"); 기억("span", "week"); }}>주간</button>
             </div>
             {span === "day"
-              ? <DayBars list={byDay.list} month={month} now={now} onPick={setPick} />
-              : <WeekLines list={byDay.list} month={month} onPick={setPick} />}
+              ? <DayBars list={byDay.list} month={month} now={now} want={wantDay}
+                         onPick={(v) => { setPick(v); 기억("day", v.from); }} />
+              : <WeekLines list={byDay.list} month={month} want={wantDay}
+                           onPick={(v) => { setPick(v); 기억("day", v.from); }} />}
 
             {/*
               결제 내역을 그래프와 한 상자에 담는다
@@ -2291,11 +2320,13 @@ function niceTop(v: number): number {
  * 이 달에서 제일 많이 판 날에 맞춰 두면 넘겨도 길이를 그대로 견줄 수 있다.
  * 대신 막대가 안 보일 만큼 짧아지는 날이 있어서, 금액은 늘 옆에 적는다.
  */
-function DayBars({ list, month, now, onPick }: {
+function DayBars({ list, month, now, want, onPick }: {
   list: { day: number; key: string; sum: number; count: number; six: { key: string; sum: number }[] }[];
   month: string;
   /** 오늘 — 이 달을 보고 있으면 오늘부터 연다 */
   now: string;
+  /** 새로 읽기 전에 보고 있던 날 — 있으면 거기서 다시 연다 */
+  want?: string;
   /** 고른 날을 위로 알린다 — 아래 결제 내역이 그 날 것만 보이게 */
   onPick?: (v: { from: string; to: string; label: string }) => void;
 }) {
@@ -2313,11 +2344,15 @@ function DayBars({ list, month, now, onPick }: {
   /* 처음 열 때 — 이 달이면 오늘, 지난 달이면 돈이 오간 마지막 날.
      빈 날에서 시작하면 「자료가 없나」 하고 닫게 된다 */
   const 처음 = useMemo(() => {
+    /* 결제를 고치면 화면을 새로 읽는다. 그때 오늘부터 열면 고치던 날에서
+       튕겨 나간다 — 보고 있던 날이 있으면 그리로 돌아간다 */
+    const w = want ? list.findIndex((d) => d.key === want) : -1;
+    if (w >= 0) return w;
     const t = list.findIndex((d) => d.key === now);
     if (t >= 0) return t;
     for (let i = last; i >= 0; i--) if (list[i].sum > 0) return i;
     return last;
-  }, [list, now, last]);
+  }, [list, now, last, want]);
 
   const [di, setDi] = useState(처음);
   const at = Math.min(Math.max(0, di), last);
@@ -2391,9 +2426,11 @@ function DayBars({ list, month, now, onPick }: {
   );
 }
 
-function WeekLines({ list, month, onPick }: {
+function WeekLines({ list, month, want, onPick }: {
   list: { day: number; key: string; sum: number; count: number; six: { key: string; sum: number }[] }[];
   month: string;
+  /** 새로 읽기 전에 보고 있던 날 — 그 날이 든 주에서 다시 연다 */
+  want?: string;
   /** 고른 주를 위로 알린다 — 아래 결제 내역이 그 주 것만 보이게 */
   onPick?: (v: { from: string; to: string; label: string }) => void;
 }) {
@@ -2434,9 +2471,12 @@ function WeekLines({ list, month, onPick }: {
   /* 처음 열 때는 돈이 오간 마지막 주를 보여준다. 빈 주에서 시작하면
      「자료가 없나」 하고 닫게 된다 */
   const 처음 = useMemo(() => {
+    /* 보고 있던 날이 있으면 그 날이 든 주로 연다 */
+    const w = want ? weeks.findIndex((x) => x.days.some((d) => d.key === want)) : -1;
+    if (w >= 0) return w;
     for (let i = weeks.length - 1; i >= 0; i--) if (weeks[i].sum > 0) return i;
     return Math.max(0, weeks.length - 1);
-  }, [weeks]);
+  }, [weeks, want]);
 
   const [wi, setWi] = useState(처음);
   const [hi, setHi] = useState<number | null>(null);

@@ -3048,13 +3048,36 @@ function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem
       return Math.max(1, n || pr?.months || 1);
     };
 
-    const 정가Of = (pr: ProductMeta | undefined, t: Ticket) => {
-      if (!pr) return 0;
-      const unit = unitPrice(pr, true);
-      if (!unit) return 0;
-      if (!pricePerMonth(pr)) return unit;
-      const base = pr.months || 1;
-      return Math.round((unit * monthsOf(t, pr)) / base);
+    /*
+     * 이 이용권의 정가
+     *
+     * ── 없는 할인이 만들어지고 있었다 ──────────────────────────
+     * 정가를 늘 현금가로 잡았다. 그런데 상품에는 현금가와 카드가가 따로 있고,
+     * 판 값은 그중 하나다. 카드가로 판 줄에 현금가를 정가로 들이대면 그 차액이
+     * 「깎아준 것」으로 잡힌다 — 지역주민 1+2개월서비스에 할인 22,000원이
+     * 저절로 붙어 있던 것이 이것이다. 아무도 깎아준 적이 없다.
+     *
+     * 이용권 줄에는 어느 값으로 팔았는지가 안 적혀 있다. 그래서 두 값을 다
+     * 놓고 고른다 — 판 값과 딱 맞는 것이 있으면 그게 정가다(깎은 것이 없다).
+     * 없으면 판 값 바로 위의 값을 정가로 본다. 그게 깎아준 폭이다.
+     */
+    const 정가후보 = (pr: ProductMeta | undefined, t: Ticket): number[] => {
+      if (!pr) return [];
+      const 달 = pricePerMonth(pr) ? monthsOf(t, pr) / (pr.months || 1) : 1;
+      return [unitPrice(pr, true), unitPrice(pr, false)]
+        .filter((v) => v > 0)
+        .map((v) => Math.round(v * 달))
+        .filter((v, i, a) => a.indexOf(v) === i);
+    };
+
+    const 정가Of = (pr: ProductMeta | undefined, t: Ticket, amount: number) => {
+      const 후보 = 정가후보(pr, t);
+      if (!후보.length) return 0;
+      /* 판 값 그대로인 값이 있으면 깎은 것이 없다 */
+      if (후보.includes(amount)) return amount;
+      /* 깎아 팔았다면 판 값 바로 위의 값이 정가다 */
+      const 위 = 후보.filter((v) => v > amount).sort((a, b) => a - b)[0];
+      return 위 ?? Math.max(...후보);
     };
 
     const put = (pid: string, l: Line) => m.set(pid, [...(m.get(pid) ?? []), l]);
@@ -3068,7 +3091,7 @@ function PayTab({ paid, totalPaid, unpaid, tickets, extras, products, onEditItem
       const pr = byCode.get(t.상품코드);
       const 적힘 = (t.금액 ?? "").trim() !== "";
       const amount = Number(t.금액) || 0;
-      const 정가 = 정가Of(pr, t);
+      const 정가 = 정가Of(pr, t, amount);
       put(pid, {
         id: t.id,
         name: pr?.name || t.상품코드,
