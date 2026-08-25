@@ -2444,6 +2444,52 @@ function niceMax(v: number): number {
  * 여기서 알고 싶은 것은 오르고 있느냐이므로 선을 쓴다.
  * 회색 점선이 그달 목표라 선이 점선 위인지 아래인지만 봐도 된다.
  */
+/**
+ * 부드러운 곡선 — 다만 제자리에서 튀지 않는
+ *
+ * ── 왜 그냥 이어 붙이지 않나 ────────────────────────────────
+ * 점을 직선으로 이으면 꺾이는 자리가 뾰족해서 그래프가 거칠어 보인다.
+ * 그렇다고 흔히 쓰는 부드러운 곡선(Catmull-Rom)을 쓰면, 0이 열 달 이어지다
+ * 한 달에 솟는 우리 모양에서는 곡선이 0 아래로 파고든다 — 있지도 않은
+ * 마이너스 매출이 그려지는 것이다.
+ *
+ * 그래서 「오르내림을 뒤집지 않는」 곡선(Fritsch-Carlson)을 쓴다. 두 점
+ * 사이에서 값이 늘기만 했으면 그 구간의 곡선도 늘기만 한다. 보기에도
+ * 부드럽고, 없는 숫자를 그리지도 않는다.
+ */
+function smoothPath(pts: { x: number; y: number }[]): string {
+  const n = pts.length;
+  if (n < 2) return "";
+  const p = (i: number) => `${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)}`;
+  if (n === 2) return `M${p(0)} L${p(1)}`;
+
+  /* 구간마다의 기울기 */
+  const d = pts.slice(0, -1).map((a, i) => (pts[i + 1].y - a.y) / (pts[i + 1].x - a.x));
+  /* 점마다의 기울기 — 양옆 구간의 가운데를 잡는다 */
+  const m = [d[0], ...d.slice(1).map((v, i) => (d[i] + v) / 2), d[d.length - 1]];
+  d.forEach((dd, i) => {
+    if (dd === 0) { m[i] = 0; m[i + 1] = 0; return; }
+    const a = m[i] / dd;
+    const b = m[i + 1] / dd;
+    const s = a * a + b * b;
+    /* 너무 가파르면 되돌려 깎는다 — 이 한 줄이 0 아래로 파고드는 것을 막는다 */
+    if (s > 9) {
+      const t = 3 / Math.sqrt(s);
+      m[i] = t * a * dd;
+      m[i + 1] = t * b * dd;
+    }
+  });
+
+  let out = `M${p(0)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const dx = pts[i + 1].x - pts[i].x;
+    out += ` C${(pts[i].x + dx / 3).toFixed(1)} ${(pts[i].y + (m[i] * dx) / 3).toFixed(1)}`
+         + ` ${(pts[i + 1].x - dx / 3).toFixed(1)} ${(pts[i + 1].y - (m[i + 1] * dx) / 3).toFixed(1)}`
+         + ` ${p(i + 1)}`;
+  }
+  return out;
+}
+
 function LineChart({ rows, series, current, onPick }: {
   rows: { m: string; sum: number; goal: number }[];
   /**
@@ -2478,8 +2524,8 @@ function LineChart({ rows, series, current, onPick }: {
    * 그림 그릴 자리를 그만큼 줄이고, 이름표는 그 밖에 세운다. 서로 밟을 일이
    * 없어진다 — 겹침을 「잘 피하는」 것이 아니라 아예 안 생기게 하는 것이다.
    */
-  const 이름칸 = 여럿 ? (narrow ? 84 : 104) : 0;
-  const R = (narrow ? 348 : 736) - 이름칸;
+  const 이름칸 = 여럿 ? (narrow ? 86 : 112) : 0;
+  const R = (narrow ? 352 : 744) - 이름칸;
   /* 천장은 그리는 선 전부를 담아야 한다. 지점별로 나눠 그리면 합계보다
      낮아지므로, 합계에 맞춰 두면 선들이 바닥에 깔린다 */
   const top = niceMax(
@@ -2509,7 +2555,9 @@ function LineChart({ rows, series, current, onPick }: {
     return d.trim();
   })();
 
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ f, v: top * f }));
+  /* 지점별로 볼 때는 선이 넷이라 눈금까지 다섯 줄이면 배경이 시끄럽다.
+     바닥·가운데·천장 셋이면 값을 어림하는 데 모자라지 않는다 */
+  const ticks = (여럿 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((f) => ({ f, v: top * f }));
   const iCur = Math.max(0, rows.findIndex((r) => r.m === current));
 
   return (
@@ -2528,6 +2576,11 @@ function LineChart({ rows, series, current, onPick }: {
         ))}
       </defs>
 
+      {/* 보고 있는 달을 은은한 기둥으로 세운다 — 어느 달 숫자를 읽고 있는지
+          눈이 먼저 안다. 눈금선보다 뒤에 깔아서 배경으로만 남게 한다 */}
+      {여럿 && <rect className="nowband" x={x(iCur) - 15} y={TOP - 8}
+                     width="30" height={BASE - TOP + 8} rx="9" />}
+
       {ticks.map((t) => (
         <g key={t.f}>
           <line className={t.f === 0 ? "axis" : "grid"}
@@ -2537,81 +2590,75 @@ function LineChart({ rows, series, current, onPick }: {
       ))}
 
       {여럿 ? (
-        /* 지점마다 한 줄. 면도 목표선도 안 그린다 — 선이 넷이면 면이 서로를
-           가리고, 목표선까지 얹으면 무엇이 무엇인지 알 수 없다 */
+        /* 지점마다 한 줄. 목표선은 안 그린다 — 선이 넷인데 목표선까지 얹으면
+           무엇이 무엇인지 알 수 없다 */
         <>
           {/*
-            면은 큰 지점부터 깐다
+            값이 처음 붙는 달부터 그린다
 
-            네 지점의 면이 겹치므로 작은 지점을 나중에 그려야 그 색이 위로
-            온다. 반대로 깔면 큰 지점의 옅은 색이 작은 지점을 덮어 버린다.
-            면은 아주 옅게(18%) 둔다 — 넷이 겹치는 자리는 그만큼 진해진다.
+            문을 연 지 두 달이면 앞의 열 달은 전부 0이다. 그 구간에 선 넷을
+            겹쳐 그리면 축 위에 두꺼운 색 막대가 깔린 것처럼 보인다. 지저분한
+            데다 눈금선인지 매출선인지도 헷갈린다. 한 칸 앞에서 0으로 출발해
+            거기서부터만 그린다.
           */}
-          {series!
-            .map((s2, si) => ({ s2, si, peak: Math.max(...s2.values) }))
-            .sort((a, b) => b.peak - a.peak)
-            .map(({ s2, si }) => {
-              const 선 = s2.values
-                .map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
-                .join(" ");
-              return (
-                <path key={`a${s2.code}`} className="area"
-                      d={`${선} L${x(n - 1).toFixed(1)} ${BASE} L${x(0).toFixed(1)} ${BASE} Z`}
-                      fill={`url(#lcfade${si + 1})`} />
-              );
-            })}
-          {/*
-            선도 큰 지점부터 그린다
+          {(() => {
+            const 첫달 = series!.some((s2) => s2.values.some((v) => v > 0))
+              ? Math.max(0, series!.reduce(
+                  (min, s2) => {
+                    const k = s2.values.findIndex((v) => v > 0);
+                    return k >= 0 ? Math.min(min, k) : min;
+                  }, n - 1) - 1)
+              : 0;
+            const 길 = (s2: { values: number[] }) =>
+              smoothPath(s2.values.slice(첫달).map((v, k) => ({ x: x(첫달 + k), y: y(v) })));
+            const 큰것부터 = series!
+              .map((s2, si) => ({ s2, si, peak: Math.max(...s2.values) }))
+              .sort((a, b) => b.peak - a.peak);
 
-            0원인 지점의 선은 바닥에 딱 붙어 있어서, 다른 지점의 선도 그 달에
-            0이면 그 밑에 깔려 아예 안 보인다. 실제로 성정점이 그렇게 사라졌다.
-            작은 지점을 나중에 그려 위로 올린다.
+            return (
+              <>
+                {/* 면은 큰 지점부터 깐다 — 작은 지점이 나중에 그려져야 위로 온다 */}
+                {큰것부터.map(({ s2, si }) =>
+                  s2.values.some((v) => v > 0) ? (
+                    <path key={`a${s2.code}`} className="area"
+                          d={`${길(s2)} L${x(n - 1).toFixed(1)} ${BASE} L${x(첫달).toFixed(1)} ${BASE} Z`}
+                          fill={`url(#lcfade${si + 1})`} />
+                  ) : null
+                )}
+                {큰것부터.map(({ s2, si }) =>
+                  s2.values.some((v) => v > 0) ? (
+                    <path key={`l${s2.code}`} className={`ln s${si + 1}`} d={길(s2)} />
+                  ) : null
+                )}
+              </>
+            );
+          })()}
 
-            그 달 값이 0인 지점의 점은 속을 비운 동그라미로 그린다. 꽉 찬 점을
-            축 위에 얹으면 눈금선의 일부처럼 보인다 — 비어 있으면 「여기 있는데
-            0이다」로 읽힌다.
-          */}
-          {series!
-            .map((s2, si) => ({ s2, si, peak: Math.max(...s2.values) }))
-            .sort((a, b) => b.peak - a.peak)
-            .map(({ s2, si }) => (
-              <g key={s2.code}>
-                <path className={`ln s${si + 1}`}
-                      d={s2.values.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(" ")} />
-                <circle className={`dot s${si + 1}${(s2.values[iCur] ?? 0) > 0 ? "" : " zero"}`}
-                        cx={x(iCur)} cy={y(s2.values[iCur] ?? 0)} r="4" />
-              </g>
-            ))}
           {/*
             이름표 — 표 밖 오른쪽에 세운다
 
-            ── 무엇을 적나 ────────────────────────────────────
-            보고 있는 달의 지점 이름과 그 달 금액이다. 숫자만 적어 두었더니
-            「1,076만」이 어느 지점 것인지 알려면 밑의 이름표에서 색을 찾아
-            선을 눈으로 따라와야 했다.
+            ── 왜 밖인가 ──────────────────────────────────────
+            안에 두면 겹치지 않게 아무리 잘 밀어 놓아도 그 자리로 선이 지나간다.
+            글자 뒤에 배경색을 둘러 읽히게 만들면 이번엔 그 배경이 선을 가린다.
+            그림 자리를 그만큼 줄이고 밖에 세우면 서로 밟을 일이 없다.
 
-            ── 왜 0원도 적나 ──────────────────────────────────
-            그 달에 판 것이 없는 지점은 값이 0이라 빼고 있었다. 그래서 지점이
-            넷인데 숫자는 셋만 떴다. 빠진 것인지 0인지 화면만 봐서는 알 수
-            없다 — 0이면 0원이라고 적되 소리는 낮춘다.
+            ── 어떻게 잇나 ────────────────────────────────────
+            금액 큰 차례로 고르게 내려 붙이니 겹칠 수가 없다. 대신 이름표가 제
+            점과 높이가 어긋나므로 ㄱ자로 꺾어 잇는다 — 비스듬한 실은 여럿이
+            엇갈리면 실뭉치처럼 보인다.
 
-            ── 어떻게 세우나 ──────────────────────────────────
-            금액 큰 차례로 위에서부터 고르게 내려 붙인다. 값이 아무리 붙어
-            있어도 줄 간격이 정해져 있으니 겹칠 수가 없다. 대신 이름표가 제
-            점의 높이와 어긋나므로, 점까지 가는 실을 제 색으로 그어 잇는다.
-
-            지점이 많으면 두 줄(이름·금액)이 다 안 들어간다. 그때는 한 줄로
-            줄여 적는다 — 잘려 나가는 것보다 낫다.
+            ── 0원인 지점 ─────────────────────────────────────
+            그 달에 판 것이 없어도 이름표는 세운다. 빠진 것인지 0인지 화면만
+            봐서는 알 수 없다. 점은 속을 비워 그린다 — 꽉 찬 점을 축 위에
+            얹으면 눈금선의 일부처럼 보인다.
           */}
           {(() => {
             const 칸 = series!.length;
             const 높이 = BASE - TOP;
-            /* 이름과 금액을 위아래로 놓으면 한 지점에 34가 든다.
-               다 안 들어가면 한 줄로 줄인다 */
-            const 두줄 = 칸 * 30 <= 높이;
-            const 줄높이 = Math.min(두줄 ? 34 : 19, 높이 / 칸);
-            const 시작 = TOP + (높이 - 줄높이 * 칸) / 2 + 4;
-            const 왼쪽 = R + 13;
+            const 줄높이 = Math.min(36, 높이 / 칸);
+            const 시작 = TOP + (높이 - 줄높이 * 칸) / 2 + 8;
+            const 꺾는곳 = R + 14;
+            const 왼쪽 = R + 30;
 
             return series!
               .map((s2, si) => ({ si, name: s2.name, v: s2.values[iCur] ?? 0 }))
@@ -2619,24 +2666,16 @@ function LineChart({ rows, series, current, onPick }: {
               .map((r, k) => {
                 const ly = 시작 + k * 줄높이;
                 const dy = y(r.v);
-                const amt = r.v > 0 ? koShort(r.v) : "0원";
                 return (
                   <g key={r.si}>
-                    {/* 점에서 이름표까지 잇는 실 — 이것이 없으면 어느 선의
-                        이름표인지 색으로만 짐작해야 한다 */}
                     <path className={`lead s${r.si + 1}`}
-                          d={`M${(x(iCur) + 5).toFixed(1)} ${dy.toFixed(1)} L${(왼쪽 - 4).toFixed(1)} ${(ly + 1).toFixed(1)}`} />
-                    <rect className={`gsw s${r.si + 1}`} x={R + 4} y={ly - 4} width="6" height="6" rx="1.5" />
-                    {두줄 ? (
-                      <>
-                        <text className="gnm" x={왼쪽} y={ly + 1}>{r.name}</text>
-                        <text className={`gvl${r.v > 0 ? "" : " off"}`} x={왼쪽} y={ly + 16}>{amt}</text>
-                      </>
-                    ) : (
-                      <text className="gnm" x={왼쪽} y={ly + 1}>
-                        {r.name} <tspan className={`gvl${r.v > 0 ? "" : " off"}`}>{amt}</tspan>
-                      </text>
-                    )}
+                          d={`M${(x(iCur) + 6).toFixed(1)} ${dy.toFixed(1)} H${꺾는곳.toFixed(1)} V${(ly - 3).toFixed(1)} H${(왼쪽 - 8).toFixed(1)}`} />
+                    <circle className={`dot s${r.si + 1}${r.v > 0 ? "" : " zero"}`}
+                            cx={x(iCur)} cy={dy} r="4.5" />
+                    <text className={`gnm s${r.si + 1}`} x={왼쪽 - 8} y={ly}>{r.name}</text>
+                    <text className={`gvl${r.v > 0 ? "" : " off"}`} x={왼쪽 - 8} y={ly + 17}>
+                      {r.v > 0 ? koShort(r.v) : "0원"}
+                    </text>
                   </g>
                 );
               });

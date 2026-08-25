@@ -2442,6 +2442,8 @@ table.grid td.big .tot {
 
 /* 월별 흐름을 지점마다 한 줄씩 그릴 때의 색 — 날짜별 꺾은선과 같은 차례를 쓴다 */
 .lc .ln.s1 { stroke: var(--s1); }
+/* 지점별로 그릴 때는 조금 굵게 — 넷이 나란히 달리면 얇은 선은 색이 안 잡힌다 */
+.lc .ln[class*=" s"] { stroke-width: 2.4; }
 .lc .ln.s2 { stroke: var(--s2); }
 .lc .ln.s3 { stroke: var(--s3); }
 .lc .ln.s4 { stroke: var(--s4); }
@@ -2461,20 +2463,23 @@ table.grid td.big .tot {
   그래프 안에 두면 아무리 잘 밀어 놓아도 그 자리로 선이 지나간다. 글자 뒤에
   배경색을 둘러 읽히게 만들면 이번엔 그 배경이 선을 가린다. 그림 자리를 그만큼
   줄이고 이름표를 밖에 세워, 서로 밟을 일을 아예 없앤다.
-*/
-.lc .gsw.s1 { fill: var(--s1); }
-.lc .gsw.s2 { fill: var(--s2); }
-.lc .gsw.s3 { fill: var(--s3); }
-.lc .gsw.s4 { fill: var(--s4); }
-.lc .gsw.s5 { fill: var(--s5); }
-.lc .gsw.s6 { fill: var(--s6); }
-.lc .gnm { fill: var(--ink-2); font-size: 11px; font-weight: 700; }
-.lc .gvl { fill: var(--ink); font-size: 13px; font-weight: 800; letter-spacing: -.03em; }
-/* 그 달에 판 것이 없는 지점 — 자리는 지키되 소리는 낮춘다 */
-.lc .gvl.off { fill: var(--muted); font-weight: 700; }
 
-/* 이름표와 제 점을 잇는 실 — 가늘게, 제 색으로 */
-.lc .lead { fill: none; stroke-width: 1.2; opacity: .5; }
+  이름은 제 선 색으로, 금액은 먹색으로 크게. 눈이 먼저 금액을 잡고 그 다음에
+  어느 지점인지를 본다 — 반대로 두면 이름만 읽히고 숫자를 다시 찾아야 한다.
+*/
+.lc .gnm { font-size: 11px; font-weight: 700; }
+.lc .gnm.s1 { fill: var(--s1); }
+.lc .gnm.s2 { fill: var(--s2); }
+.lc .gnm.s3 { fill: var(--s3); }
+.lc .gnm.s4 { fill: var(--s4); }
+.lc .gnm.s5 { fill: var(--s5); }
+.lc .gnm.s6 { fill: var(--s6); }
+.lc .gvl { fill: var(--ink); font-size: 15px; font-weight: 800; letter-spacing: -.04em; }
+/* 그 달에 판 것이 없는 지점 — 자리는 지키되 소리는 낮춘다 */
+.lc .gvl.off { fill: var(--muted); font-size: 13px; font-weight: 700; }
+
+/* 이름표와 제 점을 잇는 ㄱ자 선 — 비스듬한 실은 여럿이 엇갈리면 실뭉치가 된다 */
+.lc .lead { fill: none; stroke-width: 1.1; opacity: .42; }
 .lc .lead.s1 { stroke: var(--s1); }
 .lc .lead.s2 { stroke: var(--s2); }
 .lc .lead.s3 { stroke: var(--s3); }
@@ -2482,8 +2487,11 @@ table.grid td.big .tot {
 .lc .lead.s5 { stroke: var(--s5); }
 .lc .lead.s6 { stroke: var(--s6); }
 
+/* 보고 있는 달의 기둥 — 배경으로만 남을 만큼 옅게 */
+.lc .nowband { fill: var(--surface-2); }
+
 /* 그 달 값이 0인 지점의 점 — 속을 비워 「여기 있는데 0」으로 읽히게 한다 */
-.lc .dot.zero { fill: var(--surface); stroke-width: 2.2; }
+.lc .dot.zero { fill: var(--surface); stroke-width: 2.4; }
 .lc .dot.zero.s1 { stroke: var(--s1); }
 .lc .dot.zero.s2 { stroke: var(--s2); }
 .lc .dot.zero.s3 { stroke: var(--s3); }
@@ -2495,15 +2503,15 @@ table.grid td.big .tot {
 table.grid td.nm { font-weight: 700; }
 
 /* 지점마다 제 색으로 옅게 까는 면 — 넷이 겹치므로 아주 옅게 둔다 */
-.lc .ga1 { stop-color: var(--s1); stop-opacity: .18; }
+.lc .ga1 { stop-color: var(--s1); stop-opacity: .13; }
 .lc .gb1 { stop-color: var(--s1); stop-opacity: 0; }
-.lc .ga2 { stop-color: var(--s2); stop-opacity: .18; }
+.lc .ga2 { stop-color: var(--s2); stop-opacity: .13; }
 .lc .gb2 { stop-color: var(--s2); stop-opacity: 0; }
-.lc .ga3 { stop-color: var(--s3); stop-opacity: .18; }
+.lc .ga3 { stop-color: var(--s3); stop-opacity: .13; }
 .lc .gb3 { stop-color: var(--s3); stop-opacity: 0; }
-.lc .ga4 { stop-color: var(--s4); stop-opacity: .18; }
+.lc .ga4 { stop-color: var(--s4); stop-opacity: .13; }
 .lc .gb4 { stop-color: var(--s4); stop-opacity: 0; }
-.lc .ga5 { stop-color: var(--s5); stop-opacity: .18; }
+.lc .ga5 { stop-color: var(--s5); stop-opacity: .13; }
 .lc .gb5 { stop-color: var(--s5); stop-opacity: 0; }
-.lc .ga6 { stop-color: var(--s6); stop-opacity: .18; }
+.lc .ga6 { stop-color: var(--s6); stop-opacity: .13; }
 .lc .gb6 { stop-color: var(--s6); stop-opacity: 0; }
