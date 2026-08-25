@@ -2455,33 +2455,26 @@ table.grid td.big .tot {
 .lc .dot.s5 { fill: var(--s5); }
 .lc .dot.s6 { fill: var(--s6); }
 
-/* 점 옆에 적는 「지점 이름 + 금액」
-   이름은 제 선 색으로 둔다. 글자가 겹쳐 밀려 올라가면 제 점에서 떨어지므로,
-   색이 같아야 어느 선의 값인지 눈으로 잇을 수 있다 */
-.lc .curlb .nm { font-weight: 700; }
-.lc .curlb .nm.s1 { fill: var(--s1); }
-.lc .curlb .nm.s2 { fill: var(--s2); }
-.lc .curlb .nm.s3 { fill: var(--s3); }
-.lc .curlb .nm.s4 { fill: var(--s4); }
-.lc .curlb .nm.s5 { fill: var(--s5); }
-.lc .curlb .nm.s6 { fill: var(--s6); }
-.lc .curlb .vv { font-weight: 800; }
-/* 그 달에 판 것이 없는 지점 — 자리는 지키되 소리는 낮춘다 */
-.lc .curlb .vv.off { fill: var(--muted); font-weight: 700; }
-
 /*
-  글자 뒤에 배경색 테두리를 두른다
+  표 밖 오른쪽에 세우는 지점 이름표
 
-  글자가 겹치지 않게 밀어 놓아도 그 자리로 다른 지점의 선이 지나가면 획과
-  글자가 섞여 못 읽는다. 글자 모양대로 배경색을 먼저 칠하고 그 위에 글자를
-  얹으면(paint-order) 선 위에 놓여도 또렷하다.
+  그래프 안에 두면 아무리 잘 밀어 놓아도 그 자리로 선이 지나간다. 글자 뒤에
+  배경색을 둘러 읽히게 만들면 이번엔 그 배경이 선을 가린다. 그림 자리를 그만큼
+  줄이고 이름표를 밖에 세워, 서로 밟을 일을 아예 없앤다.
 */
-.lc .curlb {
-  paint-order: stroke;
-  stroke: var(--surface); stroke-width: 3.4px; stroke-linejoin: round;
-}
-/* 밀려난 글자와 제 점을 잇는 실 — 가늘게, 제 색으로 */
-.lc .lead { fill: none; stroke-width: 1.2; opacity: .55; }
+.lc .gsw.s1 { fill: var(--s1); }
+.lc .gsw.s2 { fill: var(--s2); }
+.lc .gsw.s3 { fill: var(--s3); }
+.lc .gsw.s4 { fill: var(--s4); }
+.lc .gsw.s5 { fill: var(--s5); }
+.lc .gsw.s6 { fill: var(--s6); }
+.lc .gnm { fill: var(--ink-2); font-size: 11px; font-weight: 700; }
+.lc .gvl { fill: var(--ink); font-size: 13px; font-weight: 800; letter-spacing: -.03em; }
+/* 그 달에 판 것이 없는 지점 — 자리는 지키되 소리는 낮춘다 */
+.lc .gvl.off { fill: var(--muted); font-weight: 700; }
+
+/* 이름표와 제 점을 잇는 실 — 가늘게, 제 색으로 */
+.lc .lead { fill: none; stroke-width: 1.2; opacity: .5; }
 .lc .lead.s1 { stroke: var(--s1); }
 .lc .lead.s2 { stroke: var(--s2); }
 .lc .lead.s3 { stroke: var(--s3); }

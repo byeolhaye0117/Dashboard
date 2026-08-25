@@ -1297,18 +1297,14 @@ export default function Client(p: Props) {
       <p className="sec-sub">최근 12개월 · 점선은 그달의 목표 · 눌러서 그달로 넘어갑니다</p>
       <div className="viz">
         <LineChart rows={trend} series={trendBy} current={month} onPick={setMonth} />
-        <div className="vkey">
-          {trendBy ? (
-            trendBy.map((s2, i) => (
-              <span key={s2.code}><i className={`ln s${i + 1}`} />{s2.name}</span>
-            ))
-          ) : (
-            <>
-              <span><i className="ln s1" />월 매출</span>
-              <span><i className="ln dash" />월 목표</span>
-            </>
-          )}
-        </div>
+        {/* 지점별로 그릴 때는 이름표가 그래프 오른쪽에 이미 서 있다.
+            밑에 또 두면 같은 말을 두 번 하는 셈이라 눈만 나눠 쓴다 */}
+        {!trendBy && (
+          <div className="vkey">
+            <span><i className="ln s1" />월 매출</span>
+            <span><i className="ln dash" />월 목표</span>
+          </div>
+        )}
       </div>
 
       {/*
@@ -2466,12 +2462,24 @@ function LineChart({ rows, series, current, onPick }: {
   const narrow = useNarrow();
   const W = narrow ? 360 : 760;
   const L = narrow ? 40 : 58;
-  const R = narrow ? 348 : 736;
   const TOP = 22;
   const BASE = narrow ? 174 : 190;
   const VB = narrow ? 200 : 216;
   const n = rows.length;
   const 여럿 = (series?.length ?? 0) > 1;
+  /*
+   * 이름표가 앉을 오른쪽 자리
+   *
+   * ── 왜 표 밖으로 뺐나 ───────────────────────────────────────
+   * 이름표를 그래프 안에 두면, 겹치지 않게 아무리 잘 밀어 놓아도 그 자리로
+   * 선이 지나간다. 글자 뒤에 배경색을 둘러 읽히게는 만들었지만, 그러면 이번엔
+   * 그 배경이 선을 가린다. 어느 쪽을 살려도 다른 쪽이 죽는다.
+   *
+   * 그림 그릴 자리를 그만큼 줄이고, 이름표는 그 밖에 세운다. 서로 밟을 일이
+   * 없어진다 — 겹침을 「잘 피하는」 것이 아니라 아예 안 생기게 하는 것이다.
+   */
+  const 이름칸 = 여럿 ? (narrow ? 84 : 104) : 0;
+  const R = (narrow ? 348 : 736) - 이름칸;
   /* 천장은 그리는 선 전부를 담아야 한다. 지점별로 나눠 그리면 합계보다
      낮아지므로, 합계에 맞춰 두면 선들이 바닥에 깔린다 */
   const top = niceMax(
@@ -2575,68 +2583,63 @@ function LineChart({ rows, series, current, onPick }: {
               </g>
             ))}
           {/*
-            보고 있는 달의 지점 이름과 금액을 적는다
+            이름표 — 표 밖 오른쪽에 세운다
 
-            ── 왜 이름까지 적나 ────────────────────────────────
-            숫자만 적어 두었더니 「1,076만」이 어느 지점 것인지 알려면 밑의
-            이름표에서 색을 찾아 선을 눈으로 따라와야 했다. 글자가 겹쳐 밀려
-            올라간 줄은 제 점에서 떨어져 있어서 그마저도 어긋난다.
-            이름을 같이 적으면 그 자리에서 답이 된다.
+            ── 무엇을 적나 ────────────────────────────────────
+            보고 있는 달의 지점 이름과 그 달 금액이다. 숫자만 적어 두었더니
+            「1,076만」이 어느 지점 것인지 알려면 밑의 이름표에서 색을 찾아
+            선을 눈으로 따라와야 했다.
 
             ── 왜 0원도 적나 ──────────────────────────────────
             그 달에 판 것이 없는 지점은 값이 0이라 빼고 있었다. 그래서 지점이
             넷인데 숫자는 셋만 떴다. 빠진 것인지 0인지 화면만 봐서는 알 수
-            없다 — 0이면 0이라고 적는 편이 낫다.
+            없다 — 0이면 0원이라고 적되 소리는 낮춘다.
 
-            ── 어떻게 안 겹치게 하나 ──────────────────────────
-            한 번만 밀어 올리면 위쪽 글자가 다시 다음 글자와 붙는다. 위에서
-            아래로 한 번 훑어 겹친 만큼 내리고, 바닥을 넘으면 아래에서 위로
-            되민다. 두 번 훑어야 넷이 모여도 자리가 잡힌다.
+            ── 어떻게 세우나 ──────────────────────────────────
+            금액 큰 차례로 위에서부터 고르게 내려 붙인다. 값이 아무리 붙어
+            있어도 줄 간격이 정해져 있으니 겹칠 수가 없다. 대신 이름표가 제
+            점의 높이와 어긋나므로, 점까지 가는 실을 제 색으로 그어 잇는다.
 
-            제자리에서 밀려난 글자는 제 점에서 떨어지므로, 점까지 가는 실을
-            그 색으로 그어 준다. 글자 뒤에는 배경색 테두리를 둘러 선이 지나가도
-            글자가 묻히지 않게 한다.
+            지점이 많으면 두 줄(이름·금액)이 다 안 들어간다. 그때는 한 줄로
+            줄여 적는다 — 잘려 나가는 것보다 낫다.
           */}
           {(() => {
-            /* 글자 한 줄이 차지하는 높이 — 이보다 가까우면 서로 붙어 읽힌다 */
-            const 간격 = 17;
-            const 천장 = TOP + 4;
-            /* 맨 아래 글자가 축선 위에 걸터앉지 않도록 한 줄 띄운다 —
-               0원인 지점이 늘 여기로 온다 */
-            const 바닥 = BASE - 9;
-            const 자리 = series!
+            const 칸 = series!.length;
+            const 높이 = BASE - TOP;
+            /* 이름과 금액을 위아래로 놓으면 한 지점에 34가 든다.
+               다 안 들어가면 한 줄로 줄인다 */
+            const 두줄 = 칸 * 30 <= 높이;
+            const 줄높이 = Math.min(두줄 ? 34 : 19, 높이 / 칸);
+            const 시작 = TOP + (높이 - 줄높이 * 칸) / 2 + 4;
+            const 왼쪽 = R + 13;
+
+            return series!
               .map((s2, si) => ({ si, name: s2.name, v: s2.values[iCur] ?? 0 }))
-              .map((r) => ({ ...r, dy: y(r.v), ly: y(r.v) + 4 }))
-              .sort((a, b) => a.dy - b.dy);
-
-            /* 위에서 아래로 — 겹친 만큼 내린다 */
-            자리.forEach((r, i) => {
-              if (i > 0) r.ly = Math.max(r.ly, 자리[i - 1].ly + 간격);
-            });
-            /* 바닥을 넘겼으면 아래에서 위로 되민다 */
-            if (자리.length && 자리[자리.length - 1].ly > 바닥) {
-              자리[자리.length - 1].ly = 바닥;
-              for (let i = 자리.length - 2; i >= 0; i--) {
-                자리[i].ly = Math.min(자리[i].ly, 자리[i + 1].ly - 간격);
-              }
-            }
-            /* 되밀다 천장을 뚫었으면 거기서 멈춘다 */
-            자리.forEach((r, i) => { r.ly = Math.max(r.ly, 천장 + i * 간격); });
-
-            return 자리.map((r) => (
-              <g key={r.si}>
-                {Math.abs(r.ly - 4 - r.dy) > 5 && (
-                  <path className={`lead s${r.si + 1}`}
-                        d={`M${(x(iCur) - 7).toFixed(1)} ${(r.ly - 4).toFixed(1)} L${x(iCur).toFixed(1)} ${r.dy.toFixed(1)}`} />
-                )}
-                <text className="curlb" x={x(iCur) - 10} y={r.ly} textAnchor="end">
-                  <tspan className={`nm s${r.si + 1}`}>{r.name} </tspan>
-                  <tspan className={r.v > 0 ? "vv" : "vv off"}>
-                    {r.v > 0 ? koShort(r.v) : "0원"}
-                  </tspan>
-                </text>
-              </g>
-            ));
+              .sort((a, b) => b.v - a.v)
+              .map((r, k) => {
+                const ly = 시작 + k * 줄높이;
+                const dy = y(r.v);
+                const amt = r.v > 0 ? koShort(r.v) : "0원";
+                return (
+                  <g key={r.si}>
+                    {/* 점에서 이름표까지 잇는 실 — 이것이 없으면 어느 선의
+                        이름표인지 색으로만 짐작해야 한다 */}
+                    <path className={`lead s${r.si + 1}`}
+                          d={`M${(x(iCur) + 5).toFixed(1)} ${dy.toFixed(1)} L${(왼쪽 - 4).toFixed(1)} ${(ly + 1).toFixed(1)}`} />
+                    <rect className={`gsw s${r.si + 1}`} x={R + 4} y={ly - 4} width="6" height="6" rx="1.5" />
+                    {두줄 ? (
+                      <>
+                        <text className="gnm" x={왼쪽} y={ly + 1}>{r.name}</text>
+                        <text className={`gvl${r.v > 0 ? "" : " off"}`} x={왼쪽} y={ly + 16}>{amt}</text>
+                      </>
+                    ) : (
+                      <text className="gnm" x={왼쪽} y={ly + 1}>
+                        {r.name} <tspan className={`gvl${r.v > 0 ? "" : " off"}`}>{amt}</tspan>
+                      </text>
+                    )}
+                  </g>
+                );
+              });
           })()}
         </>
       ) : (
