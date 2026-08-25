@@ -2270,6 +2270,13 @@ function LineChart({ rows, series, current, onPick }: {
           <stop offset="0%" className="g0" />
           <stop offset="100%" className="g1" />
         </linearGradient>
+        {/* 지점마다 제 색으로 옅게 깔 물빠짐 */}
+        {여럿 && series!.map((s2, si) => (
+          <linearGradient key={s2.code} id={`lcfade${si + 1}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" className={`ga${si + 1}`} />
+            <stop offset="100%" className={`gb${si + 1}`} />
+          </linearGradient>
+        ))}
       </defs>
 
       {ticks.map((t) => (
@@ -2284,6 +2291,26 @@ function LineChart({ rows, series, current, onPick }: {
         /* 지점마다 한 줄. 면도 목표선도 안 그린다 — 선이 넷이면 면이 서로를
            가리고, 목표선까지 얹으면 무엇이 무엇인지 알 수 없다 */
         <>
+          {/*
+            면은 큰 지점부터 깐다
+
+            네 지점의 면이 겹치므로 작은 지점을 나중에 그려야 그 색이 위로
+            온다. 반대로 깔면 큰 지점의 옅은 색이 작은 지점을 덮어 버린다.
+            면은 아주 옅게(18%) 둔다 — 넷이 겹치는 자리는 그만큼 진해진다.
+          */}
+          {series!
+            .map((s2, si) => ({ s2, si, peak: Math.max(...s2.values) }))
+            .sort((a, b) => b.peak - a.peak)
+            .map(({ s2, si }) => {
+              const 선 = s2.values
+                .map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
+                .join(" ");
+              return (
+                <path key={`a${s2.code}`} className="area"
+                      d={`${선} L${x(n - 1).toFixed(1)} ${BASE} L${x(0).toFixed(1)} ${BASE} Z`}
+                      fill={`url(#lcfade${si + 1})`} />
+              );
+            })}
           {series!.map((s2, si) => (
             <g key={s2.code}>
               <path className={`ln s${si + 1}`}

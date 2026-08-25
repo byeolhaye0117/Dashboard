@@ -2428,3 +2428,17 @@ table.grid td.big .tot {
 
 /* 상품 이름 칸 — 그 줄에서 제일 먼저 읽히는 값이라 굵게 */
 table.grid td.nm { font-weight: 700; }
+
+/* 지점마다 제 색으로 옅게 까는 면 — 넷이 겹치므로 아주 옅게 둔다 */
+.lc .ga1 { stop-color: var(--s1); stop-opacity: .18; }
+.lc .gb1 { stop-color: var(--s1); stop-opacity: 0; }
+.lc .ga2 { stop-color: var(--s2); stop-opacity: .18; }
+.lc .gb2 { stop-color: var(--s2); stop-opacity: 0; }
+.lc .ga3 { stop-color: var(--s3); stop-opacity: .18; }
+.lc .gb3 { stop-color: var(--s3); stop-opacity: 0; }
+.lc .ga4 { stop-color: var(--s4); stop-opacity: .18; }
+.lc .gb4 { stop-color: var(--s4); stop-opacity: 0; }
+.lc .ga5 { stop-color: var(--s5); stop-opacity: .18; }
+.lc .gb5 { stop-color: var(--s5); stop-opacity: 0; }
+.lc .ga6 { stop-color: var(--s6); stop-opacity: .18; }
+.lc .gb6 { stop-color: var(--s6); stop-opacity: 0; }
