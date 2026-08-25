@@ -32,6 +32,8 @@ type Payment = {
   지점코드: string;
   미수금액: string;
   미수금결제예정일: string;
+  /** 결제금액이 어느 잣대로 적혔나 — 「실입금」이면 미수금이 그 밖에 있다 */
+  금액기준?: string;
   환불여부: string;
   환불액: string;
   환불진행상태: string;
@@ -204,7 +206,11 @@ function koShort(n: number): string {
  * 목록이 어긋난다. 실제로 그래프는 3,898,000원인데 밑의 결제 내역을
  * 더하면 2,848,000원이었다.
  */
-function 받은돈(x: { 결제금액?: string; 미수금액?: string }): number {
+function 받은돈(x: { 결제금액?: string; 미수금액?: string; 금액기준?: string }): number {
+  /* 새 잣대로 적힌 줄은 결제금액이 곧 받은 돈이다. 옛 줄은 미수금이 그 안에
+     들어 있어서 빼야 한다 — 두 잣대가 섞여 있는 동안 이 갈래가 필요하다.
+     옛 줄을 다 고치고 나면 이 if 는 지워도 된다 */
+  if ((x.금액기준 ?? "").trim() === "실입금") return num(x.결제금액);
   return Math.max(0, num(x.결제금액) - num(x.미수금액));
 }
 
@@ -297,6 +303,43 @@ export default function Client(p: Props) {
   const [pick, setPick] = useState<{ from: string; to: string; label: string } | null>(null);
   /** 「이 달 전체」로 되돌린 상태인가 */
   const [allMonth, setAllMonth] = useState(false);
+  /*
+   * 옛 결제 줄 정리 — 한 번만 누르는 자리
+   *
+   * 예전에는 결제금액에 미수금까지 합쳐 적었다. 지금은 실제로 받은 돈만
+   * 적는다. 옛 줄이 그대로 있으면 화면이 매번 빼서 맞춰야 하고, 시트를 직접
+   * 여시는 분에게는 그 칸이 계속 총액으로 보인다.
+   */
+  const [fixOpen, setFixOpen] = useState(false);
+  const [fixBusy, setFixBusy] = useState(false);
+  const [fixSeen, setFixSeen] = useState<any>(null);
+  const [fixMsg, setFixMsg] = useState("");
+
+  async function fixBasis(run: boolean) {
+    if (fixBusy) return;
+    setFixBusy(true);
+    setFixMsg("");
+    try {
+      const res = await fetch("/api/sales/amount-basis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: run ? "run" : "preview" }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "하지 못했습니다.");
+      if (run) {
+        setFixMsg(`${j.바뀜}줄을 고쳤습니다. 새로고침하면 반영됩니다.`);
+        setFixSeen(null);
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        setFixSeen(j);
+      }
+    } catch (e: any) {
+      setFixMsg(String(e.message ?? e));
+    } finally {
+      setFixBusy(false);
+    }
+  }
   /* 지우기는 한 번 더 묻는다. 돈이 오간 기록이라 되돌리기가 번거롭다 */
   const [wipe, setWipe] = useState<Payment | null>(null);
   /** 결제 한 줄을 눌러 여는 상세 — 무엇을 얼마에 팔았는지 */
@@ -1228,9 +1271,9 @@ export default function Client(p: Props) {
                         총액이 아주 사라지면 「얼마짜리 계약이었나」를 못 본다.
                       */}
                       <td className="r big num">
-                        {money(Math.max(0, num(x.결제금액) - num(x.미수금액)))}
+                        {money(받은돈(x))}
                         {num(x.미수금액) > 0 && (
-                          <i className="tot">계약 {money(num(x.결제금액))}</i>
+                          <i className="tot">계약 {money(받은돈(x) + num(x.미수금액))}</i>
                         )}
                       </td>
                       <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
@@ -1587,6 +1630,67 @@ export default function Client(p: Props) {
               </div>
             </div>
           )}
+
+      {/*
+        옛 결제 줄 정리
+
+        몇 달에 한 번 누를 일도 아니고 딱 한 번 누르는 자리라 맨 아래 작게 둔다.
+        돈 기록에 손대는 일이라 먼저 무엇이 바뀌는지 보여 주고 나서 한다.
+      */}
+      {p.canEditPay && (
+        <div className="fixbox">
+          <button className="rolebox-t" onClick={() => setFixOpen(!fixOpen)}>
+            <b>옛 결제 줄 정리</b>
+            <span className="dim">{fixOpen ? "접기" : "펴기"}</span>
+          </button>
+          {fixOpen && (
+            <div className="rolebox-b">
+              <p className="stat-note" style={{ marginTop: 0 }}>
+                예전에는 결제금액 칸에 <b>미수금까지 합친 금액</b>을 적었습니다. 지금은
+                실제로 받은 돈만 적습니다. 옛 줄을 한 번 훑어 같은 잣대로 맞춥니다 —
+                미수금이 있는 줄만 바뀌고, 없는 줄은 자국만 남습니다.
+                한 번 고친 줄은 다시 눌러도 또 빠지지 않습니다.
+              </p>
+
+              {fixSeen && (
+                <>
+                  <p className="stat-note">
+                    고칠 줄 <b>{fixSeen.바뀜}줄</b> · 매출에서 빠질 돈{" "}
+                    <b className="warn-text num">{money(fixSeen.줄인돈 ?? 0)}원</b>
+                    {fixSeen.자국만 > 0 && ` · 자국만 남길 줄 ${fixSeen.자국만}줄`}
+                  </p>
+                  {(fixSeen.보기 ?? []).length > 0 && (
+                    <ul className="rolelist">
+                      {fixSeen.보기.map((x: any) => (
+                        <li key={x.id}>
+                          <span className="nm">{x.날짜}</span>
+                          <span className="am num">
+                            {money(x.전)} → {money(x.후)} (미수 {money(x.미수)})
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+
+              <div className="roleadd">
+                <button className="btn-ghost" disabled={fixBusy} onClick={() => fixBasis(false)}>
+                  {fixBusy ? "보는 중…" : "무엇이 바뀌는지 보기"}
+                </button>
+                {fixSeen && (
+                  <button className="btn-primary" style={{ marginTop: 0 }}
+                          disabled={fixBusy} onClick={() => fixBasis(true)}>
+                    {fixBusy ? "고치는 중…" : "이대로 고치기"}
+                  </button>
+                )}
+              </div>
+
+              {fixMsg && <div className="alert-soft" style={{ marginTop: 8 }}>{fixMsg}</div>}
+            </div>
+          )}
+        </div>
+      )}
       </>
 
 

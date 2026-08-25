@@ -122,7 +122,7 @@ const VS_COLS: ColumnSpec = {
   삭제여부: { names: [] },
 };
 
-const P_COLS: ColumnSpec = {
+export const P_COLS: ColumnSpec = {
   결제번호: { names: ["결제 번호", "결제ID"], required: true },
   회원번호: { names: ["회원 번호"], required: true },
   이용권번호: { names: ["이용권 번호"] },
@@ -137,6 +137,15 @@ const P_COLS: ColumnSpec = {
   매출유형: { names: [] },
   미수금액: { names: ["미수금"] },
   미수금결제예정일: { names: ["미수금예정일"] },
+  /*
+   * 이 줄의 결제금액이 어느 잣대로 적혀 있나
+   *
+   * 예전에는 결제금액이 「받기로 한 전부」였다 — 미수금이 그 안에 들어 있었다.
+   * 지금은 「실제로 받은 돈」만 적는다. 두 잣대가 한 시트에 섞이면 화면이
+   * 미수금을 두 번 빼거나 아예 안 뺀다.
+   * 새로 적는 줄에는 「실입금」이라 남기고, 옛 줄은 한 번 훑어 고친다.
+   */
+  금액기준: { names: ["금액기준"] },
   담당직원사번: { names: ["담당직원", "처리직원사번", "등록직원사번"] },
   환불여부: { names: [] },
   환불액: { names: ["환불금액"] },
@@ -213,6 +222,8 @@ export type Payment = {
   지점코드: string;
   미수금액: string;
   미수금결제예정일: string;
+  /** 결제금액이 어느 잣대로 적혔나 — 「실입금」이면 미수금이 그 밖에 있다 */
+  금액기준: string;
   환불여부: string;
   환불액: string;
   환불진행상태: string;
@@ -386,6 +397,7 @@ export async function listPayments(): Promise<Payment[]> {
       지점코드: get(r, cols, "지점코드"),
       미수금액: get(r, cols, "미수금액"),
       미수금결제예정일: get(r, cols, "미수금결제예정일"),
+      금액기준: get(r, cols, "금액기준"),
       환불여부: get(r, cols, "환불여부"),
       환불액: get(r, cols, "환불액"),
       환불진행상태: get(r, cols, "환불진행상태"),
@@ -546,11 +558,23 @@ async function writePurchase(
     ? input.결제일!.trim() + stamp.slice(10)
     : stamp;
 
-  // 1) 결제 — 돈을 받은 건에 한해서만 한 줄 만든다
-  const amount =
+  /*
+   * 1) 결제 — 돈을 받은 건에 한해서만 한 줄 만든다
+   *
+   * 결제금액에는 「실제로 받은 돈」만 적는다. 예전에는 미수금까지 합친
+   * 「받기로 한 전부」를 적었는데, 그러면 아직 안 받은 돈이 그 달 매출로
+   * 잡힌다. 미수금은 미수금액 칸에 따로 남는다.
+   */
+  const 받기로한것 =
     won(input.결제금액) || won(input.카드액) + won(input.현금액) + won(input.계좌액);
+  const 미수 = won(input.미수금액);
+  const amount = Math.max(0, 받기로한것 - 미수);
   let payId = "";
-  if (amount > 0) {
+  /* 오늘 한 푼도 안 받고 전액 외상으로 다는 일이 있다. 그때도 미수금을
+     적어 둘 줄은 있어야 한다 — 받은 돈이 0 이라고 없던 일이 되면 안 된다 */
+  if (받기로한것 > 0) {
+    /* 시트에 그 칸이 없으면 값이 소리 없이 사라진다 */
+    await addColumns(SHEET_P, ["매출유형", "담당직원사번", "미수금액", "미수금결제예정일", "금액기준"]);
     const p = await readSheet(SHEET_P);
     const pCols = resolve(SHEET_P, p.headers, P_COLS);
     payId = nextId(p.rows.map((r) => get(r, pCols, "결제번호")), "PAY", 5);
@@ -572,7 +596,9 @@ async function writePurchase(
           카드액: String(card),
           계좌액: String(bank),
           매출유형: input.매출유형 ?? "",
-          미수금액: String(won(input.미수금액)),
+          미수금액: String(미수),
+          /* 이 줄이 새 잣대로 적혔다는 자국 — 옛 줄을 고칠 때 건너뛰는 표시다 */
+          금액기준: "실입금",
           미수금결제예정일: input.미수금결제예정일 ?? "",
           /* 데스크에서 대신 넣어 주는 일이 흔하다. 고른 사람이 있으면 그 사람이
              실적을 가져간다 — 매출 화면의 「직원별 매출」이 이 값을 그대로 센다.
@@ -1181,19 +1207,20 @@ export async function patchPayment(
 ): Promise<void> {
   /* 시트에 그 칸이 없으면 값이 소리 없이 사라진다. 실제로 금액·매출유형이
      그렇게 여러 번 날아갔다 — 고치기 전에 칸부터 만들어 둔다 */
-  await addColumns(SHEET_P, ["매출유형", "담당직원사번", "미수금액", "미수금결제예정일"]);
+  await addColumns(SHEET_P, ["매출유형", "담당직원사번", "미수금액", "미수금결제예정일", "금액기준"]);
 
   const next = { ...changes };
+  /* 화면에서 고친 값은 새 잣대다 — 결제금액 칸에 실제로 받은 돈만 적는다 */
+  if (next["결제금액"] !== undefined) next["금액기준"] = "실입금";
   const total = won(next["결제금액"]);
   const split = won(next["카드액"]) + won(next["현금액"]) + won(next["계좌액"]);
 
   if (split > 0) {
     next["결제금액"] = String(split);
   } else if (total > 0 && next["결제수단"]) {
-    /* 수단별로 나눠 적는 것은 오늘 실제로 들어온 돈이다. 미수금은 아직 어느
-       수단으로도 안 들어왔으니 빼고 나눈다 — 안 그러면 매출 화면의
-       「결제수단별」이 받지도 않은 돈을 카드 매출로 센다 */
-    const got = Math.max(0, total - won(next["미수금액"]));
+    /* 결제금액이 곧 실제로 받은 돈이다(금액기준 「실입금」). 미수금은 이미
+       그 밖에 있으므로 여기서 또 뺄 것이 없다 */
+    const got = total;
     const m = next["결제수단"].trim();
     next["현금액"] = String(m === "현금" ? got : 0);
     next["계좌액"] = String(m === "계좌" ? got : 0);

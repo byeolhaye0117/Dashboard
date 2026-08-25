@@ -2403,3 +2403,10 @@ table.grid td.big .tot {
   display: block; margin-top: 1px; font-style: normal;
   font-size: 11px; font-weight: 700; color: var(--muted);
 }
+
+/* 옛 결제 줄 정리 — 딱 한 번 누르는 자리라 맨 아래 접어 둔다 */
+.fixbox {
+  margin-top: 28px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface);
+}
