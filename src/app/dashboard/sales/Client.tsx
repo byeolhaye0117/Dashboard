@@ -1348,25 +1348,27 @@ export default function Client(p: Props) {
                 {payLines.map(({ x, it, 첫줄, 개수 }, k) => (
                   /* 줄을 누르면 「이 26만원이 무엇이었나」가 열린다.
                      지우기 단추는 눌러도 상세가 안 열리게 따로 막는다 */
-                  <tr key={`${x.id}-${k}`} className={첫줄 ? "" : "sub"}
-                      onClick={() => setDetail(x)}>
-                    {/* 한 결제를 여러 줄로 폈다. 둘째 줄부터는 날짜·회원·지점을
-                        비운다 — 같은 값을 세 번 적으면 다른 결제로 읽힌다 */}
-                    <td className="num dim">{첫줄 ? (x.결제일시 ?? "").slice(5, 10) : ""}</td>
-                    <td>{첫줄 ? (p.memberNames[x.회원번호] ?? x.회원번호 ?? "-") : ""}</td>
-                    <td className="dim">{첫줄 ? branchName(x.지점코드) : ""}</td>
+                  <tr key={`${x.id}-${k}`} onClick={() => setDetail(x)}>
+                    {/*
+                      한 결제를 여러 줄로 펴도 날짜와 이름은 줄마다 적는다
+
+                      둘째 줄부터 비워 두었더니 그 줄이 누구 것인지 눈으로
+                      위를 되짚어야 했다. 표는 한 줄만 봐도 읽혀야 한다.
+                      지우기만 첫 줄에 둔다 — 지우는 것은 결제 한 건이다.
+                    */}
+                    <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
+                    <td>{p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"}</td>
+                    <td className="dim">{branchName(x.지점코드)}</td>
                     <td className="nm">{it.name || <span className="dim">기록 없음</span>}</td>
                     <td>
-                      {첫줄 && (
-                        <span className={`pill${isRefund(x) ? " bad" : ""}`}>
-                          {isRefund(x) ? "환불" : typeOf(x.매출유형)}
-                        </span>
-                      )}
+                      <span className={`pill${isRefund(x) ? " bad" : ""}`}>
+                        {isRefund(x) ? "환불" : typeOf(x.매출유형)}
+                      </span>
                     </td>
-                    <td className="dim">{첫줄 ? (x.결제수단 || "-") : ""}</td>
-                    <td className="dim">{첫줄 ? (p.staffNames[x.담당직원사번] ?? "-") : ""}</td>
+                    <td className="dim">{x.결제수단 || "-"}</td>
+                    <td className="dim">{p.staffNames[x.담당직원사번] ?? "-"}</td>
                     <td className="dim" title={x.등록일시 ?? ""}>
-                      {첫줄 ? (p.staffNames[x.등록자] ?? x.등록자 ?? "-") : ""}
+                      {p.staffNames[x.등록자] ?? x.등록자 ?? "-"}
                     </td>
                     <td className="r big num">
                       {money(it.받음)}
@@ -2281,13 +2283,40 @@ function LineChart({ rows, series, current, onPick }: {
       {여럿 ? (
         /* 지점마다 한 줄. 면도 목표선도 안 그린다 — 선이 넷이면 면이 서로를
            가리고, 목표선까지 얹으면 무엇이 무엇인지 알 수 없다 */
-        series!.map((s2, si) => (
-          <g key={s2.code}>
-            <path className={`ln s${si + 1}`}
-                  d={s2.values.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(" ")} />
-            <circle className={`dot s${si + 1}`} cx={x(iCur)} cy={y(s2.values[iCur] ?? 0)} r="4" />
-          </g>
-        ))
+        <>
+          {series!.map((s2, si) => (
+            <g key={s2.code}>
+              <path className={`ln s${si + 1}`}
+                    d={s2.values.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(" ")} />
+              <circle className={`dot s${si + 1}`} cx={x(iCur)} cy={y(s2.values[iCur] ?? 0)} r="4" />
+            </g>
+          ))}
+          {/*
+            보고 있는 달의 금액을 지점마다 적는다
+
+            한 지점만 볼 때는 점 옆에 「1,076만」이 적혀 있는데 전 지점으로
+            바꾸면 그 숫자가 사라졌다. 선 색으로 어느 지점인지는 알아도
+            얼마인지는 눈으로 눈금을 읽어야 했다.
+
+            값이 비슷한 지점끼리 글자가 포개지므로 아래에서부터 밀어 올린다 —
+            날짜별 꺾은선에서 쓰는 방법과 같다.
+          */}
+          {series!
+            .map((s2, si) => ({ si, v: s2.values[iCur] ?? 0 }))
+            .filter((r) => r.v > 0)
+            .map((r) => ({ ...r, y: y(r.v) }))
+            .sort((a, b) => b.y - a.y)
+            .reduce((acc: { si: number; v: number; ly: number }[], r) => {
+              const 아래 = acc.length ? acc[acc.length - 1].ly : Infinity;
+              acc.push({ si: r.si, v: r.v, ly: Math.max(12, Math.min(r.y - 7, 아래 - 13)) });
+              return acc;
+            }, [])
+            .map((r) => (
+              <text key={r.si} className="curlb" x={x(iCur) - 9} y={r.ly} textAnchor="end">
+                {koShort(r.v)}
+              </text>
+            ))}
+        </>
       ) : (
         <>
           {goalPath && <path className="goal" d={goalPath} />}

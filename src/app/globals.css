@@ -2426,8 +2426,5 @@ table.grid td.big .tot {
 .lc .dot.s5 { fill: var(--s5); }
 .lc .dot.s6 { fill: var(--s6); }
 
-/* 한 결제를 상품별로 편 둘째 줄부터 — 같은 결제라는 것이 보여야 한다 */
-table.grid tbody tr.sub > td { border-top: 0; padding-top: 2px; padding-bottom: 13px; }
-table.grid tbody tr:not(.sub) + tr.sub > td { padding-top: 0; }
-table.grid tbody tr.sub > td:first-child { border-left: 2px solid var(--line); }
+/* 상품 이름 칸 — 그 줄에서 제일 먼저 읽히는 값이라 굵게 */
 table.grid td.nm { font-weight: 700; }
