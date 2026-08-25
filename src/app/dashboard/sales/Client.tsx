@@ -1184,9 +1184,15 @@ export default function Client(p: Props) {
                   <th>결제 담당</th>
                   {/* 「이 결제 누가 넣었지」는 시트를 열지 않고도 답할 수 있어야 한다 */}
                   <th>등록자</th>
-                  {/* 「금액」이라고만 적어 두었더니 실제로 받은 돈으로 읽으셨다.
-                      시트의 결제금액은 받기로 한 전부라 미수금이 그 안에 들어 있다 */}
-                  <th className="r">실입금</th>
+                  {/*
+                    결제금액은 실제로 결제한 금액이다
+
+                    한때 「실입금」이라고 적었다. 그런데 결제금액이라는 말이
+                    이미 「실제로 결제한 금액」이다 — 미수금까지 합친 값을
+                    결제금액이라 부르니까 말이 꼬였던 것이지, 이름이 모자랐던
+                    것이 아니다. 이름을 되돌리고 값을 바로잡는다.
+                  */}
+                  <th className="r">결제금액</th>
                   <th className="r">미수금</th>
                   {p.canWipePay && <th />}
                 </tr>
@@ -1224,7 +1230,7 @@ export default function Client(p: Props) {
                       <td className="r big num">
                         {money(Math.max(0, num(x.결제금액) - num(x.미수금액)))}
                         {num(x.미수금액) > 0 && (
-                          <i className="tot">총 {money(num(x.결제금액))}</i>
+                          <i className="tot">계약 {money(num(x.결제금액))}</i>
                         )}
                       </td>
                       <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
