@@ -2410,3 +2410,24 @@ table.grid td.big .tot {
   border: 1px solid var(--line); border-radius: var(--r);
   background: var(--surface);
 }
+
+/* 월별 흐름을 지점마다 한 줄씩 그릴 때의 색 — 날짜별 꺾은선과 같은 차례를 쓴다 */
+.lc .ln.s1 { stroke: var(--s1); }
+.lc .ln.s2 { stroke: var(--s2); }
+.lc .ln.s3 { stroke: var(--s3); }
+.lc .ln.s4 { stroke: var(--s4); }
+.lc .ln.s5 { stroke: var(--s5); }
+.lc .ln.s6 { stroke: var(--s6); }
+.lc .dot { stroke: var(--surface); stroke-width: 2; }
+.lc .dot.s1 { fill: var(--s1); }
+.lc .dot.s2 { fill: var(--s2); }
+.lc .dot.s3 { fill: var(--s3); }
+.lc .dot.s4 { fill: var(--s4); }
+.lc .dot.s5 { fill: var(--s5); }
+.lc .dot.s6 { fill: var(--s6); }
+
+/* 한 결제를 상품별로 편 둘째 줄부터 — 같은 결제라는 것이 보여야 한다 */
+table.grid tbody tr.sub > td { border-top: 0; padding-top: 2px; padding-bottom: 13px; }
+table.grid tbody tr:not(.sub) + tr.sub > td { padding-top: 0; }
+table.grid tbody tr.sub > td:first-child { border-left: 2px solid var(--line); }
+table.grid td.nm { font-weight: 700; }

@@ -426,6 +426,22 @@ export default function Client(p: Props) {
   const yoy = monthStat(shiftMonth(month, -12));
   const trend = useMemo(() => monthsBack(month, 12).map((m) => monthStat(m)), [month, monthStat]);
 
+  /*
+   * 지점마다 열두 달
+   *
+   * 「전 지점」으로 보고 있으면 합쳐진 한 줄로는 어느 지점이 밀렸는지 알 수
+   * 없다. 지점이 둘 이상일 때만 만든다 — 한 곳뿐이면 합계와 같은 줄이다.
+   */
+  const trendBy = useMemo(() => {
+    if (branch !== "전체" || p.branches.length < 2) return undefined;
+    const ms = monthsBack(month, 12);
+    return p.branches.map((b) => ({
+      code: b.code,
+      name: b.name,
+      values: ms.map((m) => monthStat(m, b.code).sum),
+    }));
+  }, [branch, p.branches, month, monthStat]);
+
   /** 이번 달 지점별 값 */
   const branchNow = useMemo(
     () =>
@@ -542,6 +558,42 @@ export default function Client(p: Props) {
     });
     return out;
   }, [p.payments, p.tickets]);
+
+  /**
+   * 결제 한 줄을 상품별로 펼친다
+   *
+   * ── 왜 펼치나 ───────────────────────────────────────────────
+   * 한 사람이 회원권과 사물함을 같이 결제하면 시트에는 결제 줄이 하나뿐이고,
+   * 목록에도 26만원 한 줄로만 떴다. 「이 26만원이 무엇이었나」를 알려면 줄을
+   * 눌러 상세를 열어야 했다. 상품 이름이 보여야 목록만 훑고도 답이 된다.
+   *
+   * 상품별 금액은 이용권 줄에 적힌 값을 쓰고, 안 적힌 줄은 결제 금액을
+   * 상품 값 비율로 나눈다(shareOut). 미수금도 상품마다 적혀 있다.
+   */
+  const payLines = useMemo(() => {
+    return payRows
+      .slice()
+      .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
+      .flatMap((x) => {
+        const ts = byPay[x.id] ?? [];
+        const 계약 = 받은돈(x) + num(x.미수금액);
+        const parts = ts.length ? shareOut(계약, ts, productOf) : null;
+        const items = ts.length
+          ? ts.map((t, i) => {
+              const 적힘 = (t.금액 ?? "").trim() !== "";
+              const 값 = 적힘 ? num(t.금액) : parts?.[i] ?? 0;
+              const 미수 = num(t.미수금);
+              return {
+                name: productOf(t.상품코드)?.name || t.상품코드 || "-",
+                받음: Math.max(0, 값 - 미수),
+                미수,
+              };
+            })
+          /* 이용권이 안 붙은 결제 — 상품을 알 수 없다. 줄은 그대로 세운다 */
+          : [{ name: "", 받음: 받은돈(x), 미수: num(x.미수금액) }];
+        return items.map((it, i) => ({ x, it, 첫줄: i === 0, 개수: items.length }));
+      });
+  }, [payRows, byPay, productOf]);
 
   const bucketOf = useMemo(() => {
     /*
@@ -934,9 +986,16 @@ export default function Client(p: Props) {
 
       {p.branches.length > 1 && (
         <div className="bchips">
+          {/*
+            「전 지점」 칸은 늘 전 지점 합계다
+
+            cur.sum 을 적고 있었다. 그건 지금 고른 지점의 값이라, 두정점을
+            누르면 「전 지점 2,780,800」이 됐다 — 두정점 금액이 전 지점 자리에
+            그대로 앉은 것이다. 지점별 값을 더해서 쓴다.
+          */}
           <button className={`bchip${branch === "전체" ? " on" : ""}`} onClick={() => setBranch("전체")}>
             <span className="nm">전 지점</span>
-            <span className="am num">{money(cur.sum)}</span>
+            <span className="am num">{money(branchNow.reduce((s, b) => s + b.sum, 0))}</span>
           </button>
           {branchNow.map((b) => (
             <button key={b.code} className={`bchip${branch === b.code ? " on" : ""}`}
@@ -1059,10 +1118,18 @@ export default function Client(p: Props) {
       <h2 className="sec-title">월별 흐름</h2>
       <p className="sec-sub">최근 12개월 · 점선은 그달의 목표 · 눌러서 그달로 넘어갑니다</p>
       <div className="viz">
-        <LineChart rows={trend} current={month} onPick={setMonth} />
+        <LineChart rows={trend} series={trendBy} current={month} onPick={setMonth} />
         <div className="vkey">
-          <span><i className="ln s1" />월 매출</span>
-          <span><i className="ln dash" />월 목표</span>
+          {trendBy ? (
+            trendBy.map((s2, i) => (
+              <span key={s2.code}><i className={`ln s${i + 1}`} />{s2.name}</span>
+            ))
+          ) : (
+            <>
+              <span><i className="ln s1" />월 매출</span>
+              <span><i className="ln dash" />월 목표</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -1221,7 +1288,12 @@ export default function Client(p: Props) {
         */}
         <div className="sec-head" style={{ marginTop: 20 }}>
           <div>
-            <h3 className="viz-title">결제 내역 {payRows.length}건</h3>
+            <h3 className="viz-title">
+            결제 내역 {payRows.length}건
+            {payLines.length > payRows.length && (
+              <span className="dim" style={{ fontWeight: 600 }}> · 상품 {payLines.length}줄</span>
+            )}
+          </h3>
             {pick && !allMonth && (
               <p className="viz-sub" style={{ margin: "2px 0 0" }}>{pick.label} 것만 보고 있습니다</p>
             )}
@@ -1251,6 +1323,9 @@ export default function Client(p: Props) {
                   <th>결제일</th>
                   <th>회원</th>
                   <th>지점</th>
+                  {/* 한 사람이 여러 개를 사면 줄을 나눠 세운다. 상품 이름이
+                      보여야 목록만 훑고도 「이 26만원이 무엇이었나」가 답이 된다 */}
+                  <th>상품</th>
                   <th>유형</th>
                   <th>수단</th>
                   <th>결제 담당</th>
@@ -1270,54 +1345,48 @@ export default function Client(p: Props) {
                 </tr>
               </thead>
               <tbody>
-                {payRows
-                  .slice()
-                  .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
-                  .map((x) => (
-                    /* 줄을 누르면 「이 36만원이 무엇이었나」가 열린다.
-                       지우기 단추는 눌러도 상세가 안 열리게 따로 막는다 */
-                    <tr key={x.id} onClick={() => setDetail(x)}>
-                      <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
-                      <td>{p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"}</td>
-                      <td className="dim">{branchName(x.지점코드)}</td>
-                      <td>
+                {payLines.map(({ x, it, 첫줄, 개수 }, k) => (
+                  /* 줄을 누르면 「이 26만원이 무엇이었나」가 열린다.
+                     지우기 단추는 눌러도 상세가 안 열리게 따로 막는다 */
+                  <tr key={`${x.id}-${k}`} className={첫줄 ? "" : "sub"}
+                      onClick={() => setDetail(x)}>
+                    {/* 한 결제를 여러 줄로 폈다. 둘째 줄부터는 날짜·회원·지점을
+                        비운다 — 같은 값을 세 번 적으면 다른 결제로 읽힌다 */}
+                    <td className="num dim">{첫줄 ? (x.결제일시 ?? "").slice(5, 10) : ""}</td>
+                    <td>{첫줄 ? (p.memberNames[x.회원번호] ?? x.회원번호 ?? "-") : ""}</td>
+                    <td className="dim">{첫줄 ? branchName(x.지점코드) : ""}</td>
+                    <td className="nm">{it.name || <span className="dim">기록 없음</span>}</td>
+                    <td>
+                      {첫줄 && (
                         <span className={`pill${isRefund(x) ? " bad" : ""}`}>
                           {isRefund(x) ? "환불" : typeOf(x.매출유형)}
                         </span>
-                      </td>
-                      <td className="dim">{x.결제수단 || "-"}</td>
-                      <td className="dim">{p.staffNames[x.담당직원사번] ?? "-"}</td>
-                      <td className="dim" title={x.등록일시 ?? ""}>
-                        {p.staffNames[x.등록자] ?? x.등록자 ?? "-"}
-                      </td>
-                      {/*
-                        실제로 받은 돈을 크게, 받기로 한 전부는 그 밑에 작게
-
-                        여기 적던 것은 시트의 결제금액, 곧 「받기로 한 전부」였다.
-                        230만원짜리에 105만원이 미수인데 230만원이 굵게 적혀
-                        있으니 그만큼 들어온 줄로 읽힌다. 실제로 들어온 돈은
-                        125만원이다. 그 값을 앞에 세우고, 총액은 밑에 작게 남긴다 —
-                        총액이 아주 사라지면 「얼마짜리 계약이었나」를 못 본다.
-                      */}
-                      <td className="r big num">
-                        {money(받은돈(x))}
-                        {num(x.미수금액) > 0 && (
-                          <i className="tot">계약 {money(받은돈(x) + num(x.미수금액))}</i>
-                        )}
-                      </td>
-                      <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
-                        {num(x.미수금액) > 0 ? money(num(x.미수금액)) : "-"}
-                      </td>
-                      {p.canWipePay && (
-                        <td className="r">
+                      )}
+                    </td>
+                    <td className="dim">{첫줄 ? (x.결제수단 || "-") : ""}</td>
+                    <td className="dim">{첫줄 ? (p.staffNames[x.담당직원사번] ?? "-") : ""}</td>
+                    <td className="dim" title={x.등록일시 ?? ""}>
+                      {첫줄 ? (p.staffNames[x.등록자] ?? x.등록자 ?? "-") : ""}
+                    </td>
+                    <td className="r big num">
+                      {money(it.받음)}
+                      {it.미수 > 0 && <i className="tot">계약 {money(it.받음 + it.미수)}</i>}
+                    </td>
+                    <td className={`num r ${it.미수 > 0 ? "bad" : "dim"}`}>
+                      {it.미수 > 0 ? money(it.미수) : "-"}
+                    </td>
+                    {p.canWipePay && (
+                      <td className="r">
+                        {첫줄 && (
                           <button type="button" className="linkish"
                                   onClick={(e) => { e.stopPropagation(); setWipe(x); }}>
-                            지우기
+                            지우기{개수 > 1 ? ` (${개수})` : ""}
                           </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -2136,8 +2205,16 @@ function niceMax(v: number): number {
  * 여기서 알고 싶은 것은 오르고 있느냐이므로 선을 쓴다.
  * 회색 점선이 그달 목표라 선이 점선 위인지 아래인지만 봐도 된다.
  */
-function LineChart({ rows, current, onPick }: {
+function LineChart({ rows, series, current, onPick }: {
   rows: { m: string; sum: number; goal: number }[];
+  /**
+   * 지점마다 한 줄씩
+   *
+   * 「전 지점」을 보고 있으면 합쳐진 한 줄로는 어느 지점이 밀렸는지 알 수 없다.
+   * 지점별로 선을 나눠 그린다. 한 지점만 보고 있을 때는 안 준다 — 그때는
+   * 선이 하나뿐이라 목표선과 면을 같이 그리는 지금 모양이 낫다.
+   */
+  series?: { code: string; name: string; values: number[] }[];
   current: string;
   onPick: (m: string) => void;
 }) {
@@ -2151,7 +2228,14 @@ function LineChart({ rows, current, onPick }: {
   const BASE = narrow ? 174 : 190;
   const VB = narrow ? 200 : 216;
   const n = rows.length;
-  const top = niceMax(Math.max(1, ...rows.map((r) => Math.max(r.sum, r.goal))));
+  const 여럿 = (series?.length ?? 0) > 1;
+  /* 천장은 그리는 선 전부를 담아야 한다. 지점별로 나눠 그리면 합계보다
+     낮아지므로, 합계에 맞춰 두면 선들이 바닥에 깔린다 */
+  const top = niceMax(
+    여럿
+      ? Math.max(1, ...series!.flatMap((s2) => s2.values))
+      : Math.max(1, ...rows.map((r) => Math.max(r.sum, r.goal)))
+  );
   const x = (i: number) => (n > 1 ? L + (i * (R - L)) / (n - 1) : (L + R) / 2);
   const y = (v: number) => BASE - (v / top) * (BASE - TOP);
   const step = n > 1 ? (R - L) / (n - 1) : R - L;
@@ -2194,24 +2278,43 @@ function LineChart({ rows, current, onPick }: {
         </g>
       ))}
 
-      {goalPath && <path className="goal" d={goalPath} />}
-      <path className="area" d={area} fill="url(#lcfade)" />
-      <path className="ln" d={line} />
+      {여럿 ? (
+        /* 지점마다 한 줄. 면도 목표선도 안 그린다 — 선이 넷이면 면이 서로를
+           가리고, 목표선까지 얹으면 무엇이 무엇인지 알 수 없다 */
+        series!.map((s2, si) => (
+          <g key={s2.code}>
+            <path className={`ln s${si + 1}`}
+                  d={s2.values.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(" ")} />
+            <circle className={`dot s${si + 1}`} cx={x(iCur)} cy={y(s2.values[iCur] ?? 0)} r="4" />
+          </g>
+        ))
+      ) : (
+        <>
+          {goalPath && <path className="goal" d={goalPath} />}
+          <path className="area" d={area} fill="url(#lcfade)" />
+          <path className="ln" d={line} />
 
-      <circle className="cur" cx={x(iCur)} cy={y(rows[iCur]?.sum ?? 0)} r="5.5" />
-      {rows[iCur]?.sum > 0 && (
-        <text className="curlb" x={Math.min(x(iCur) + 10, R)} y={y(rows[iCur].sum) + 19}
-              textAnchor={iCur > n - 3 ? "end" : "start"}>
-          {koShort(rows[iCur].sum)}
-        </text>
+          <circle className="cur" cx={x(iCur)} cy={y(rows[iCur]?.sum ?? 0)} r="5.5" />
+          {rows[iCur]?.sum > 0 && (
+            <text className="curlb" x={Math.min(x(iCur) + 10, R)} y={y(rows[iCur].sum) + 19}
+                  textAnchor={iCur > n - 3 ? "end" : "start"}>
+              {koShort(rows[iCur].sum)}
+            </text>
+          )}
+        </>
       )}
 
       {rows.map((r, i) => (
         <g className="col" key={r.m} onClick={() => onPick(r.m)}>
           <rect x={x(i) - step / 2} y={TOP - 8} width={step} height={BASE - TOP + 8} fill="transparent">
-            <title>{`${r.m.replace("-", "년 ")}월 · ${money(r.sum)}원${r.goal > 0 ? ` · 목표 ${money(r.goal)}원` : ""}`}</title>
+            <title>
+              {여럿
+                ? `${r.m.replace("-", "년 ")}월\n` +
+                  series!.map((s2) => `${s2.name} ${money(s2.values[i] ?? 0)}원`).join("\n")
+                : `${r.m.replace("-", "년 ")}월 · ${money(r.sum)}원${r.goal > 0 ? ` · 목표 ${money(r.goal)}원` : ""}`}
+            </title>
           </rect>
-          <circle className="hov" cx={x(i)} cy={y(r.sum)} r="5" />
+          {!여럿 && <circle className="hov" cx={x(i)} cy={y(r.sum)} r="5" />}
           {/* 폰에서는 열두 달 이름이 다 안 들어간다. 보고 있는 달과 한 칸
               걸러 하나만 적는다 — 사이는 눈으로 세면 된다 */}
           {(!narrow || r.m === current || (i - iCur) % 2 === 0) && (
