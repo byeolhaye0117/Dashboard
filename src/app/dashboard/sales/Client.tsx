@@ -32,8 +32,12 @@ type Payment = {
   지점코드: string;
   미수금액: string;
   미수금결제예정일: string;
+  /** 미수금을 실제로 받은 날 — 비어 있으면 아직 못 받은 돈이다 */
+  미수금받은날?: string;
   /** 결제금액이 어느 잣대로 적혔나 — 「실입금」이면 미수금이 그 밖에 있다 */
   금액기준?: string;
+  /** 미수금을 받은 것을 따로 세운 줄인가 — 시트에는 없고 화면에서만 만든다 */
+  회수?: boolean;
   환불여부: string;
   환불액: string;
   환불진행상태: string;
@@ -214,6 +218,68 @@ function 받은돈(x: { 결제금액?: string; 미수금액?: string; 금액기�
   return Math.max(0, num(x.결제금액) - num(x.미수금액));
 }
 
+/** 아직 못 받은 돈 — 받은 날이 적히면 그 순간 0이 된다 */
+function 남은미수(x: { 미수금액?: string; 미수금받은날?: string }): number {
+  if ((x.미수금받은날 ?? "").trim()) return 0;
+  return num(x.미수금액);
+}
+
+/**
+ * 미수금을 받은 날, 그 돈을 그 달 매출로 세운다
+ *
+ * ── 왜 줄을 하나 더 만드나 ──────────────────────────────────
+ * 8월 7일에 230만원짜리를 팔면서 105만원을 나중에 받기로 했다면, 8월 매출은
+ * 125만원이다. 그 105만원을 9월 3일에 받으면 9월 매출이어야 한다. 8월로 거슬러
+ * 올라가면 이미 마감한 달의 숫자가 뒤에서 바뀐다.
+ *
+ * 그래서 결제 한 줄을 「판 날 받은 돈」과 「미수금 받은 날 받은 돈」 두 줄로
+ * 펼친다. 뒷줄은 시트에 없고 화면에서만 만드는 줄이다. 금액기준을 실입금으로,
+ * 미수금을 0으로 적어 두면 아래의 모든 셈(갈래·수단·담당·날짜)이 이 줄을
+ * 여느 결제처럼 다룬다 — 셈하는 곳을 한 군데도 고칠 필요가 없다.
+ *
+ * 환불된 줄은 펼치지 않는다. 환불액을 따로 세는 자리에서 두 번 잡힌다.
+ */
+function 돈줄(list: Payment[]): Payment[] {
+  return list.flatMap((x) => {
+    const 받은날 = (x.미수금받은날 ?? "").trim().slice(0, 10);
+    const 미수 = num(x.미수금액);
+    if (!받은날 || 미수 <= 0 || isRefund(x)) return [x];
+    return [
+      x,
+      {
+        ...x,
+        결제일시: 받은날,
+        결제금액: String(미수),
+        미수금액: "0",
+        금액기준: "실입금",
+        회수: true,
+      },
+    ];
+  });
+}
+
+/**
+ * 받은 미수금을 상품별로 나눈다
+ *
+ * 이용권 줄마다 미수금이 적혀 있으면 그대로 쓴다 — 회원권 100만원과 사물함
+ * 5만원을 같이 팔고 회원권만 미수였다면, 받은 돈은 전부 회원권 몫이다.
+ * 정가 비율로 나누면 사물함이 팔린 것처럼 보인다.
+ */
+function 회수몫(ts: Ticket[], amt: number): number[] | null {
+  const 미수 = ts.map((t) => num(t.미수금));
+  const 합 = 미수.reduce((a, b) => a + b, 0);
+  if (합 <= 0) return null;
+  const out = 미수.map((v) => Math.round((amt * v) / 합));
+  /* 반올림하다 남거나 넘친 돈은 가장 큰 몫에서 맞춘다 — 합이 어긋나면 안 된다 */
+  const 차 = amt - out.reduce((a, b) => a + b, 0);
+  if (차 !== 0) {
+    let k = 0;
+    out.forEach((v, i) => { if (v > out[k]) k = i; });
+    out[k] += 차;
+  }
+  return out;
+}
+
 function shareOut(
   amt: number,
   ts: Ticket[],
@@ -391,21 +457,62 @@ export default function Client(p: Props) {
     }
   }
 
+  /*
+   * 미수금을 받았다고 적는다
+   *
+   * 미수금을 0으로 고쳐 버리면 그 돈이 「판 날」 매출로 올라간다. 8월에 판
+   * 것을 9월에 받았는데 8월 매출이 뒤에서 늘어나는 것이다. 그래서 지우지
+   * 않고 「받은 날」을 적는다 — 미수금 기록은 그대로 남고, 받은 돈은 받은 달
+   * 매출로 간다.
+   */
+  const [받는중, set받는중] = useState("");
+  const [받은날, set받은날] = useState(now);
+  const [받기바쁨, set받기바쁨] = useState(false);
+  const [받기오류, set받기오류] = useState("");
+
+  async function 미수받기(id: string) {
+    if (받기바쁨) return;
+    if (!받은날) return set받기오류("받은 날짜를 골라주세요.");
+    set받기바쁨(true);
+    set받기오류("");
+    try {
+      const res = await fetch("/api/members/payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, changes: { 미수금받은날: 받은날 } }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? "적지 못했습니다.");
+      location.reload();
+    } catch (e: any) {
+      set받기오류(String(e.message ?? e));
+      set받기바쁨(false);
+    }
+  }
+
   /** 화면에 적는 구간 이름 — 「이 달」인지 「이 날」인지 */
   const branchName = (c: string) => p.branches.find((b) => b.code === c)?.name ?? c;
   const productOf = (code: string) => p.products.find((x) => x.code === code);
 
+  /**
+   * 화면이 세는 결제 줄
+   *
+   * 시트의 결제 줄에 「미수금 받은 날」 줄을 더해 놓은 것이다. 아래 모든 셈이
+   * 이것을 본다 — 한 곳만 시트 원본을 보면 위 숫자와 아래 목록이 어긋난다.
+   */
+  const payments = useMemo(() => 돈줄(p.payments), [p.payments]);
+
   /** 한 달치를 한 번에 계산한다 — 이번 달·지난달·추이를 이 함수 하나로 만든다 */
   const monthStat = useMemo(() => {
     return (m: string, code?: string) => {
-      const rows = p.payments.filter(
+      const rows = payments.filter(
         (x) =>
           (x.결제일시 ?? "").startsWith(m) &&
           (code ? x.지점코드 === code : branch === "전체" || x.지점코드 === branch)
       );
       const live = rows.filter((x) => !isRefund(x));
       const sum = live.reduce((s, x) => s + 받은돈(x), 0);
-      const unpaid = live.reduce((s, x) => s + num(x.미수금액), 0);
+      const unpaid = live.reduce((s, x) => s + 남은미수(x), 0);
       const refund = rows
         .filter(isRefund)
         .reduce((s, x) => s + (num(x.환불액) || num(x.결제금액)), 0);
@@ -418,7 +525,7 @@ export default function Client(p: Props) {
         .reduce((s, g) => s + g.목표금액, 0);
       return { m, rows, live, sum, unpaid, refund, goal, count: live.length };
     };
-  }, [p.payments, p.goals, branch]);
+  }, [payments, p.goals, branch]);
 
   const cur = monthStat(month);
   const prev = monthStat(shiftMonth(month, -1));
@@ -576,6 +683,23 @@ export default function Client(p: Props) {
       .sort((a, b) => (b.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))
       .flatMap((x) => {
         const ts = byPay[x.id] ?? [];
+        /* 미수금을 받은 줄 — 받은 돈을 이용권에 적힌 미수금대로 나눈다.
+           남은 미수는 없다(이미 받은 것이라서) */
+        if (x.회수) {
+          const 받음 = 받은돈(x);
+          const 몫 = ts.length ? 회수몫(ts, 받음) ?? shareOut(받음, ts, productOf) : null;
+          const items = 몫
+            ? ts
+                .map((t, i) => ({
+                  name: productOf(t.상품코드)?.name || t.상품코드 || "-",
+                  받음: 몫[i],
+                  미수: 0,
+                }))
+                .filter((it) => it.받음 > 0)
+            : [{ name: "", 받음, 미수: 0 }];
+          const 줄 = items.length ? items : [{ name: "", 받음, 미수: 0 }];
+          return 줄.map((it, i) => ({ x, it, 첫줄: i === 0, 개수: 줄.length }));
+        }
         const 계약 = 받은돈(x) + num(x.미수금액);
         const parts = ts.length ? shareOut(계약, ts, productOf) : null;
         const items = ts.length
@@ -659,7 +783,11 @@ export default function Client(p: Props) {
           put("미분류", amt, 적힌유형);
           return;
         }
-        const parts = shareOut(amt, ts, productOf);
+        /* 미수금을 받은 줄은 이용권에 적힌 미수금대로 나눈다 — 정가 비율로
+           나누면 미수가 없던 상품까지 그 달에 팔린 것처럼 잡힌다 */
+        const parts = pay.회수
+          ? 회수몫(ts, amt) ?? shareOut(amt, ts, productOf)
+          : shareOut(amt, ts, productOf);
         if (!parts) {
           put("미분류", amt, 적힌유형);
           return;
@@ -812,15 +940,17 @@ export default function Client(p: Props) {
   const unpaidList = useMemo(
     () =>
       cur.live
-        .filter((x) => num(x.미수금액) > 0)
+        /* 받은 날이 적힌 건은 더 이상 미수금이 아니다 — 그 돈은 받은 달
+           매출로 이미 올라가 있다 */
+        .filter((x) => !x.회수 && 남은미수(x) > 0)
         .map((x) => ({
           id: x.id,
           name: p.memberNames[x.회원번호] || x.회원번호 || "-",
           branch: branchName(x.지점코드),
           date: (x.결제일시 ?? "").slice(0, 10),
           due: (x.미수금결제예정일 ?? "").slice(0, 10),
-          amount: num(x.미수금액),
-          total: num(x.결제금액),
+          amount: 남은미수(x),
+          total: 받은돈(x) + num(x.미수금액),
           staff: p.staffNames[x.담당직원사번] ?? "-",
         }))
         .sort((a, b) => b.amount - a.amount),
@@ -923,7 +1053,7 @@ export default function Client(p: Props) {
 
   /* 주별 꺾은선은 달을 볼 때만 쓴다. 그래서 여기만 늘 달을 본다 */
   const byDay = useMemo(() => {
-    const monthLive = p.payments.filter(
+    const monthLive = payments.filter(
       (x) =>
         (x.결제일시 ?? "").startsWith(month) &&
         (branch === "전체" || x.지점코드 === branch) &&
@@ -943,7 +1073,7 @@ export default function Client(p: Props) {
       return { day: i + 1, key, sum, count: rows.length, six: sixOf(bucketOf(rows), sum) };
     });
     return { list, top: Math.max(1, ...list.map((d) => d.sum)) };
-  }, [p.payments, branch, month, bucketOf]);
+  }, [payments, branch, month, bucketOf]);
 
   if (p.problem) {
     return (
@@ -1060,16 +1190,15 @@ export default function Client(p: Props) {
           {/* 위 매출이 이미 실입금이라 「실입금 …」을 또 적으면 같은 말이다.
               대신 아직 못 받은 돈이 계약의 얼마쯤인지를 적는다 */}
           {/*
-            매출에서 뺀 돈이라는 것을 여기서 말한다
+            언제 매출로 잡히는지를 여기서 말한다
 
-            「받으면 매출 …」이라고 적으면 언제 잡히는지까지 말하는 셈인데,
-            지금은 받으신 날이 아니라 그 결제가 적힌 날의 달로 올라간다.
-            할 수 있는 말만 적는다 — 매출에서 빠져 있다는 것과, 다 받으면
-            얼마가 되는지.
+            한때는 「매출에서 뺐습니다」까지만 적었다. 받은 날을 적을 데가
+            없어서, 미수금을 지우면 판 날의 달로 거슬러 올라갔기 때문이다.
+            이제 받은 날을 적으면 그 달로 간다 — 그래서 그렇게 적는다.
           */}
           <span className="sub">
             {cur.unpaid > 0
-              ? `${unpaidList.length}건 · 매출에서 뺐습니다 · 다 받으면 ${money(cur.sum + cur.unpaid)}원`
+              ? `${unpaidList.length}건 · 받으신 달의 매출로 잡힙니다 · 다 받으면 ${money(cur.sum + cur.unpaid)}원`
               : "전액 입금"}
           </span>
           <div className="mini">
@@ -1348,7 +1477,13 @@ export default function Client(p: Props) {
                 {payLines.map(({ x, it, 첫줄, 개수 }, k) => (
                   /* 줄을 누르면 「이 26만원이 무엇이었나」가 열린다.
                      지우기 단추는 눌러도 상세가 안 열리게 따로 막는다 */
-                  <tr key={`${x.id}-${k}`} onClick={() => setDetail(x)}>
+                  <tr key={`${x.id}-${k}`}
+                      /* 미수금 받은 줄은 화면에서 만든 줄이라 시트에 없다.
+                         상세는 원래 결제 줄을 연다 — 여기서 고친 값이 원래
+                         줄에 덮어써지면 판 날의 금액이 회수액으로 바뀐다 */
+                      onClick={() => setDetail(
+                        x.회수 ? p.payments.find((o) => o.id === x.id) ?? x : x
+                      )}>
                     {/*
                       한 결제를 여러 줄로 펴도 날짜와 이름은 줄마다 적는다
 
@@ -1361,8 +1496,8 @@ export default function Client(p: Props) {
                     <td className="dim">{branchName(x.지점코드)}</td>
                     <td className="nm">{it.name || <span className="dim">기록 없음</span>}</td>
                     <td>
-                      <span className={`pill${isRefund(x) ? " bad" : ""}`}>
-                        {isRefund(x) ? "환불" : typeOf(x.매출유형)}
+                      <span className={`pill${isRefund(x) ? " bad" : x.회수 ? " good" : ""}`}>
+                        {isRefund(x) ? "환불" : x.회수 ? "미수금 받음" : typeOf(x.매출유형)}
                       </span>
                     </td>
                     <td className="dim">{x.결제수단 || "-"}</td>
@@ -1379,7 +1514,7 @@ export default function Client(p: Props) {
                     </td>
                     {p.canWipePay && (
                       <td className="r">
-                        {첫줄 && (
+                        {첫줄 && !x.회수 && (
                           <button type="button" className="linkish"
                                   onClick={(e) => { e.stopPropagation(); setWipe(x); }}>
                             지우기{개수 > 1 ? ` (${개수})` : ""}
@@ -1640,23 +1775,46 @@ export default function Client(p: Props) {
       {unpaidList.length > 0 && (
         <>
           <h2 className="sec-title">미수금 {unpaidList.length}건</h2>
-          <p className="sec-sub">받기로 한 날이 지난 건은 붉게 표시됩니다</p>
+          <p className="sec-sub">
+            받기로 한 날이 지난 건은 붉게 표시됩니다 ·
+            <b> 받았습니다</b>를 눌러 받은 날을 적으시면 <b>그 날의 매출</b>로 올라갑니다
+          </p>
+          {받기오류 && <div className="alert-bad">{받기오류}</div>}
           <div className="lwrap">
             {unpaidList.map((u) => (
               <div className="lrow" key={u.id}>
                 <div className="who">
                   <b>{u.name}</b>
                   <span>
-                    {u.branch} · {u.date.slice(5)} 결제 {money(u.total)}원 · 담당 {u.staff}
+                    {u.branch} · {u.date.slice(5)} 계약 {money(u.total)}원 · 담당 {u.staff}
                   </span>
                 </div>
                 <div className="mid">
-                  {u.due ? (
-                    <span className={`pill${u.due < now ? " bad" : ""}`}>
-                      {u.due.slice(5)} {u.due < now ? "지남" : "받기로"}
+                  {받는중 === u.id ? (
+                    <span className="gotrow">
+                      <input className="input mini" type="date" value={받은날}
+                             onChange={(e) => set받은날(e.target.value)} />
+                      <button type="button" className="btn-dark mini" disabled={받기바쁨}
+                              onClick={() => 미수받기(u.id)}>
+                        {받기바쁨 ? "적는 중" : "저장"}
+                      </button>
+                      <button type="button" className="btn-ghost mini" disabled={받기바쁨}
+                              onClick={() => set받는중("")}>취소</button>
                     </span>
                   ) : (
-                    <span className="pill">날짜 미정</span>
+                    <>
+                      {u.due ? (
+                        <span className={`pill${u.due < now ? " bad" : ""}`}>
+                          {u.due.slice(5)} {u.due < now ? "지남" : "받기로"}
+                        </span>
+                      ) : (
+                        <span className="pill">날짜 미정</span>
+                      )}
+                      <button type="button" className="btn-ghost mini ok"
+                              onClick={() => { set받는중(u.id); set받은날(now); set받기오류(""); }}>
+                        받았습니다
+                      </button>
+                    </>
                   )}
                 </div>
                 <div className="amt">
@@ -1870,8 +2028,9 @@ function PayDetail({
   canEdit: boolean;
   onClose: () => void;
 }) {
-  const 합 = num(x.결제금액);
+  const 합 = 받은돈(x);
   const 미수 = num(x.미수금액);
+  const 받은날 = (x.미수금받은날 ?? "").trim().slice(0, 10);
   const ways = [
     { k: "현금", v: num(x.현금액) },
     { k: "카드", v: num(x.카드액) },
@@ -1891,8 +2050,9 @@ function PayDetail({
   const [f, setF] = useState({
     결제일: (x.결제일시 ?? "").slice(0, 10),
     결제수단: x.결제수단 ?? "",
-    결제금액: String(num(x.결제금액) || ""),
+    결제금액: String(받은돈(x) || ""),
     미수금액: String(num(x.미수금액) || ""),
+    미수금받은날: (x.미수금받은날 ?? "").slice(0, 10),
     담당직원사번: x.담당직원사번 ?? "",
     매출유형: x.매출유형 ?? "",
   });
@@ -1921,6 +2081,9 @@ function PayDetail({
              다시 나뉜다. 수단만 보내면 예전 칸에 금액이 그대로 남는다 */
           결제금액: String(num(f.결제금액)),
           미수금액: String(num(f.미수금액)),
+          /* 미수금이 0이 되면 받은 날도 지운다 — 없는 미수금을 받은 날이
+             남아 있으면 그 날 매출로 0원짜리 줄이 선다 */
+          미수금받은날: num(f.미수금액) > 0 ? f.미수금받은날 : "",
           담당직원사번: f.담당직원사번,
           매출유형: f.매출유형,
         },
@@ -1964,14 +2127,15 @@ function PayDetail({
               </select>
             </div>
             {/*
-              여기는 「받기로 한 돈 전부」다
+              여기는 「실제로 받은 돈」이다
 
-              매출로 세는 값이 이것이라서 뜻을 바꿀 수 없다. 대신 미수금을 뺀
-              값을 그 자리에서 적어 준다 — 등록 화면은 오늘 받는 돈을 묻는데
-              여기만 총액을 물으면, 같은 숫자를 두 가지로 읽게 된다.
+              한때 이 칸이 미수금까지 합친 총액이었다. 등록 화면은 오늘 받는
+              돈을 묻는데 여기만 총액을 물으니, 같은 숫자를 두 가지로 읽게
+              됐다. 매출로 세는 값과 이 칸의 값을 같게 맞춘다 —
+              총 계약 금액은 밑에 적어 준다.
             */}
             <div className="field">
-              <label>총 결제 금액</label>
+              <label>받은 금액</label>
               <input className="input" inputMode="numeric" value={f.결제금액}
                      onChange={(e) => set("결제금액", e.target.value.replace(/[^0-9]/g, ""))} />
             </div>
@@ -1980,10 +2144,29 @@ function PayDetail({
               <input className="input" inputMode="numeric" value={f.미수금액}
                      onChange={(e) => set("미수금액", e.target.value.replace(/[^0-9]/g, ""))} />
             </div>
+            {/*
+              미수금을 받은 날
+
+              미수금을 0으로 지워 버리면 그 돈이 판 날 매출로 올라간다. 8월에
+              판 것을 9월에 받았는데 8월 숫자가 뒤에서 늘어나는 것이다.
+              미수금은 그대로 두고 받은 날만 적으면, 그 돈은 받은 달 매출로 간다.
+            */}
+            {num(f.미수금액) > 0 && (
+              <div className="field">
+                <label>미수금 받은 날</label>
+                <input className="input" type="date" value={f.미수금받은날}
+                       onChange={(e) => set("미수금받은날", e.target.value)} />
+              </div>
+            )}
             <div className="field full">
               <p className="stat-note">
-                실제로 받은 돈 <b className="num">{money(Math.max(0, num(f.결제금액) - num(f.미수금액)))}원</b>
-                {" "}= 총 결제 금액 − 미수금
+                총 계약 금액 <b className="num">{money(num(f.결제금액) + num(f.미수금액))}원</b>
+                {" "}= 받은 금액 + 미수금
+                {num(f.미수금액) > 0 && (
+                  f.미수금받은날
+                    ? <> · 미수금 {money(num(f.미수금액))}원은 <b>{f.미수금받은날}</b> 매출로 잡힙니다</>
+                    : <> · 미수금은 아직 매출로 잡히지 않습니다</>
+                )}
               </p>
             </div>
             <div className="field">
@@ -2023,8 +2206,16 @@ function PayDetail({
           )}
           {미수 > 0 && (
             <div className="kv-row"><span>미수금</span>
-              <b className="num bad">{money(미수)}
-                {x.미수금결제예정일 ? ` · ${x.미수금결제예정일.slice(0, 10)}까지` : ""}</b></div>
+              {받은날 ? (
+                <b className="num good">{money(미수)} · {받은날} 받음</b>
+              ) : (
+                <b className="num bad">{money(미수)}
+                  {x.미수금결제예정일 ? ` · ${x.미수금결제예정일.slice(0, 10)}까지` : ""}</b>
+              )}</div>
+          )}
+          {미수 > 0 && (
+            <div className="kv-row"><span>총 계약</span>
+              <b className="num">{money(합 + 미수)}</b></div>
           )}
           {isRefund(x) && (
             <div className="kv-row"><span>환불</span>

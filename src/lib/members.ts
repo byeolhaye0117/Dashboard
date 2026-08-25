@@ -138,6 +138,15 @@ export const P_COLS: ColumnSpec = {
   미수금액: { names: ["미수금"] },
   미수금결제예정일: { names: ["미수금예정일"] },
   /*
+   * 미수금을 실제로 받은 날
+   *
+   * 이 날이 적히면 그 미수금은 「받은 돈」이 된다. 다만 매출로 잡히는 자리는
+   * 결제한 달이 아니라 받은 달이다 — 9월에 받은 돈이 8월 매출로 올라가면
+   * 지난달 숫자가 뒤늦게 바뀐다.
+   * 미수금액은 지우지 않고 그대로 둔다. 얼마를 못 받고 있었는지가 기록이다.
+   */
+  미수금받은날: { names: ["미수금회수일", "미수금입금일"] },
+  /*
    * 이 줄의 결제금액이 어느 잣대로 적혀 있나
    *
    * 예전에는 결제금액이 「받기로 한 전부」였다 — 미수금이 그 안에 들어 있었다.
@@ -222,6 +231,8 @@ export type Payment = {
   지점코드: string;
   미수금액: string;
   미수금결제예정일: string;
+  /** 미수금을 실제로 받은 날 — 적히면 그 달 매출로 잡힌다 */
+  미수금받은날: string;
   /** 결제금액이 어느 잣대로 적혔나 — 「실입금」이면 미수금이 그 밖에 있다 */
   금액기준: string;
   환불여부: string;
@@ -397,6 +408,7 @@ export async function listPayments(): Promise<Payment[]> {
       지점코드: get(r, cols, "지점코드"),
       미수금액: get(r, cols, "미수금액"),
       미수금결제예정일: get(r, cols, "미수금결제예정일"),
+      미수금받은날: get(r, cols, "미수금받은날"),
       금액기준: get(r, cols, "금액기준"),
       환불여부: get(r, cols, "환불여부"),
       환불액: get(r, cols, "환불액"),
@@ -574,7 +586,7 @@ async function writePurchase(
      적어 둘 줄은 있어야 한다 — 받은 돈이 0 이라고 없던 일이 되면 안 된다 */
   if (받기로한것 > 0) {
     /* 시트에 그 칸이 없으면 값이 소리 없이 사라진다 */
-    await addColumns(SHEET_P, ["매출유형", "담당직원사번", "미수금액", "미수금결제예정일", "금액기준"]);
+    await addColumns(SHEET_P, ["매출유형", "담당직원사번", "미수금액", "미수금결제예정일", "미수금받은날", "금액기준"]);
     const p = await readSheet(SHEET_P);
     const pCols = resolve(SHEET_P, p.headers, P_COLS);
     payId = nextId(p.rows.map((r) => get(r, pCols, "결제번호")), "PAY", 5);
@@ -1207,7 +1219,7 @@ export async function patchPayment(
 ): Promise<void> {
   /* 시트에 그 칸이 없으면 값이 소리 없이 사라진다. 실제로 금액·매출유형이
      그렇게 여러 번 날아갔다 — 고치기 전에 칸부터 만들어 둔다 */
-  await addColumns(SHEET_P, ["매출유형", "담당직원사번", "미수금액", "미수금결제예정일", "금액기준"]);
+  await addColumns(SHEET_P, ["매출유형", "담당직원사번", "미수금액", "미수금결제예정일", "미수금받은날", "금액기준"]);
 
   const next = { ...changes };
   /* 화면에서 고친 값은 새 잣대다 — 결제금액 칸에 실제로 받은 돈만 적는다 */

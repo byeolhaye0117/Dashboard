@@ -659,6 +659,22 @@ table.t2 { min-width: 640px; }
 }
 .lfoot b { color: var(--ink); font-size: 15px; letter-spacing: -.02em; }
 
+/* 목록 줄 안에서 쓰는 작은 단추와 칸
+   기본 단추는 46px 이라 목록 한 줄(14px 여백)에 넣으면 줄 높이가 두 배가 된다 */
+.btn-ghost.mini, .btn-dark.mini {
+  height: 30px; padding: 0 11px; font-size: 12px; border-radius: 999px;
+}
+.input.mini { height: 30px; padding: 0 9px; font-size: 12.5px; width: auto; }
+.gotrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* 좁은 화면에서는 이름을 한 줄 차지하게 두고, 표시와 금액을 그 밑에 나란히 둔다.
+   한 줄에 셋을 다 밀어 넣으면 이름이 한 글자씩 끊기고 금액이 화면 밖으로 나간다 */
+@media (max-width: 560px) {
+  .lrow { flex-wrap: wrap; gap: 6px 10px; }
+  .lrow .who { flex: 1 1 100%; }
+  .lrow .amt { margin-left: auto; min-width: 0; }
+}
+
 /* ── 근태 : 오늘 나 ───────────────────────
    출근길에 오래 붙잡지 않는다. 버튼 하나가 크게 보여야 한다. */
 .punch {
@@ -1630,6 +1646,8 @@ table.grid .late { color: var(--bad); font-weight: 800; }
 .kv-row { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
 .kv-row dt { color: var(--muted); flex: 0 0 78px; }
 .kv-row dd { margin: 0; font-weight: 600; }
+.kv-row b.bad { color: var(--bad); }
+.kv-row b.good { color: var(--good); }
 @media (max-width: 560px) { .kv { grid-template-columns: 1fr; } }
 
 .quote {
