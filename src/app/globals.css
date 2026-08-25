@@ -2469,6 +2469,35 @@ table.grid td.big .tot {
 /* 그 달에 판 것이 없는 지점 — 자리는 지키되 소리는 낮춘다 */
 .lc .curlb .vv.off { fill: var(--muted); font-weight: 700; }
 
+/*
+  글자 뒤에 배경색 테두리를 두른다
+
+  글자가 겹치지 않게 밀어 놓아도 그 자리로 다른 지점의 선이 지나가면 획과
+  글자가 섞여 못 읽는다. 글자 모양대로 배경색을 먼저 칠하고 그 위에 글자를
+  얹으면(paint-order) 선 위에 놓여도 또렷하다.
+*/
+.lc .curlb {
+  paint-order: stroke;
+  stroke: var(--surface); stroke-width: 3.4px; stroke-linejoin: round;
+}
+/* 밀려난 글자와 제 점을 잇는 실 — 가늘게, 제 색으로 */
+.lc .lead { fill: none; stroke-width: 1.2; opacity: .55; }
+.lc .lead.s1 { stroke: var(--s1); }
+.lc .lead.s2 { stroke: var(--s2); }
+.lc .lead.s3 { stroke: var(--s3); }
+.lc .lead.s4 { stroke: var(--s4); }
+.lc .lead.s5 { stroke: var(--s5); }
+.lc .lead.s6 { stroke: var(--s6); }
+
+/* 그 달 값이 0인 지점의 점 — 속을 비워 「여기 있는데 0」으로 읽히게 한다 */
+.lc .dot.zero { fill: var(--surface); stroke-width: 2.2; }
+.lc .dot.zero.s1 { stroke: var(--s1); }
+.lc .dot.zero.s2 { stroke: var(--s2); }
+.lc .dot.zero.s3 { stroke: var(--s3); }
+.lc .dot.zero.s4 { stroke: var(--s4); }
+.lc .dot.zero.s5 { stroke: var(--s5); }
+.lc .dot.zero.s6 { stroke: var(--s6); }
+
 /* 상품 이름 칸 — 그 줄에서 제일 먼저 읽히는 값이라 굵게 */
 table.grid td.nm { font-weight: 700; }
 

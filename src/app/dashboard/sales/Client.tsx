@@ -2552,13 +2552,28 @@ function LineChart({ rows, series, current, onPick }: {
                       fill={`url(#lcfade${si + 1})`} />
               );
             })}
-          {series!.map((s2, si) => (
-            <g key={s2.code}>
-              <path className={`ln s${si + 1}`}
-                    d={s2.values.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(" ")} />
-              <circle className={`dot s${si + 1}`} cx={x(iCur)} cy={y(s2.values[iCur] ?? 0)} r="4" />
-            </g>
-          ))}
+          {/*
+            선도 큰 지점부터 그린다
+
+            0원인 지점의 선은 바닥에 딱 붙어 있어서, 다른 지점의 선도 그 달에
+            0이면 그 밑에 깔려 아예 안 보인다. 실제로 성정점이 그렇게 사라졌다.
+            작은 지점을 나중에 그려 위로 올린다.
+
+            그 달 값이 0인 지점의 점은 속을 비운 동그라미로 그린다. 꽉 찬 점을
+            축 위에 얹으면 눈금선의 일부처럼 보인다 — 비어 있으면 「여기 있는데
+            0이다」로 읽힌다.
+          */}
+          {series!
+            .map((s2, si) => ({ s2, si, peak: Math.max(...s2.values) }))
+            .sort((a, b) => b.peak - a.peak)
+            .map(({ s2, si }) => (
+              <g key={s2.code}>
+                <path className={`ln s${si + 1}`}
+                      d={s2.values.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(" ")} />
+                <circle className={`dot s${si + 1}${(s2.values[iCur] ?? 0) > 0 ? "" : " zero"}`}
+                        cx={x(iCur)} cy={y(s2.values[iCur] ?? 0)} r="4" />
+              </g>
+            ))}
           {/*
             보고 있는 달의 지점 이름과 금액을 적는다
 
@@ -2573,26 +2588,56 @@ function LineChart({ rows, series, current, onPick }: {
             넷인데 숫자는 셋만 떴다. 빠진 것인지 0인지 화면만 봐서는 알 수
             없다 — 0이면 0이라고 적는 편이 낫다.
 
-            값이 비슷한 지점끼리 글자가 포개지므로 아래에서부터 밀어 올린다 —
-            날짜별 꺾은선에서 쓰는 방법과 같다.
+            ── 어떻게 안 겹치게 하나 ──────────────────────────
+            한 번만 밀어 올리면 위쪽 글자가 다시 다음 글자와 붙는다. 위에서
+            아래로 한 번 훑어 겹친 만큼 내리고, 바닥을 넘으면 아래에서 위로
+            되민다. 두 번 훑어야 넷이 모여도 자리가 잡힌다.
+
+            제자리에서 밀려난 글자는 제 점에서 떨어지므로, 점까지 가는 실을
+            그 색으로 그어 준다. 글자 뒤에는 배경색 테두리를 둘러 선이 지나가도
+            글자가 묻히지 않게 한다.
           */}
-          {series!
-            .map((s2, si) => ({ si, name: s2.name, v: s2.values[iCur] ?? 0 }))
-            .map((r) => ({ ...r, y: y(r.v) }))
-            .sort((a, b) => b.y - a.y)
-            .reduce((acc: { si: number; name: string; v: number; ly: number }[], r) => {
-              const 아래 = acc.length ? acc[acc.length - 1].ly : Infinity;
-              acc.push({ ...r, ly: Math.max(12, Math.min(r.y - 7, 아래 - 13)) });
-              return acc;
-            }, [])
-            .map((r) => (
-              <text key={r.si} className="curlb" x={x(iCur) - 9} y={r.ly} textAnchor="end">
-                <tspan className={`nm s${r.si + 1}`}>{r.name} </tspan>
-                <tspan className={r.v > 0 ? "vv" : "vv off"}>
-                  {r.v > 0 ? koShort(r.v) : "0원"}
-                </tspan>
-              </text>
-            ))}
+          {(() => {
+            /* 글자 한 줄이 차지하는 높이 — 이보다 가까우면 서로 붙어 읽힌다 */
+            const 간격 = 17;
+            const 천장 = TOP + 4;
+            /* 맨 아래 글자가 축선 위에 걸터앉지 않도록 한 줄 띄운다 —
+               0원인 지점이 늘 여기로 온다 */
+            const 바닥 = BASE - 9;
+            const 자리 = series!
+              .map((s2, si) => ({ si, name: s2.name, v: s2.values[iCur] ?? 0 }))
+              .map((r) => ({ ...r, dy: y(r.v), ly: y(r.v) + 4 }))
+              .sort((a, b) => a.dy - b.dy);
+
+            /* 위에서 아래로 — 겹친 만큼 내린다 */
+            자리.forEach((r, i) => {
+              if (i > 0) r.ly = Math.max(r.ly, 자리[i - 1].ly + 간격);
+            });
+            /* 바닥을 넘겼으면 아래에서 위로 되민다 */
+            if (자리.length && 자리[자리.length - 1].ly > 바닥) {
+              자리[자리.length - 1].ly = 바닥;
+              for (let i = 자리.length - 2; i >= 0; i--) {
+                자리[i].ly = Math.min(자리[i].ly, 자리[i + 1].ly - 간격);
+              }
+            }
+            /* 되밀다 천장을 뚫었으면 거기서 멈춘다 */
+            자리.forEach((r, i) => { r.ly = Math.max(r.ly, 천장 + i * 간격); });
+
+            return 자리.map((r) => (
+              <g key={r.si}>
+                {Math.abs(r.ly - 4 - r.dy) > 5 && (
+                  <path className={`lead s${r.si + 1}`}
+                        d={`M${(x(iCur) - 7).toFixed(1)} ${(r.ly - 4).toFixed(1)} L${x(iCur).toFixed(1)} ${r.dy.toFixed(1)}`} />
+                )}
+                <text className="curlb" x={x(iCur) - 10} y={r.ly} textAnchor="end">
+                  <tspan className={`nm s${r.si + 1}`}>{r.name} </tspan>
+                  <tspan className={r.v > 0 ? "vv" : "vv off"}>
+                    {r.v > 0 ? koShort(r.v) : "0원"}
+                  </tspan>
+                </text>
+              </g>
+            ));
+          })()}
         </>
       ) : (
         <>
