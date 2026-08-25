@@ -1155,7 +1155,9 @@ export default function Client(p: Props) {
                   <th>결제 담당</th>
                   {/* 「이 결제 누가 넣었지」는 시트를 열지 않고도 답할 수 있어야 한다 */}
                   <th>등록자</th>
-                  <th className="r">금액</th>
+                  {/* 「금액」이라고만 적어 두었더니 실제로 받은 돈으로 읽으셨다.
+                      시트의 결제금액은 받기로 한 전부라 미수금이 그 안에 들어 있다 */}
+                  <th className="r">실입금</th>
                   <th className="r">미수금</th>
                   {p.canWipePay && <th />}
                 </tr>
@@ -1181,7 +1183,21 @@ export default function Client(p: Props) {
                       <td className="dim" title={x.등록일시 ?? ""}>
                         {p.staffNames[x.등록자] ?? x.등록자 ?? "-"}
                       </td>
-                      <td className="r big num">{money(num(x.결제금액))}</td>
+                      {/*
+                        실제로 받은 돈을 크게, 받기로 한 전부는 그 밑에 작게
+
+                        여기 적던 것은 시트의 결제금액, 곧 「받기로 한 전부」였다.
+                        230만원짜리에 105만원이 미수인데 230만원이 굵게 적혀
+                        있으니 그만큼 들어온 줄로 읽힌다. 실제로 들어온 돈은
+                        125만원이다. 그 값을 앞에 세우고, 총액은 밑에 작게 남긴다 —
+                        총액이 아주 사라지면 「얼마짜리 계약이었나」를 못 본다.
+                      */}
+                      <td className="r big num">
+                        {money(Math.max(0, num(x.결제금액) - num(x.미수금액)))}
+                        {num(x.미수금액) > 0 && (
+                          <i className="tot">총 {money(num(x.결제금액))}</i>
+                        )}
+                      </td>
                       <td className={`num r ${num(x.미수금액) > 0 ? "bad" : "dim"}`}>
                         {num(x.미수금액) > 0 ? money(num(x.미수금액)) : "-"}
                       </td>
@@ -2186,9 +2202,24 @@ function DayBars({ list, month, now, onPick }: {
       <div className="wk-head">
         <button className="icon-btn" aria-label="어제" disabled={at === 0}
                 onClick={() => setDi(at - 1)}>‹</button>
-        <b className="wk-lb">
+        {/*
+          날짜를 눌러 고른다
+
+          ‹ › 로만 넘길 수 있어서 20일 전으로 가려면 스무 번을 눌러야 했다.
+          날짜 글자 위에 달력 칸을 투명하게 덮어 둔다 — 글자는 「8월 7일(금)」
+          처럼 읽히는 그대로 두고, 누르면 달력이 열린다.
+          이 달을 벗어나거나 오지 않은 날은 못 고르게 막아 둔다.
+        */}
+        <b className="wk-lb wk-pick">
           {m}월 {d.day}일({요일[mon0(d.day)]})
           {d.key === now && <span className="wk-today">오늘</span>}
+          <input type="date" value={d.key} aria-label="날짜 고르기"
+                 min={list[0]?.key} max={list[last]?.key}
+                 onClick={(e) => (e.currentTarget as any).showPicker?.()}
+                 onChange={(e) => {
+                   const i = list.findIndex((x) => x.key === e.target.value);
+                   if (i >= 0) setDi(i);
+                 }} />
         </b>
         <button className="icon-btn" aria-label="내일" disabled={at >= last}
                 onClick={() => setDi(at + 1)}>›</button>
@@ -2321,7 +2352,18 @@ function WeekLines({ list, month, onPick }: {
       <div className="wk-head">
         <button className="icon-btn" aria-label="지난주" disabled={at === 0}
                 onClick={() => { setWi(at - 1); setHi(null); }}>‹</button>
-        <b className="wk-lb">{week.label}</b>
+        {/* 날짜를 고르면 그 날이 든 주로 뛴다 — 이레씩 넘기지 않아도 된다 */}
+        <b className="wk-lb wk-pick">
+          {week.label}
+          <input type="date" value={week.days[0].key} aria-label="주 고르기"
+                 min={list[0]?.key} max={list[list.length - 1]?.key}
+                 onClick={(e) => (e.currentTarget as any).showPicker?.()}
+                 onChange={(e) => {
+                   const v = e.target.value;
+                   const i = weeks.findIndex((w) => w.days.some((x) => x.key === v));
+                   if (i >= 0) { setWi(i); setHi(null); }
+                 }} />
+        </b>
         <button className="icon-btn" aria-label="다음주" disabled={at >= weeks.length - 1}
                 onClick={() => { setWi(at + 1); setHi(null); }}>›</button>
         <span className="wk-sum num">{money(week.sum)}원<i>{week.count}건</i></span>

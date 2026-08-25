@@ -2382,3 +2382,24 @@ td .ktag {
 .viz-pays { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
 .viz-pays .sec-head { margin-top: 0 !important; }
 .viz-pays .table-wrap { border: 0; border-radius: 0; background: none; }
+
+/*
+  날짜를 눌러 고르기
+
+  ‹ › 로만 넘길 수 있어서 스무 날 전으로 가려면 스무 번을 눌러야 했다.
+  날짜 글자 위에 달력 칸을 투명하게 덮는다 — 글자는 「8월 7일(금)」처럼
+  읽히는 그대로 두고, 누르면 달력이 열린다. 브라우저가 그리는 달력 모양을
+  우리 글씨로 바꿀 수는 없어서, 보이는 것과 누르는 것을 갈라 놓았다.
+*/
+.wk-pick { position: relative; cursor: pointer; }
+.wk-pick:hover { text-decoration: underline; text-underline-offset: 3px; }
+.wk-pick > input[type="date"] {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer; border: 0; padding: 0;
+}
+
+/* 결제 내역의 실입금 — 밑에 붙는 「총 얼마짜리였나」 */
+table.grid td.big .tot {
+  display: block; margin-top: 1px; font-style: normal;
+  font-size: 11px; font-weight: 700; color: var(--muted);
+}
