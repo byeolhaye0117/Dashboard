@@ -22,18 +22,26 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     /*
-     * 「문의」로 접수할 때는 이름을 안 받는다
+     * 「문의」로 접수할 때는 이름도 연락처도 안 받는다
      *
-     * 값만 묻고 끊은 전화는 이름을 못 받는다. 그런데도 이름을 채워야 저장이
-     * 되면 「몰라요」·「.」 같은 것이 이름 칸에 쌓이고, 나중에 그게 사람
-     * 이름인지 빈칸인지 아무도 구분 못 한다. 비워 두는 편이 낫다.
+     * 값만 묻고 끊은 전화, 지나가다 시설만 보고 간 분 — 이름도 번호도 못
+     * 받는다. 그런데도 채워야 저장이 되면 「몰라요」·「.」·「010-0000-0000」
+     * 같은 것이 쌓이고, 나중에 그게 진짜 값인지 빈칸인지 아무도 구분 못 한다.
+     * 가짜 번호로 전화까지 걸게 된다. 비워 두는 편이 낫다.
+     *
+     * 그래도 언제·어느 지점에·어느 채널로·무엇을 물었나는 남는다. 문의 건수를
+     * 세는 데는 그것으로 충분하다.
      *
      * 화면에서만 막으면 안 된다 — 여기가 진짜 문지기다.
      */
-    if (stageOf({ 진행상태: body.진행상태 }) !== "문의" && !body.이름?.trim()) {
-      return NextResponse.json({ error: "이름을 입력해주세요." }, { status: 400 });
+    if (stageOf({ 진행상태: body.진행상태 }) !== "문의") {
+      if (!body.이름?.trim()) {
+        return NextResponse.json({ error: "이름을 입력해주세요." }, { status: 400 });
+      }
+      if (!body.전화번호?.trim()) {
+        return NextResponse.json({ error: "연락처를 입력해주세요." }, { status: 400 });
+      }
     }
-    if (!body.전화번호?.trim()) return NextResponse.json({ error: "연락처를 입력해주세요." }, { status: 400 });
 
     const branch = body.지점코드;
     const allowed = reach.all || reach.codes.includes(branch);

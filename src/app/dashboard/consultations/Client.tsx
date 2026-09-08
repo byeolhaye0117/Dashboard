@@ -31,13 +31,17 @@ type Props = {
 const STAGES = ["문의", "예약", "약속전환", "등록", "미등록"];
 
 /**
- * 「문의」로 접수할 때는 이름을 안 물어도 된다
+ * 「문의」로 접수할 때는 이름도 연락처도 안 물어도 된다
  *
- * 값만 묻고 끊은 전화는 이름을 못 받는다. 그런데도 이름을 채워야 저장이 되면
- * 「몰라요」·「.」 같은 것이 이름 칸에 쌓인다 — 나중에 그게 사람 이름인지
- * 빈칸인지 아무도 구분 못 한다. 비워 두는 편이 낫다.
+ * 값만 묻고 끊은 전화, 지나가다 들러 시설만 보고 간 분 — 이름도 번호도 못
+ * 받는다. 그런데도 채워야 저장이 되면 「몰라요」·「.」·「010-0000-0000」
+ * 같은 것이 쌓인다. 나중에 그게 진짜 값인지 빈칸인지 아무도 구분 못 하고,
+ * 가짜 번호로 전화까지 걸게 된다. 비워 두는 편이 낫다.
+ *
+ * 그래도 남는 것이 있다 — 언제 · 어느 지점에 · 어느 채널로 · 무엇을 물었나.
+ * 문의 건수를 세는 데는 그것으로 충분하다.
  */
-const 이름없어도됨 = (stage: string) => stage === "문의";
+const 문의접수 = (stage: string) => stage === "문의";
 
 const CHANNELS = ["전화문의", "네이버톡톡", "카카오채널", "네이버플레이스예약", "문자"];
 
@@ -461,7 +465,10 @@ export default function Client(p: Props) {
                       {c["이름"]?.trim() || <span className="dim">이름 모름</span>}
                     </td>
                     <td className="dim">{c["성별"] || "-"}</td>
-                    <td className="num">{showPhone(c["전화번호"])}</td>
+                    {/* 번호 없이 접수한 문의 — 빈칸이면 칸이 깨진 것처럼 보인다 */}
+                    <td className="num">
+                      {showPhone(c["전화번호"]) || <span className="dim">-</span>}
+                    </td>
                     <td className="num dim">
                       {/* 약속을 잡은 건은 약속 시각, 아직인 건은 문의 들어온 날.
                           어느 쪽인지 적어 두지 않으면 같은 칸에 다른 뜻이 섞인다 */}
@@ -547,10 +554,10 @@ function NewForm({
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
 
   async function save() {
-    if (!이름없어도됨(f["진행상태"]) && !f["이름"]?.trim()) {
-      return setMsg("이름을 입력해주세요.");
+    if (!문의접수(f["진행상태"])) {
+      if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
+      if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
     }
-    if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
     if (!f["문의채널"]) return setMsg("문의가 어디로 들어왔는지 골라주세요.");
     if (f["진행상태"] === "미등록" && !f["미등록사유"]) return setMsg("미등록 사유를 골라주세요.");
     setBusy(true);
@@ -574,19 +581,20 @@ function NewForm({
         <p className="modal-lead">
           이름과 연락처만 있으면 됩니다. 나머지는 나중에 알게 되면 수정에서 채우시면 됩니다.
           <br />
-          이름도 못 받으셨으면 <b>진행 상태를 「문의」</b>로 두시면 그대로 저장됩니다.
+          둘 다 못 받으셨으면 <b>진행 상태를 「문의」</b>로 두시면 그대로 저장됩니다.
         </p>
 
         <div className="form-grid">
           {/* 문의로 접수하실 때는 별표가 사라진다 — 안 채워도 저장된다는 뜻을
               칸 자체가 말해 줘야 저장을 눌러 보고서야 알게 되지 않는다 */}
-          <L label="이름" req={!이름없어도됨(f["진행상태"])}>
+          <L label="이름" req={!문의접수(f["진행상태"])}>
             <input className="input" value={f["이름"] ?? ""}
-                   placeholder={이름없어도됨(f["진행상태"]) ? "모르면 비워 두셔도 됩니다" : ""}
+                   placeholder={문의접수(f["진행상태"]) ? "모르면 비워 두셔도 됩니다" : ""}
                    onChange={(e) => set("이름", e.target.value)} />
           </L>
-          <L label="연락처" req>
-            <input className="input" inputMode="tel" placeholder="010-0000-0000"
+          <L label="연락처" req={!문의접수(f["진행상태"])}>
+            <input className="input" inputMode="tel"
+                   placeholder={문의접수(f["진행상태"]) ? "모르면 비워 두셔도 됩니다" : "010-0000-0000"}
                    value={f["전화번호"] ?? ""} onChange={(e) => set("전화번호", e.target.value)} />
           </L>
           <L label="상담일시">
@@ -706,10 +714,10 @@ function Detail({
   async function saveEdit() {
     /* 접수 창과 같은 규칙을 쓴다. 여기만 이름을 채우라고 막으면, 이름 없이
        받아 둔 문의를 나중에 손댈 수가 없다 — 연락처 하나 고치려다 갇힌다 */
-    if (!이름없어도됨(f["진행상태"]) && !f["이름"]?.trim()) {
-      return setMsg("이름을 입력해주세요.");
+    if (!문의접수(f["진행상태"])) {
+      if (!f["이름"]?.trim()) return setMsg("이름을 입력해주세요.");
+      if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
     }
-    if (!f["전화번호"]?.trim()) return setMsg("연락처를 입력해주세요.");
     setBusy(true);
     const res = await fetch("/api/consultations/update", {
       method: "POST",
@@ -749,8 +757,11 @@ function Detail({
     if (stage === "미등록" && !reason) return setMsg("미등록 사유를 골라주세요.");
     /* 등록으로 넘기면 회원 목록에 올라간다. 이름 없이 올라간 회원은
        나중에 아무도 못 찾는다 — 서버도 막지만 여기서 먼저 말해 준다 */
-    if (stage === DONE_STAGE && !item["이름"]?.trim()) {
+    if (stage === DONE_STAGE && !(item["이름"] ?? "").trim()) {
       return setMsg("등록으로 넘기려면 먼저 위에서 이름을 채워주세요.");
+    }
+    if (stage === DONE_STAGE && !(item["전화번호"] ?? "").trim()) {
+      return setMsg("등록으로 넘기려면 먼저 위에서 연락처를 채워주세요.");
     }
 
     setBusy(true);
@@ -815,7 +826,7 @@ function Detail({
             <h3 style={{ margin: 0 }}>
               {item["이름"]?.trim() || <span className="dim">이름 모름</span>}
             </h3>
-            <span className="dim num">{showPhone(item["전화번호"])}</span>
+            <span className="dim num">{showPhone(item["전화번호"]) || "연락처 모름"}</span>
           </div>
           <span className={`pill ${STAGE_TONE[stageNow(item)] ?? ""}`}>{stageNow(item)}</span>
         </div>
@@ -836,13 +847,14 @@ function Detail({
         {editing ? (
           <>
             <div className="form-grid">
-              <L label="이름" req={!이름없어도됨(f["진행상태"])}>
+              <L label="이름" req={!문의접수(f["진행상태"])}>
                 <input className="input" value={f["이름"] ?? ""}
-                       placeholder={이름없어도됨(f["진행상태"]) ? "모르면 비워 두셔도 됩니다" : ""}
+                       placeholder={문의접수(f["진행상태"]) ? "모르면 비워 두셔도 됩니다" : ""}
                        onChange={(e) => setV("이름", e.target.value)} />
               </L>
-              <L label="연락처" req>
+              <L label="연락처" req={!문의접수(f["진행상태"])}>
                 <input className="input" inputMode="tel" value={f["전화번호"] ?? ""}
+                       placeholder={문의접수(f["진행상태"]) ? "모르면 비워 두셔도 됩니다" : ""}
                        onChange={(e) => setV("전화번호", e.target.value)} />
               </L>
               <L label="상담일시">
@@ -998,7 +1010,7 @@ function Detail({
           <div className="confirm-box">
             <b>이 상담을 삭제할까요?</b>
             <p>
-              {item["이름"]} · {showPhone(item["전화번호"])}
+              {item["이름"]?.trim() || "이름 모름"} · {showPhone(item["전화번호"]) || "연락처 모름"}
               <br />
               목록에서 사라집니다. 시트에는 기록이 남아 있어 되살릴 수 있습니다.
             </p>
