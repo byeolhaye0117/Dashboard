@@ -68,6 +68,13 @@ export type ProductMeta = {
    * 팔리기 시작하면 안 된다.
    */
   perMonth: "Y" | "N" | "";
+  /**
+   * 지금 팔 수 있는 상품인가
+   *
+   * 판매중지된 상품도 목록에 담아 보낸다 — 이미 결제하신 회원의 이용권에서
+   * 이름과 갈래를 찾아야 하기 때문이다. 파는 자리에서만 이 표시로 가린다.
+   */
+  onSale: boolean;
   /** 상품 관리에서 끌어 정한 차례. 작을수록 위, 0이면 안 정한 것 */
   order: number;
 };
@@ -118,6 +125,8 @@ export function readProduct(r: Row): ProductMeta {
     isService: yes(val(r, ["서비스상품", "무료서비스상품여부", "서비스"])),
     isOption: yes(val(r, ["옵션상품", "옵션상품여부", "옵션"])),
     perMonth: perMonthOf(val(r, ["개월선택", "개월고르기", "월단위판매"])),
+    /* 칸이 비어 있으면 판매중으로 본다 — 이 칸이 생기기 전 상품이 그렇다 */
+    onSale: (val(r, ["판매상태", "상태", "판매"]) || "판매중") !== "판매중지",
     order: num(val(r, ["정렬순서", "순서", "정렬"])),
   };
 }

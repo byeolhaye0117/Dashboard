@@ -301,6 +301,21 @@ export async function getProductBranches(): Promise<Record<string, string[]>> {
   }
 }
 
+/**
+ * 상품 전부 — 판매중지된 것까지
+ *
+ * ── 왜 안 거르나 ────────────────────────────────────────────
+ * 예전에는 판매중인 것만 보냈다. 파는 목록에는 맞는 말인데, 이 목록은 파는
+ * 데만 쓰이지 않는다. 회원이 지난달에 산 이용권이 무엇이었는지 찾을 때도
+ * 이 목록을 뒤진다.
+ *
+ * 그래서 상품을 판매중지로 돌리는 순간, 그걸 이미 결제하신 회원의 이용권에
+ * 상품 이름이 사라지고 「P001」 같은 코드만 남았다. 매출 화면에서는 갈래를
+ * 못 찾아 그 돈이 통째로 「미분류」로 갔다.
+ *
+ * 판매를 그만둔 것과 판 적이 없는 것은 다르다. 목록에는 다 담고, 「지금 팔 수
+ * 있는가」는 판매중 표시로 가린다 — 거르는 일은 파는 자리에서 한다.
+ */
 export async function getProducts(branchCode?: string): Promise<Product[]> {
   const [{ rows }, sell] = await Promise.all([
     readSheet(SHEET.상품),
@@ -312,7 +327,6 @@ export async function getProducts(branchCode?: string): Promise<Product[]> {
       .map((r) => r["상품코드"])
   );
   return alive(rows)
-    .filter((r) => (r["판매상태"] ?? "판매중") === "판매중")
     .filter((r) => !branchCode || allowed.has(r["상품코드"]))
     .map((r) => ({ ...r, code: r["상품코드"], name: r["상품명"] }));
 }

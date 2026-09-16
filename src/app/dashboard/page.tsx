@@ -42,8 +42,11 @@ async function body() {
   const reach = await scopeOf(session);
   const current = branches.find((b) => b.code === session.currentBranch);
   const working = staff.filter((s) => s.active).length;
-  const selling = products.filter((p) => p["서비스상품"] !== "Y").length;
-  const service = products.length - selling;
+  /* 상품 목록에는 판매중지한 것도 담겨 온다 — 지난 이용권의 이름을 찾는 데
+     쓰이기 때문이다. 「몇 개를 팔고 있나」를 세는 자리에서는 빼야 한다 */
+  const onSale = products.filter((p) => (p["판매상태"] || "판매중") !== "판매중지");
+  const selling = onSale.filter((p) => p["서비스상품"] !== "Y").length;
+  const service = onSale.length - selling;
 
   /*
    * 밀린 수업이 있으면 홈에서 먼저 알린다

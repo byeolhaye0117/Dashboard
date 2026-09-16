@@ -1832,12 +1832,23 @@ function AddPurchase({
     걸어 두지 않았을 뿐인데 목록이 통째로 비면 아무것도 못 판다.
   */
   const sellable = useMemo(() => {
+    /*
+     * 판매중지한 것은 여기서 가린다
+     *
+     * 상품 목록에는 판매중지된 것도 담겨 온다 — 이미 결제하신 회원의 이용권에
+     * 이름과 갈래를 붙여야 하기 때문이다. 그래서 파는 자리에서 가린다.
+     * 서버에서 아예 빼 버렸더니, 상품을 내리는 순간 그걸 산 회원의 이용권이
+     * 「P001」 같은 코드로 바뀌었다.
+     */
+    const 팔것 = products.filter((x) => x.onSale);
     const any = Object.keys(productBranches).length > 0;
-    if (!any || !member.지점코드) return products;
-    return products.filter((x) => (productBranches[x.code] ?? []).includes(member.지점코드));
+    if (!any || !member.지점코드) return 팔것;
+    return 팔것.filter((x) => (productBranches[x.code] ?? []).includes(member.지점코드));
   }, [products, productBranches, member.지점코드]);
 
-  const hidden = products.length - sellable.length;
+  /* 「이 지점에서 안 파는 것」만 센다. 판매중지한 것은 어느 지점에서도
+     안 파는 것이라 여기 섞으면 숫자가 부풀어 보인다 */
+  const hidden = products.filter((x) => x.onSale).length - sellable.length;
 
   const [b, setB] = useState<Buy>(emptyBuy());
   const [msg, setMsg] = useState("");
@@ -1983,14 +1994,15 @@ function NewForm({
   });
   const [b, setB] = useState<Buy>(emptyBuy());
   const [fromId, setFromId] = useState("");
-  /* 고른 지점에서 파는 것만 — 상품 추가 창과 같은 규칙 */
+  /* 고른 지점에서 파는 것만, 판매중지한 것은 빼고 — 상품 추가 창과 같은 규칙 */
   const sellable = useMemo(() => {
+    const 팔것 = products.filter((x) => x.onSale);
     const any = Object.keys(productBranches).length > 0;
     const br = f["지점코드"];
-    if (!any || !br) return products;
-    return products.filter((x) => (productBranches[x.code] ?? []).includes(br));
+    if (!any || !br) return 팔것;
+    return 팔것.filter((x) => (productBranches[x.code] ?? []).includes(br));
   }, [products, productBranches, f]);
-  const hidden = products.length - sellable.length;
+  const hidden = products.filter((x) => x.onSale).length - sellable.length;
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
