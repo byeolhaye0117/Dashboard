@@ -11,7 +11,7 @@
  */
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
-import { KINDS as PRODUCT_KINDS } from "@/lib/productMeta";
+import { KINDS as PRODUCT_KINDS, sellsByMonth } from "@/lib/productMeta";
 import { backdrop } from "@/lib/backdrop";
 
 /* 목록은 서버와 한 곳을 본다 — 따로 베껴 두었더니 어긋났다 */
@@ -33,6 +33,8 @@ type Product = {
   카드가: string;
   서비스상품: boolean;
   옵션상품: boolean;
+  /** 개월수를 골라 파는가 — "Y" · "N" · 빈칸(갈래로 짐작) */
+  개월선택?: string;
   지점들: string[];
 };
 type Named = { code: string; name: string };
@@ -504,6 +506,24 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
     옵션상품: item?.옵션상품 ?? false,
     판매중: item?.판매중 ?? true,
   });
+  /*
+   * 개월수를 골라 파는 상품인가
+   *
+   * 예전에는 갈래로만 짐작했다 — 부가상품권이면 그렇고 아니면 아니었다.
+   * 그래서 수강권으로 만든 상품은 몇 달치를 파는지 고를 길이 없었다.
+   *
+   * 칸이 비어 있는 옛 상품은 지금까지와 똑같이 보이도록 짐작한 값을 켜 둔다.
+   * 그대로 저장하시면 그때부터는 적힌 값이 먼저다.
+   */
+  const [개월선택, set개월선택] = useState<boolean>(() =>
+    sellsByMonth({
+      perMonth: item?.개월선택,
+      kind: item?.kind,
+      isService: item?.서비스상품,
+      isOption: item?.옵션상품,
+      count: Number(item?.총횟수) || 0,
+    })
+  );
   const [지점들, set지점] = useState<string[]>(
     item ? item.지점들 : branches.map((b) => b.code)
   );
@@ -520,7 +540,7 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
     if (지점들.length === 0) return setErr("어느 지점에서 팔지 골라주세요.");
 
     if (!item) {
-      return onSave({ action: "add", ...f, 지점들 });
+      return onSave({ action: "add", ...f, 개월선택: 개월선택 ? "Y" : "N", 지점들 });
     }
     onSave({
       action: "edit",
@@ -541,6 +561,8 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
         카드가: String(num(f.카드가) || ""),
         서비스상품: f.서비스상품 ? "Y" : "",
         옵션상품: f.옵션상품 ? "Y" : "",
+        /* 짐작에 기대지 않도록 늘 Y 나 N 으로 적어 둔다 */
+        개월선택: 개월선택 ? "Y" : "N",
       },
     });
   }
@@ -665,6 +687,22 @@ function ProductForm({ item, branches, can, busy, onSave, onClose }: {
             <span>
               <b>회원권에 붙는 추가 요금</b>
               <em>24시 이용 · 여성전용처럼 회원권에 얹어 파는 것입니다.</em>
+            </span>
+          </label>
+          <label className="chk" style={{ marginTop: 10 }}>
+            <input type="checkbox" checked={개월선택}
+                   onChange={(e) => set개월선택(e.target.checked)} />
+            <span>
+              <b>팔 때 개월수를 고르는 상품</b>
+              <em>
+                사물함 · 운동복처럼 몇 달치를 살지 그때그때 정하는 것입니다.
+                파는 자리에 <b>기간 고르개</b>가 서고, 위에 적으신 기간을 한 단위로 보아
+                고른 개월만큼 값이 곱해집니다
+                {기간 > 0 && 단위 === "개월" && (num(f.카드가) || num(f.현금가)) > 0 ? (
+                  <> — {기간}개월 {money(num(f.카드가) || num(f.현금가))}원짜리를{" "}
+                    {기간 * 3}개월 고르면 {money((num(f.카드가) || num(f.현금가)) * 3)}원</>
+                ) : "."}
+              </em>
             </span>
           </label>
         </div>

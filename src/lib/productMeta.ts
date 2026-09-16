@@ -59,6 +59,15 @@ export type ProductMeta = {
   isService: boolean;
   /** 회원권에 붙는 추가 요금인가 */
   isOption: boolean;
+  /**
+   * 개월수를 골라 파는 상품인가
+   *
+   * 「Y」면 그렇다, 「N」이면 아니다, 비어 있으면 갈래로 짐작한다.
+   * 비어 있는 자리를 남겨 둔 까닭은, 이 칸이 생기기 전에 만든 상품이
+   * 지금까지와 똑같이 팔려야 하기 때문이다 — 사물함이 갑자기 한 달치만
+   * 팔리기 시작하면 안 된다.
+   */
+  perMonth: "Y" | "N" | "";
   /** 상품 관리에서 끌어 정한 차례. 작을수록 위, 0이면 안 정한 것 */
   order: number;
 };
@@ -108,8 +117,52 @@ export function readProduct(r: Row): ProductMeta {
     card: num(val(r, ["카드가", "카드"])),
     isService: yes(val(r, ["서비스상품", "무료서비스상품여부", "서비스"])),
     isOption: yes(val(r, ["옵션상품", "옵션상품여부", "옵션"])),
+    perMonth: perMonthOf(val(r, ["개월선택", "개월고르기", "월단위판매"])),
     order: num(val(r, ["정렬순서", "순서", "정렬"])),
   };
+}
+
+/** 시트에 적힌 글자를 Y · N · 빈칸 셋 중 하나로 */
+function perMonthOf(v: string): "Y" | "N" | "" {
+  const s = (v ?? "").trim().toLowerCase();
+  if (!s) return "";
+  if (["y", "yes", "예", "o", "true", "✅"].includes(s)) return "Y";
+  if (["n", "no", "아니오", "아니요", "x", "false"].includes(s)) return "N";
+  return "";
+}
+
+/** 상품 화면에서 부가 상품으로 정한 이름들. 「기타」는 예전에 쓰던 이름이다 */
+const EXTRA_KINDS = ["부가상품권", "부가상품", "부가", "기타", "용품"];
+
+/**
+ * 이 상품은 개월수를 골라 파는가
+ *
+ * ── 무엇이 달라지나 ────────────────────────────────────────
+ * 그렇다고 하면 파는 자리에 「기간」 고르개가 서고, 상품에 적힌 기본 개월을
+ * 한 단위로 보아 고른 개월만큼 값이 곱해진다. 1개월 11,000원짜리 사물함을
+ * 3개월 고르면 33,000원이다.
+ *
+ * ── 왜 짐작이 남아 있나 ────────────────────────────────────
+ * 이 칸이 생기기 전에 만든 상품에는 적힌 값이 없다. 그것들이 지금까지와
+ * 똑같이 팔려야 해서, 비어 있으면 예전처럼 갈래로 짐작한다. 상품을 한 번
+ * 열어 저장하시면 그때부터는 적힌 값이 먼저다.
+ *
+ * 횟수로 파는 것(PT 10회)은 몇 달 안에 쓰든 값이 같으므로 곱하면 안 된다.
+ * 돈을 안 받고 얹어주는 서비스도 곱할 값이 없다.
+ */
+export function sellsByMonth(p: {
+  perMonth?: string; kind?: string;
+  isService?: boolean; isOption?: boolean; count?: number;
+}): boolean {
+  const v = (p.perMonth ?? "").trim().toUpperCase();
+  if (v === "Y") return true;
+  if (v === "N") return false;
+
+  const k = (p.kind ?? "").replace(/\s/g, "");
+  if (p.isService || k === "서비스") return false;
+  const 횟수제 = (p.count ?? 0) > 0 || /PT|수업/.test(p.kind ?? "");
+  if (횟수제) return false;
+  return p.isOption || k === "옵션" || EXTRA_KINDS.includes(k);
 }
 
 /**

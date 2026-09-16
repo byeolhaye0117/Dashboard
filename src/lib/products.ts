@@ -38,6 +38,8 @@ const PR_COLS: ColumnSpec = {
   카드가: { names: ["카드"] },
   서비스상품: { names: ["무료서비스상품여부", "서비스"] },
   옵션상품: { names: ["옵션상품여부", "옵션"] },
+  /* 개월수를 골라 파는 상품인가. 비면 갈래로 짐작한다 — productMeta 참고 */
+  개월선택: { names: ["개월고르기", "월단위판매"] },
   등록일시: { names: [] },
   등록자: { names: [] },
   수정일시: { names: [] },
@@ -73,6 +75,8 @@ export type AdminProduct = {
   카드가: string;
   서비스상품: boolean;
   옵션상품: boolean;
+  /** 개월수를 골라 파는가 — "Y" · "N" · 빈칸(갈래로 짐작) */
+  개월선택: string;
   /** 목록에 나오는 차례. 작을수록 위 */
   순서: number;
   /** 이 상품을 파는 지점들. 비어 있으면 "아직 아무 지점에도 안 걸림" */
@@ -129,6 +133,7 @@ export async function listProductsAdmin(): Promise<AdminProduct[]> {
       카드가: get(r, cols, "카드가"),
       서비스상품: yes(get(r, cols, "서비스상품")),
       옵션상품: yes(get(r, cols, "옵션상품")),
+      개월선택: (get(r, cols, "개월선택") ?? "").trim(),
       순서: Number((get(r, cols, "정렬순서") ?? "").replace(/[^0-9]/g, "")) || 0,
       지점들: byCode.get(code) ?? [],
     });
@@ -186,13 +191,15 @@ export type NewProduct = {
   카드가: string;
   서비스상품: boolean;
   옵션상품: boolean;
+  /** "Y" · "N" · 빈칸 — 빈칸이면 갈래로 짐작한다 */
+  개월선택: string;
   판매중: boolean;
   지점들: string[];
 };
 
 export async function createProduct(input: NewProduct, staffId: string): Promise<string> {
   /* 뒤늦게 생긴 칸이다. 없는 칸에 적으면 조용히 사라진다 */
-  await addColumns(SHEET_PR, ["기간단위"]);
+  await addColumns(SHEET_PR, ["기간단위", "개월선택"]);
 
   const name = (input.상품명 ?? "").trim();
   if (!name) throw new Error("상품 이름을 적어주세요.");
@@ -222,6 +229,7 @@ export async function createProduct(input: NewProduct, staffId: string): Promise
     카드가: String(num(input.카드가) || ""),
     서비스상품: input.서비스상품 ? "Y" : "",
     옵션상품: input.옵션상품 ? "Y" : "",
+    개월선택: input.개월선택 === "Y" || input.개월선택 === "N" ? input.개월선택 : "",
     등록일시: stamp,
     등록자: staffId,
     수정일시: stamp,
@@ -240,7 +248,7 @@ const EDITABLE = [
   "상품명", "상품분류", "판매상태",
   "결제개월", "서비스개월", "총이용개월", "기간단위",
   "결제횟수", "서비스횟수", "총횟수",
-  "현금가", "카드가", "서비스상품", "옵션상품", "정렬순서", "삭제여부",
+  "현금가", "카드가", "서비스상품", "옵션상품", "개월선택", "정렬순서", "삭제여부",
 ];
 
 export async function patchProduct(
@@ -248,7 +256,10 @@ export async function patchProduct(
   changes: Record<string, string>,
   staffId: string
 ): Promise<void> {
+  /* 뒤늦게 생긴 칸들이다. 없는 칸에 적으면 조용히 사라진다 —
+     실제로 그렇게 여러 번 값이 날아갔다 */
   if (changes["기간단위"] !== undefined) await addColumns(SHEET_PR, ["기간단위"]);
+  if (changes["개월선택"] !== undefined) await addColumns(SHEET_PR, ["개월선택"]);
 
   const p = await readSheet(SHEET_PR);
   const cols = resolve(SHEET_PR, p.headers, PR_COLS);

@@ -9,7 +9,7 @@ import OptionEdit from "@/components/OptionEdit";
 import { korDate, today, daysBetween, weekdayIndex } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
-import { termOf, type ProductMeta } from "@/lib/productMeta";
+import { termOf, sellsByMonth, type ProductMeta } from "@/lib/productMeta";
 import { SALE_TYPES } from "@/lib/saleTypes";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 import { REFUND_STAGES, REFUND_REASONS } from "@/lib/refund";
@@ -968,6 +968,8 @@ function trainerOf(
 }
 
 const canPickMonths = (pr?: ProductMeta) => {
+  /* 개월로 파는 상품은 당연히 고른다 — 상품 관리에서 켜 두신 것이 여기로 온다 */
+  if (pricePerMonth(pr)) return true;
   const g = groupOf(pr);
   if (g === "서비스") return false;
   // 회원권은 상품 이름에 개월이 박혀 있다 (1+2, 6+6). 그건 건드리지 않는다
@@ -979,11 +981,11 @@ const canPickMonths = (pr?: ProductMeta) => {
  *
  * 사물함 · 24시처럼 달마다 값이 붙는 것만 곱한다.
  * PT 10회 100,000원은 몇 달 안에 쓰든 값이 같으므로 곱하면 안 된다.
+ *
+ * 규칙은 productMeta 한 곳에 둔다 — 상품 관리 화면의 네모 칸과 파는 자리가
+ * 서로 다른 잣대를 쓰면, 켜 두었는데 안 되거나 그 반대가 된다.
  */
-const pricePerMonth = (pr?: ProductMeta) => {
-  const g = groupOf(pr);
-  return (g === "부가" || g === "옵션") && !usesCount(pr);
-};
+const pricePerMonth = (pr?: ProductMeta) => (pr ? sellsByMonth(pr) : false);
 
 /** 고를 수 있는 개월 — 1개월부터 12개월까지 */
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);

@@ -54,6 +54,8 @@ export async function POST(req: Request) {
           상품분류: kind,
           결제개월: String(body.결제개월 ?? ""),
           기간단위: String(body.기간단위 ?? "개월"),
+          /* Y · N 말고는 받지 않는다 — 엉뚱한 글자가 들어가면 짐작으로 되돌아간다 */
+          개월선택: body.개월선택 === "Y" ? "Y" : body.개월선택 === "N" ? "N" : "",
           서비스개월: String(body.서비스개월 ?? ""),
           결제횟수: String(body.결제횟수 ?? ""),
           서비스횟수: String(body.서비스횟수 ?? ""),
