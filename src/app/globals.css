@@ -1612,6 +1612,17 @@ table.grid th {
   border-bottom: 1px solid var(--line);
 }
 table.grid td { padding: 13px 12px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+
+/* 표 칸 안에서 바로 고치는 입력칸 — 줄 높이를 늘리지 않을 만큼만 */
+.input.cell {
+  width: 88px; height: 32px; padding: 0 9px;
+  font-size: 13px; text-align: right;
+}
+/* 상품 줄을 더한 값 — 줄 위에 선을 하나 그어 「여기부터는 합계」라고 말한다 */
+table.grid tr.sumrow td {
+  border-top: 1px solid var(--line); border-bottom: 0;
+  background: var(--surface-2); font-weight: 700;
+}
 table.grid tbody tr { cursor: pointer; }
 table.grid tbody tr:hover td { background: var(--surface-2); }
 table.grid tbody tr:last-child td { border-bottom: 0; }

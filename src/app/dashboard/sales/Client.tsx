@@ -2133,6 +2133,36 @@ function PayDetail({
   });
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
 
+  /*
+   * 상품마다의 금액도 여기서 고친다
+   *
+   * ── 무엇이 불편했나 ────────────────────────────────────────
+   * 결제 줄은 여기서 고칠 수 있는데, 「무엇을 팔았나」의 상품별 금액은 못
+   * 고쳤다. 머리에는 99,000원이라고 떠 있고 밑의 상품 줄은 77,000원인데,
+   * 어느 쪽이 맞는지 여기서는 손을 못 대고 회원 화면으로 건너가야 했다.
+   * 틀린 것을 발견하는 자리와 고치는 자리가 다르면 걸음이 길다.
+   *
+   * 이용권 줄은 결제 줄과 다른 시트에 있어서 따로 저장한다. 바뀐 줄만 보낸다 —
+   * 손대지 않은 줄까지 덮어쓰면, 두 사람이 같은 회원을 동시에 볼 때 남의 수정을
+   * 되돌린다.
+   */
+  const [ti, setTi] = useState<Record<string, { 금액: string; 할인: string; 미수금: string }>>(
+    () => Object.fromEntries(items.map((t) => [t.id, {
+      금액: String(num(t.금액) || ""),
+      할인: String(num(t.할인) || ""),
+      미수금: String(num(t.미수금) || ""),
+    }]))
+  );
+  const setTicket = (id: string, k: "금액" | "할인" | "미수금", v: string) =>
+    setTi((o) => ({ ...o, [id]: { ...o[id], [k]: v.replace(/[^0-9]/g, "") } }));
+
+  /** 상품 줄에서 실제로 받은 돈의 합 — 결제 줄의 「받은 금액」과 같아야 한다 */
+  const 상품받음 = items.reduce(
+    (s, t) => s + Math.max(0, num(ti[t.id]?.금액) - num(ti[t.id]?.미수금)), 0
+  );
+  const 상품미수 = items.reduce((s, t) => s + num(ti[t.id]?.미수금), 0);
+  const 어긋남 = items.length > 0 && 상품받음 !== num(f.결제금액);
+
   /* 이름 차례로 세운다. 사번 차례로 두면 찾는 이름이 어디쯤인지 모른다 */
   const staffList = Object.entries(staffNames)
     .map(([id, name]) => ({ id, name }))
@@ -2142,6 +2172,33 @@ function PayDetail({
     if (busy) return;
     setBusy(true);
     setMsg("");
+
+    /* 바뀐 이용권 줄만 먼저 저장한다. 결제 줄이 먼저 바뀌고 이용권이 실패하면
+       위아래가 어긋난 채로 남는다 — 상세한 쪽을 먼저 맞춘다 */
+    for (const t of items) {
+      const v = ti[t.id];
+      if (!v) continue;
+      const 전 = {
+        금액: String(num(t.금액) || ""),
+        할인: String(num(t.할인) || ""),
+        미수금: String(num(t.미수금) || ""),
+      };
+      if (v.금액 === 전.금액 && v.할인 === 전.할인 && v.미수금 === 전.미수금) continue;
+      const r = await fetch("/api/members/ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: t.id,
+          changes: { 금액: String(num(v.금액)), 할인: String(num(v.할인)), 미수금: String(num(v.미수금)) },
+        }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        setBusy(false);
+        return setMsg(j.error ?? "상품 금액을 저장하지 못했습니다.");
+      }
+    }
+
     const res = await fetch("/api/members/payment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2302,8 +2359,8 @@ function PayDetail({
 
         {edit && (
           <p className="stat-note">
-            여기서 고치면 <b>같은 결제로 판 상품 전부</b>가 같이 옮겨갑니다. 상품마다 금액을
-            나눠 고치시려면 회원 화면의 <b>이용권 고치기</b>에서 하시면 됩니다.
+            결제일 · 수단을 고치면 <b>같은 결제로 판 상품 전부</b>가 같이 옮겨갑니다.
+            상품마다의 금액은 아래 <b>「무엇을 팔았나」</b>에서 줄마다 고치시면 됩니다.
           </p>
         )}
         {msg && <div className="alert-bad">{msg}</div>}
@@ -2345,19 +2402,73 @@ function PayDetail({
                           </div>
                         )}
                       </td>
-                      <td className="r num">
-                        {적힘 ? money(num(t.금액)) : <span className="dim">기록 없음</span>}
-                      </td>
-                      <td className="r num dim">{num(t.할인) > 0 ? money(num(t.할인)) : "-"}</td>
-                      <td className={`r num ${num(t.미수금) > 0 ? "bad" : "dim"}`}>
-                        {num(t.미수금) > 0 ? money(num(t.미수금)) : "-"}
-                      </td>
+                      {edit ? (
+                        <>
+                          <td className="r">
+                            <input className="input cell num" inputMode="numeric"
+                                   value={ti[t.id]?.금액 ?? ""}
+                                   onChange={(e) => setTicket(t.id, "금액", e.target.value)} />
+                          </td>
+                          <td className="r">
+                            <input className="input cell num" inputMode="numeric"
+                                   value={ti[t.id]?.할인 ?? ""}
+                                   onChange={(e) => setTicket(t.id, "할인", e.target.value)} />
+                          </td>
+                          <td className="r">
+                            <input className="input cell num" inputMode="numeric"
+                                   value={ti[t.id]?.미수금 ?? ""}
+                                   onChange={(e) => setTicket(t.id, "미수금", e.target.value)} />
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="r num">
+                            {적힘 ? money(num(t.금액)) : <span className="dim">기록 없음</span>}
+                          </td>
+                          <td className="r num dim">{num(t.할인) > 0 ? money(num(t.할인)) : "-"}</td>
+                          <td className={`r num ${num(t.미수금) > 0 ? "bad" : "dim"}`}>
+                            {num(t.미수금) > 0 ? money(num(t.미수금)) : "-"}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   );
                 })}
+                {/*
+                  상품 줄을 더한 값
+
+                  위의 「받은 금액」과 여기가 다르면 무엇이 맞는지 알 수 없다.
+                  숫자를 나란히 놓고, 다르면 한 번 눌러 맞출 수 있게 한다 —
+                  어느 쪽을 맞출지는 대표님이 정하시는 편이 낫다.
+                */}
+                {edit && (
+                  <tr className="sumrow">
+                    <td><b>상품 합계</b></td>
+                    <td className="r num"><b>{money(상품받음 + 상품미수)}</b></td>
+                    <td className="r num dim">-</td>
+                    <td className={`r num ${상품미수 > 0 ? "bad" : "dim"}`}>
+                      {상품미수 > 0 ? money(상품미수) : "-"}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
+        )}
+
+        {edit && items.length > 0 && (
+          <p className={어긋남 ? "alert-bad" : "stat-note"} style={{ marginTop: 10 }}>
+            상품 줄에서 실제로 받은 돈 <b className="num">{money(상품받음)}원</b>
+            {어긋남 ? (
+              <>
+                {" "}· 위의 <b>받은 금액 {money(num(f.결제금액))}원</b>과 다릅니다{" "}
+                <button type="button" className="linkish"
+                        onClick={() => { set("결제금액", String(상품받음)); set("미수금액", String(상품미수)); }}>
+                  상품 합계에 맞추기
+                </button>
+              </>
+            ) : " · 위의 받은 금액과 맞습니다"}
+          </p>
         )}
 
         <div className="modal-actions">
