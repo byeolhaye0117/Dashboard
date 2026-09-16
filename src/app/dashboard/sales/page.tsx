@@ -8,7 +8,7 @@ import { readSession } from "@/lib/session";
 import { myBranchesOf, viewBranches } from "@/lib/scope";
 import { visibleMenus, abilitiesFor } from "@/lib/menu";
 import { getBranches, getStaffNames, getProducts, getAllOptions } from "@/lib/data";
-import { listPayments, listTickets, listMembers, SHEET_P } from "@/lib/members";
+import { listPayments, listTickets, listTicketServices, listMembers, SHEET_P } from "@/lib/members";
 import { REFUND_COLUMNS } from "@/lib/refund";
 import { readSheet } from "@/lib/sheets";
 import { withSaleTypes } from "@/lib/options";
@@ -50,6 +50,14 @@ async function body() {
 
   let payments: any[] = [];
   let tickets: any[] = [];
+  /*
+   * 회원권에 얹은 옵션 — 24시 이용 · 여성전용 같은 것
+   *
+   * 이것은 제 이용권 줄이 없다. 회원권 이용권에 매달린 한 줄로만 남는다.
+   * 그래서 이용권만 읽어서는 매출 화면에 그 금액이 아예 안 나왔다 — 이윤형님
+   * 결제 141,900원 가운데 24시 16,500원이 결제 내역에서 통째로 빠졌다.
+   */
+  let extras: any[] = [];
   let problem = "";
   try {
     const [pay, tick] = await Promise.all([listPayments(), listTickets()]);
@@ -65,6 +73,13 @@ async function body() {
      * 이 회원이 전에 무엇을 끊었는지도 봐야 신규와 재등록을 가를 수 있다.
      */
     tickets = tick.filter((t) => allowed.has(t.지점코드));
+    /* 얹은 옵션 탭이 아직 없을 수도 있다. 없다고 매출 화면이 안 열려서는 안 된다 */
+    try {
+      const tids = new Set(tickets.map((t) => t.id));
+      extras = (await listTicketServices()).filter((s) => tids.has(s.이용권번호));
+    } catch {
+      extras = [];
+    }
   } catch (e: any) {
     problem = String(e?.message ?? e);
   }
@@ -149,6 +164,7 @@ async function body() {
       <Client
         payments={payments}
         tickets={tickets}
+        extras={extras}
         products={products.map(readProduct)}
         goals={goals.filter((g) => allowed.has(g.지점코드))}
         leads={leads}

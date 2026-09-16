@@ -59,7 +59,20 @@ type Ticket = {
   회원번호?: string; 시작일?: string; 등록일시?: string; 지점코드?: string;
   /* 결제 상세에서 「이 36만원이 무엇이었나」를 답하는 값들 */
   종료일?: string; 할인?: string; 미수금?: string; 총횟수?: string;
+  /*
+   * 회원권에 얹은 옵션인가 (24시 이용 · 여성전용)
+   *
+   * 이것은 제 이용권 줄이 없다. 회원권 이용권에 매달린 한 줄로만 남는다.
+   * 화면에서는 이용권인 척 세워 두고(그래야 목록·갈래·상세가 다 잡는다),
+   * 고칠 때만 다른 문으로 보낸다 — 시트가 다르기 때문이다.
+   */
+  얹음?: boolean;
+  /** 얹은 옵션이 적힌 시트 줄 번호 — 고칠 때 이것으로 찾는다 */
+  줄?: number;
 };
+
+/** 회원권에 얹은 옵션 한 줄 */
+type Extra = { id: string; 줄: number; 이용권번호: string; 상품코드: string; 추가금액: string };
 type Named = { code: string; name: string };
 type Goal = { 지점코드: string; 연월: string; 목표금액: number };
 /** 전환율·상담왕을 내기 위한 상담 한 줄 */
@@ -80,6 +93,7 @@ type Props = {
   /** 선택목록에 정해 둔 값들 — 아무도 안 고른 갈래도 0명으로 세우는 데 쓴다 */
   options: Record<string, string[]>;
   tickets: Ticket[];
+  extras: Extra[];
   products: ProductMeta[];
   goals: Goal[];
   leads: Lead[];
@@ -704,8 +718,34 @@ export default function Client(p: Props) {
       const same = byWho[`${t.회원번호 ?? ""}|${d}`] ?? [];
       if (same.length === 1) (out[same[0].id] ??= []).push(t);
     });
+
+    /*
+     * 회원권에 얹은 옵션도 같이 세운다
+     *
+     * 24시 이용 · 여성전용 같은 것은 제 이용권 줄이 없어서, 이용권만 읽으면
+     * 그 금액이 매출 화면에서 통째로 사라졌다 — 이윤형님 결제 141,900원 중
+     * 24시 16,500원이 결제 내역에 한 줄도 안 떴다. 회원 화면은 이것을 이미
+     * 세우고 있어서, 같은 결제인데 두 화면의 줄 수가 달랐다.
+     *
+     * 그 옵션이 매달린 이용권이 어느 결제에 붙는지는 위에서 이미 이었다.
+     * 그 결제에 한 줄로 얹는다.
+     */
+    const 어느결제 = new Map<string, string>();
+    Object.entries(out).forEach(([pid, ts]) => ts.forEach((t) => 어느결제.set(t.id, pid)));
+    p.extras.forEach((e) => {
+      const pid = 어느결제.get(e.이용권번호);
+      if (!pid) return;
+      (out[pid] ??= []).push({
+        id: `VS:${e.id}`,
+        상품코드: e.상품코드,
+        결제번호: pid,
+        금액: e.추가금액 ?? "",
+        얹음: true,
+        줄: e.줄,
+      });
+    });
     return out;
-  }, [p.payments, p.tickets]);
+  }, [p.payments, p.tickets, p.extras]);
 
   /**
    * 결제 한 줄을 상품별로 펼친다
@@ -2184,14 +2224,22 @@ function PayDetail({
         미수금: String(num(t.미수금) || ""),
       };
       if (v.금액 === 전.금액 && v.할인 === 전.할인 && v.미수금 === 전.미수금) continue;
-      const r = await fetch("/api/members/ticket", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: t.id,
-          changes: { 금액: String(num(v.금액)), 할인: String(num(v.할인)), 미수금: String(num(v.미수금)) },
-        }),
-      });
+      /* 회원권에 얹은 옵션은 이용권 시트에 줄이 없다. 다른 문으로 보낸다 —
+         이용권인 줄 알고 보내면 「해당 이용권이 없습니다」로 막힌다 */
+      const r = t.얹음
+        ? await fetch("/api/members/ticket-service", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 줄: t.줄, 추가금액: String(num(v.금액)) }),
+          })
+        : await fetch("/api/members/ticket", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: t.id,
+              changes: { 금액: String(num(v.금액)), 할인: String(num(v.할인)), 미수금: String(num(v.미수금)) },
+            }),
+          });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         setBusy(false);
@@ -2396,9 +2444,11 @@ function PayDetail({
                     <tr key={t.id}>
                       <td>
                         <b>{pr?.name || t.상품코드}</b>
-                        {(기간 || t.총횟수) && (
+                        {(t.얹음 || 기간 || t.총횟수) && (
                           <div className="dim" style={{ fontSize: 11.5, marginTop: 2 }}>
-                            {[기간, t.총횟수 ? `${t.총횟수}회` : ""].filter(Boolean).join(" · ")}
+                            {t.얹음
+                              ? "회원권에 얹음"
+                              : [기간, t.총횟수 ? `${t.총횟수}회` : ""].filter(Boolean).join(" · ")}
                           </div>
                         )}
                       </td>
@@ -2409,15 +2459,21 @@ function PayDetail({
                                    value={ti[t.id]?.금액 ?? ""}
                                    onChange={(e) => setTicket(t.id, "금액", e.target.value)} />
                           </td>
+                          {/* 얹은 옵션에는 할인·미수 칸이 시트에 없다. 빈칸을
+                              내어 두면 적어도 안 남는다 — 안 되는 것은 안 보여준다 */}
                           <td className="r">
-                            <input className="input cell num" inputMode="numeric"
-                                   value={ti[t.id]?.할인 ?? ""}
-                                   onChange={(e) => setTicket(t.id, "할인", e.target.value)} />
+                            {t.얹음 ? <span className="dim">-</span> : (
+                              <input className="input cell num" inputMode="numeric"
+                                     value={ti[t.id]?.할인 ?? ""}
+                                     onChange={(e) => setTicket(t.id, "할인", e.target.value)} />
+                            )}
                           </td>
                           <td className="r">
-                            <input className="input cell num" inputMode="numeric"
-                                   value={ti[t.id]?.미수금 ?? ""}
-                                   onChange={(e) => setTicket(t.id, "미수금", e.target.value)} />
+                            {t.얹음 ? <span className="dim">-</span> : (
+                              <input className="input cell num" inputMode="numeric"
+                                     value={ti[t.id]?.미수금 ?? ""}
+                                     onChange={(e) => setTicket(t.id, "미수금", e.target.value)} />
+                            )}
                           </td>
                         </>
                       ) : (
