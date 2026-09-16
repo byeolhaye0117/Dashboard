@@ -353,16 +353,15 @@ function monthsBack(from: string, count: number): string[] {
 export default function Client(p: Props) {
   const now = today();
   const thisMonth = now.slice(0, 7);
-  const [month, setMonth] = useState(thisMonth);
-  /* 머리 위에서 고른 지점을 기본으로 본다. 지점을 골라 놓고도 전 지점
-     숫자가 뜨면, 무엇을 보고 있는지 화면이 두 가지로 말하는 셈이다 */
-  const [branch, setBranch] = useState(p.currentBranch || "전체");
   /*
-   * 보고 있던 날을 기억한다
+   * 보고 있던 자리를 기억한다
    *
-   * 결제를 고치면 화면을 새로 읽는다. 그때 그래프가 늘 오늘부터 다시 열려서,
-   * 8월 7일 것을 고치고 나면 8월 25일로 튕겨 돌아왔다. 고치던 날을 다시
-   * 찾아 들어가야 했다.
+   * 결제를 고치면 화면을 새로 읽는다. 그때 늘 오늘부터 다시 열려서, 8월 7일
+   * 것을 고치고 나면 9월 17일로 튕겨 돌아왔다. 고치던 자리를 다시 찾아
+   * 들어가야 했다 — 달을 되돌리고, 날을 다시 고르고.
+   *
+   * 달과 날을 함께 적어 둔다. 날만 적어 두었더니 달이 오늘로 돌아가 버려서,
+   * 적어 둔 날이 그 달에 없는 날이 되고 아무 데도 못 갔다.
    *
    * 브라우저에 잠깐 적어 둔다 — 창을 닫으면 지워지는 자리라 다음에 새로
    * 여실 때는 오늘부터 열린다. 그게 맞다.
@@ -377,6 +376,36 @@ export default function Client(p: Props) {
       return "";
     }
   };
+
+  /**
+   * 적어 둔 달은 잠깐만 쓴다
+   *
+   * 고치고 저장한 직후에 돌아가려는 것이지, 오늘 하루 내내 8월에 머무르려는
+   * 것이 아니다. 시간을 같이 적어 두고 반 시간이 지나면 이 달부터 연다 —
+   * 한참 뒤에 매출을 다시 열었는데 지난달이 떠 있으면 그것대로 놀란다.
+   */
+  const 기억창 = 30 * 60 * 1000;
+
+  /** 달을 옮기는 자리는 여럿이다 — 적어 두는 일을 한 군데로 모은다 */
+  const [month, setMonth0] = useState(() => {
+    const m = 기억("month");
+    const t = Number(기억("month-at"));
+    /* 적어 둔 글자가 「2026-08」 꼴이고, 적어 둔 지 얼마 안 됐을 때만 쓴다 */
+    const 쓸만 = /^\d{4}-\d{2}$/.test(m) && t > 0 && Date.now() - t < 기억창;
+    return 쓸만 ? m : thisMonth;
+  });
+  const setMonth = (m: string) => {
+    setMonth0(m);
+    기억("month", m);
+    기억("month-at", String(Date.now()));
+    /* 달을 옮기면 적어 둔 날은 다른 달의 날이라 버린다 — 그 달에 없는 날로
+       그래프를 열면 아무 데도 안 간다 */
+    기억("day", "");
+  };
+
+  /* 머리 위에서 고른 지점을 기본으로 본다. 지점을 골라 놓고도 전 지점
+     숫자가 뜨면, 무엇을 보고 있는지 화면이 두 가지로 말하는 셈이다 */
+  const [branch, setBranch] = useState(p.currentBranch || "전체");
 
   /* 날짜별 그래프를 하루로 볼지 이레로 볼지 */
   const [span, setSpan] = useState<"day" | "week">(
