@@ -1025,6 +1025,30 @@ export default function Client(p: Props) {
 
   const lead = tally(leadRows);
 
+  /*
+   * 이 달에 실제로 들어온 분
+   *
+   * ── 왜 따로 세나 ────────────────────────────────────────────
+   * 성공률은 문의 시트만 본다. 그런데 문의를 거치지 않고 등록하시는 분이
+   * 많다 — 걸어 들어와 그 자리에서 끊으신 분, 재등록하러 오신 분. 그분들은
+   * 문의 시트에 줄이 없어서 이 숫자 어디에도 안 잡힌다.
+   *
+   * 그래서 88%만 보고 「이 달에 14명 들어왔구나」로 읽으면 틀린다. 실제로
+   * 회원이 된 분이 몇 분인지, 그중 문의를 거친 분이 몇인지 같이 적는다.
+   * 성공률의 뜻은 그대로 두고, 옆에 실제 수를 놓아 견주게 하는 것이다.
+   */
+  const 이달등록 = useMemo(
+    () =>
+      p.people.filter(
+        (m) =>
+          (m.가입일 ?? "").startsWith(month) &&
+          (branch === "전체" || m.지점코드 === branch)
+      ).length,
+    [p.people, month, branch]
+  );
+  /** 문의 시트에 줄이 없는 등록 — 걸어 들어오신 분 */
+  const 문의없이 = Math.max(0, 이달등록 - lead.done);
+
   /** 지점별 문의 → 등록 전환율 */
   const convByBranch = useMemo(
     () =>
@@ -1364,6 +1388,12 @@ export default function Client(p: Props) {
               ? `문의 ${lead.base}건 중 ${lead.done}건 등록` +
                 (lead.going > 0 ? ` · ${lead.going}건 진행중` : "")
               : "이 달 문의 없음"}
+          </span>
+          {/* 문의를 거치지 않고 들어오신 분까지 세어 실제 수를 같이 적는다.
+              88%만 보고 「이 달에 14명 들어왔구나」로 읽으면 틀린다 */}
+          <span className="sub">
+            이 달 실제 등록 <b className="num">{이달등록}명</b>
+            {문의없이 > 0 && ` · 그중 ${문의없이}명은 문의 없이 등록`}
           </span>
           <div className="mini">
             <i className="good" style={{ width: `${lead.winRate ?? 0}%` }} />
