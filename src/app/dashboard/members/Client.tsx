@@ -390,18 +390,36 @@ export default function Client(p: Props) {
    * 재는 자는 만들 때와 같다 — 같은 지점 · 같은 번호. 이름이 같아도 번호가
    * 다르면 다른 분이고, 이름이 달라도(오타) 지점과 번호가 같으면 한 분이다.
    */
-  const dupes = useMemo(() => {
-    const 뭉치 = new Map<string, string[]>();
+  const dupeGroups = useMemo(() => {
+    const 뭉치 = new Map<string, Member[]>();
     p.items.forEach((m) => {
       const key = onlyNum(m.전화번호 ?? "");
       if (!key) return;
       const k = `${m.지점코드}|${key}`;
-      뭉치.set(k, [...(뭉치.get(k) ?? []), m.id]);
+      뭉치.set(k, [...(뭉치.get(k) ?? []), m]);
     });
+    return [...뭉치.values()]
+      .filter((g) => g.length > 1)
+      /* 줄마다 무엇이 달려 있는지 같이 센다 — 어느 줄을 지워도 되는지는
+         「이용권·결제가 붙어 있나」로만 가를 수 있다. 회원을 지우면 그 줄에
+         달린 이용권과 결제도 같이 내려가기 때문이다 */
+      .map((g) =>
+        g.map((m) => ({
+          m,
+          이용권: p.tickets.filter((t) => t.회원번호 === m.id).length,
+          결제: p.payments.filter((x) => x.회원번호 === m.id).length,
+          /* 상담에서 자동으로 올라온 줄인가 — 원인을 짚는 데 쓴다 */
+          상담발: Boolean((m.상담번호 ?? "").trim()),
+        }))
+      )
+      .sort((a, b) => (a[0].m.이름 ?? "").localeCompare(b[0].m.이름 ?? "", "ko"));
+  }, [p.items, p.tickets, p.payments]);
+
+  const dupes = useMemo(() => {
     const out = new Set<string>();
-    뭉치.forEach((ids) => { if (ids.length > 1) ids.forEach((id) => out.add(id)); });
+    dupeGroups.forEach((g) => g.forEach((x) => out.add(x.m.id)));
     return out;
-  }, [p.items]);
+  }, [dupeGroups]);
 
   const newThisMonth = scoped.filter((m) => (m.가입일 ?? "").startsWith(thisMonth)).length;
   const using = scoped.filter((m) => stateOf(m) === "활성").length;
@@ -594,6 +612,65 @@ export default function Client(p: Props) {
                  value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </div>
+
+      {/*
+        겹친 줄 정리
+
+        「번호 겹침」을 고르셨을 때만 나온다. 목록만 보여주면 어느 줄을 지워야
+        하는지 알 수 없다 — 회원을 지우면 그 줄에 달린 이용권과 결제도 같이
+        내려가기 때문이다. 줄마다 무엇이 달려 있는지 세어 놓고, 아무것도 안
+        달린 줄에만 지우기를 열어 둔다.
+      */}
+      {tab === "번호 겹침" && dupeGroups.length > 0 && (
+        <div className="viz" style={{ marginBottom: 14 }}>
+          <h3 className="viz-title">겹친 줄 {dupeGroups.length}쌍</h3>
+          <p className="viz-sub">
+            같은 지점에 같은 번호가 둘 이상입니다. <b>이용권·결제가 없는 줄</b>만 지울 수 있습니다 —
+            회원을 지우면 그 줄에 달린 이용권과 결제도 같이 내려갑니다.
+          </p>
+          {dupeGroups.map((g) => (
+            <div className="dupe-group" key={g[0].m.id}>
+              <div className="dupe-head">
+                <b>{g[0].m.이름}</b>
+                <span className="dim num">{showPhone(g[0].m.전화번호)}</span>
+                <span className="dim">{branchName(g[0].m.지점코드)}</span>
+              </div>
+              {g.map((x) => {
+                const 비었나 = x.이용권 === 0 && x.결제 === 0;
+                return (
+                  <div className="dupe-row" key={x.m.id}>
+                    <span className="nm num">{x.m.id}</span>
+                    <span className="dim">
+                      {[x.m.성별, x.m.나이대, x.m.거주동네].filter(Boolean).join(" · ") || "적힌 값 없음"}
+                    </span>
+                    <span className="dim num">가입 {(x.m.가입일 ?? "").slice(0, 10) || "-"}</span>
+                    <span className={비었나 ? "dim" : ""}>
+                      이용권 <b>{x.이용권}</b> · 결제 <b>{x.결제}</b>
+                    </span>
+                    {x.상담발 && <span className="pill">상담에서 올라옴</span>}
+                    {p.can.remove && (
+                      비었나 ? (
+                        <button className="btn-ghost mini danger"
+                                onClick={() => { setPicked([x.m.id]); setKilling(true); }}>
+                          이 줄 지우기
+                        </button>
+                      ) : (
+                        <span className="dim" style={{ fontSize: 11.5 }}>달린 것이 있어 못 지웁니다</span>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+              {g.every((x) => x.이용권 > 0 || x.결제 > 0) && (
+                <p className="stat-note">
+                  두 줄 다 이용권이나 결제가 달려 있습니다. 어느 쪽으로 합칠지 정하셔야 하니
+                  <b> 지우지 마시고</b> 알려주세요 — 옮기는 길을 따로 만들겠습니다.
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {list.length === 0 ? (
         <div className="empty">

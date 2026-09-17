@@ -667,6 +667,21 @@ table.t2 { min-width: 640px; }
 .input.mini { height: 30px; padding: 0 9px; font-size: 12.5px; width: auto; }
 .gotrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
+/* 겹친 줄 정리 — 한 쌍씩 묶어 놓고 무엇이 달려 있는지 나란히 본다 */
+.dupe-group {
+  margin-top: 10px; padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r);
+}
+.dupe-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.dupe-head b { font-size: 14.5px; font-weight: 800; }
+.dupe-head span { font-size: 12px; }
+.dupe-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0; border-top: 1px solid var(--line-soft); font-size: 12.5px;
+}
+.dupe-row .nm { font-weight: 700; min-width: 68px; }
+.btn-ghost.mini.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+
 /* 목록 위의 기간 고르개 — 달을 옮기고 하루를 고른다 */
 .whenbar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
