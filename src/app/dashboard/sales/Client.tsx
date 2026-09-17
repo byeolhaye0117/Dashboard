@@ -19,7 +19,8 @@ import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
-import { termOf, groupOf, type ProductMeta } from "@/lib/productMeta";
+import { termOf, type ProductMeta } from "@/lib/productMeta";
+import { typeOf, joinKindOf } from "@/lib/saleTypes";
 import { stageNow, baseDate, STAGES } from "@/lib/stage";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 import { backdrop } from "@/lib/backdrop";
@@ -396,14 +397,6 @@ function shareOut(
   });
   return out;
 }
-
-const typeOf = (v: string) => {
-  const t = (v ?? "").trim();
-  if (t.startsWith("재등")) return "재등록";
-  if (t.startsWith("신규")) return "신규";
-  if (t) return "기타매출";
-  return "미분류";
-};
 
 function shiftMonth(m: string, delta: number): string {
   const [y, mm] = m.split("-").map(Number);
@@ -1044,48 +1037,62 @@ export default function Client(p: Props) {
    * 성공률의 뜻은 그대로 두고, 옆에 실제 수를 놓아 견주게 하는 것이다.
    */
   /*
-   * 이 달에 등록한 분 — 신규와 재등록을 같이 센다
+   * 이 달에 등록한 분 — 결제 줄에 고르신 「매출유형」을 그대로 따른다
    *
-   * ── 무엇이 틀렸었나 ────────────────────────────────────────
-   * 「가입일이 이 달인 분」만 셌다. 그러면 처음 오신 분만 잡힌다. 원래
-   * 다니시던 분이 이 달에 다시 끊으신 것은 분명 등록인데 이 숫자 어디에도
-   * 없었다 — 성공률이 실제보다 낮게 나오고 있었다.
+   * ── 무엇을 보고 가르나 ─────────────────────────────────────
+   * 상품을 팔 때 직원이 신규·재등록·PT·기타매출 가운데 하나를 고른다.
+   * 그 고른 값이 이 화면의 답이다. 화면이 날짜를 보고 따로 짐작하면,
+   * 직원이 「재등록」이라고 골라 둔 건이 화면에서는 신규로 잡혀 서로 다른
+   * 말을 하게 된다. 고르신 것보다 화면이 더 잘 알 수는 없다.
    *
-   * ── 무엇을 세나 ───────────────────────────────────────────
-   * 신규 : 가입일이 이 달인 분
-   * 재등록: 이 달에 시작하는 이용권이 있는데 가입일은 이 달이 아닌 분
+   * 「기타매출」은 등록이 아니다 — 사물함 · 운동복 · 프로틴이 여기다.
+   * 「PT」는 신규인지 재등록인지를 말하는 값이 아니라서, 그 회원이 전에
+   * 끊은 적이 있는지 보고 가른다. 아무것도 안 고르신 옛 줄도 같다.
    *
-   * 이용권 갈래만 본다(groupOf). 사물함을 하나 더 끊은 것을 등록이라 부르면
-   * 「다시 다니기로 하신 분」이 몇 분인지 알 수 없어진다. 회원 화면의
-   * 재등록과 같은 규칙이다 — 두 화면이 다른 수를 말하면 안 된다.
+   * ── 사람으로 센다 ──────────────────────────────────────────
+   * 회원 번호로 모은다. 한 분이 이 달에 두 번 결제해도 한 분이다.
+   * 신규와 재등록에 다 걸리면 신규로 둔다 — 처음 오신 달이 먼저다.
    *
-   * 사람 번호로 모은다. 한 분이 이 달에 두 개를 끊어도 한 분이다.
+   * 환불 줄은 애초에 안 들어오고(cur.live), 미수금 받은 줄은 뺀다 —
+   * 그건 지난달에 판 것의 돈이 이 달에 들어온 것이지 이 달의 등록이 아니다.
    */
   const 등록한분 = useMemo(() => {
-    const 본다 = (c: string) => branch === "전체" || c === branch;
-    const 이지점 = new Map(
-      p.people.filter((m) => 본다(m.지점코드)).map((m) => [m.id, m])
-    );
+    const 앞줄있나 = (회원번호: string, 결제일: string) =>
+      p.tickets.some(
+        (o) => o.회원번호 === 회원번호 && (o.시작일 ?? "") < 결제일 && !o.얹음
+      );
 
     const 신규 = new Set<string>();
-    이지점.forEach((m, id) => {
-      if ((m.가입일 ?? "").startsWith(month)) 신규.add(id);
+    const 재등록 = new Set<string>();
+
+    cur.live.forEach((x) => {
+      if (x.회수) return;
+      const id = x.회원번호 ?? "";
+      if (!id) return;
+      const 갈래 = joinKindOf(x.매출유형, 앞줄있나(id, (x.결제일시 ?? "").slice(0, 10)));
+      if (!갈래) return;
+      (갈래 === "신규" ? 신규 : 재등록).add(id);
     });
 
-    const 재등록 = new Set<string>();
-    p.tickets.forEach((t) => {
-      const id = t.회원번호 ?? "";
-      if (!id || 신규.has(id)) return;
-      if (!이지점.has(id)) return;
-      if (!(t.시작일 ?? "").startsWith(month)) return;
-      /* 얹은 옵션(24시)은 제 이용권이 아니다 — 그것만으로 등록이라 할 수 없다 */
-      if (t.얹음) return;
-      if (groupOf(p.products.find((x) => x.code === t.상품코드)) !== "이용권") return;
-      재등록.add(id);
+    /*
+     * 결제 줄이 아예 없는데 가입일이 이 달인 분
+     *
+     * 고르신 값을 뒤집는 것이 아니라 고를 자리가 없던 것을 메우는 것이다.
+     * 등록만 해 두고 결제를 나중에 적는 경우가 있는데, 그분이 이 달의
+     * 등록에서 빠지면 성공률이 실제보다 낮게 나온다.
+     */
+    p.people.forEach((m) => {
+      if (branch !== "전체" && m.지점코드 !== branch) return;
+      if (!(m.가입일 ?? "").startsWith(month)) return;
+      if (신규.has(m.id) || 재등록.has(m.id)) return;
+      신규.add(m.id);
     });
+
+    /* 두 곳에 다 든 분은 신규 한 자리만 차지한다 */
+    재등록.forEach((id) => { if (신규.has(id)) 재등록.delete(id); });
 
     return { 신규: 신규.size, 재등록: 재등록.size, 합: 신규.size + 재등록.size };
-  }, [p.people, p.tickets, p.products, month, branch]);
+  }, [cur.live, p.tickets, p.people, month, branch]);
 
   const 이달등록 = 등록한분.합;
   /** 문의 시트에 줄이 없는 등록 — 걸어 들어오신 분 */

@@ -10,7 +10,7 @@ import { korDate, today, daysBetween, weekdayIndex } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
 import { termOf, sellsByMonth, groupOf, type Grp, type ProductMeta } from "@/lib/productMeta";
-import { SALE_TYPES } from "@/lib/saleTypes";
+import { SALE_TYPES, joinKindOf } from "@/lib/saleTypes";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 import { REFUND_STAGES, REFUND_REASONS } from "@/lib/refund";
 import { backdrop } from "@/lib/backdrop";
@@ -482,30 +482,53 @@ export default function Client(p: Props) {
     () => scoped.filter((m) => !(m.가입일 ?? "").slice(0, 10) || (m.가입일 ?? "").slice(0, 10) <= 달끝),
     [scoped, 달끝]
   );
-  const 신규목록 = useMemo(
-    () => scoped.filter((m) => (m.가입일 ?? "").startsWith(month)),
-    [scoped, month]
-  );
   /*
-   * 그 달에 다시 끊으신 분
+   * 그 달에 신규인가 재등록인가 — 결제 줄에 고르신 「매출유형」을 따른다
    *
-   * 그 달에 시작하는 회원권이 있는데 가입일은 그 달이 아닌 분이다. 가입일이
-   * 그 달이면 그건 신규지 재등록이 아니다 — 둘을 겹쳐 세면 신규가 재등록에도
-   * 들어가 달 합계가 사람 수보다 커진다.
+   * ── 무엇이 달라졌나 ────────────────────────────────────────
+   * 예전에는 화면이 날짜를 보고 짐작했다. 가입일이 그 달이면 신규, 그 달에
+   * 시작하는 회원권이 있으면 재등록. 그런데 상품을 팔 때 직원이 신규·재등록을
+   * 이미 고르고 있었다. 고르신 값과 화면의 짐작이 다르면 어느 쪽이 맞는지
+   * 알 수 없고, 매출 화면과도 다른 수를 말하게 된다.
    *
-   * 회원권 갈래만 본다(mainOf). 사물함을 하나 더 끊은 것을 재등록이라 부르면
-   * 「다시 다니기로 하신 분」이 몇 분인지 알 수 없게 된다.
+   * 이제 고르신 값이 먼저다. 「기타매출」은 등록이 아니고(사물함·운동복),
+   * 「PT」나 안 고르신 옛 줄은 전에 끊은 적이 있는지 보고 가른다.
+   * 규칙은 saleTypes 한 곳에 있다 — 매출 화면이 같은 것을 부른다.
    */
+  const 이달갈래 = useMemo(() => {
+    const 앞줄있나 = (회원번호: string, 결제일: string) =>
+      p.tickets.some((o) => o.회원번호 === 회원번호 && (o.시작일 ?? "") < 결제일);
+
+    const map: Record<string, "신규" | "재등록"> = {};
+    p.payments.forEach((x) => {
+      if (x.환불여부?.toUpperCase() === "Y") return;
+      if (!(x.결제일시 ?? "").startsWith(month)) return;
+      const id = x.회원번호 ?? "";
+      if (!id) return;
+      const 갈래 = joinKindOf(x.매출유형, 앞줄있나(id, (x.결제일시 ?? "").slice(0, 10)));
+      if (!갈래) return;
+      /* 한 달에 두 번 결제하셔도 한 분이다. 둘 다면 신규가 먼저다 */
+      if (map[id] === "신규") return;
+      map[id] = 갈래;
+    });
+
+    /* 결제 줄이 없는데 가입일이 그 달이면 신규다 — 고르신 값을 뒤집는 것이
+       아니라, 고를 자리가 없던 것을 메우는 것이다 */
+    scoped.forEach((m) => {
+      if (map[m.id]) return;
+      if ((m.가입일 ?? "").startsWith(month)) map[m.id] = "신규";
+    });
+
+    return map;
+  }, [p.payments, p.tickets, scoped, month]);
+
+  const 신규목록 = useMemo(
+    () => scoped.filter((m) => 이달갈래[m.id] === "신규"),
+    [scoped, 이달갈래]
+  );
   const 재등록목록 = useMemo(
-    () =>
-      scoped.filter(
-        (m) =>
-          !(m.가입일 ?? "").startsWith(month) &&
-          (mainOf[m.id] ?? []).some(
-            (t) => (t.시작일 ?? "").startsWith(month) && t.상태 !== "환불"
-          )
-      ),
-    [scoped, mainOf, month]
+    () => scoped.filter((m) => 이달갈래[m.id] === "재등록"),
+    [scoped, 이달갈래]
   );
   /*
    * 그 달에 회원권이 끝나는 분을 둘로 가른다
