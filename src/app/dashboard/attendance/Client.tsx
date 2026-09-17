@@ -133,6 +133,18 @@ export default function Client(p: Props) {
   /** 휴게 중일 때 "몇 분째"를 흐르게 하려고 1분마다 다시 그린다 */
   const [tick, setTick] = useState(0);
   const [confirmOut, setConfirmOut] = useState(false);
+  /*
+   * 퇴근 보고
+   *
+   * 퇴근을 찍기 전에 하루를 한 줄로 남긴다 — 몇 분과 상담했고, 몇 분이
+   * 등록했고, 몇 분을 놓쳤는가. 놓친 분은 이름과 번호까지 적어 둔다.
+   *
+   * 보고를 못 올려도 퇴근은 찍히게 한다. 시트 한 곳이 잘못돼서 직원이 퇴근을
+   * 못 찍고 서 있는 일이 있어서는 안 된다.
+   */
+  const [report, setReport] = useState(false);
+  /** 휴게를 같이 적고 퇴근하는 경우 그 분 수 */
+  const [restMin, setRestMin] = useState(0);
 
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 60_000);
@@ -349,7 +361,7 @@ export default function Client(p: Props) {
               )}
               {!meToday.resting && (
                 <button className={vary ? "btn-ghost tall" : "btn-dark big"}
-                        onClick={() => (needRest ? setConfirmOut(true) : punch("out"))}
+                        onClick={() => (needRest ? setConfirmOut(true) : setReport(true))}
                         disabled={Boolean(busy)}>
                   {busy === "out" ? "찍는 중…" : "퇴근"}
                 </button>
@@ -396,13 +408,33 @@ export default function Client(p: Props) {
             <p>쉬셨다면 휴게를 적어주세요. 정말 못 쉬셨다면 그대로 퇴근하셔도 됩니다.</p>
           </div>
           <span className="spacer" />
-          <button className="btn-ghost" onClick={() => punch("out", 30)} disabled={Boolean(busy)}>
+          <button className="btn-ghost"
+                  onClick={() => { setRestMin(30); setConfirmOut(false); setReport(true); }}
+                  disabled={Boolean(busy)}>
             휴게 30분 적고 퇴근
           </button>
-          <button className="btn-dark" onClick={() => punch("out")} disabled={Boolean(busy)}>
+          <button className="btn-dark" onClick={() => { setConfirmOut(false); setReport(true); }} disabled={Boolean(busy)}>
             그대로 퇴근
           </button>
         </div>
+      )}
+
+      {/*
+        퇴근 보고
+
+        하루를 닫으면서 남기는 한 줄이다. 놓친 분은 이름과 번호까지 적는다 —
+        「실패 3명」이라는 숫자만 남으면 다음에 할 수 있는 일이 없다. 이름과
+        번호가 있어야 다시 연락을 드릴 수 있다.
+
+        보고를 못 올려도 퇴근은 찍힌다. 시트 한 곳이 잘못돼서 직원이 퇴근을
+        못 찍고 서 있는 일이 있어서는 안 된다.
+      */}
+      {report && (
+        <ShiftReport
+          busy={Boolean(busy)}
+          onSkip={() => { setReport(false); punch("out", restMin); setRestMin(0); }}
+          onDone={() => { setReport(false); punch("out", restMin); setRestMin(0); }}
+        />
       )}
 
       {msg && <div className="alert-bad">{msg}</div>}
@@ -767,6 +799,160 @@ function EditBox({ person, day, rounds, canRemove, onClose }: {
             {busy ? "저장 중…" : "저장"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 퇴근 보고 창
+ *
+ * 상담 · 성공 · 실패를 적고, 놓친 분은 명단으로 남긴다. 실패 수는 손으로
+ * 적지 않는다 — 적어 주신 명단에서 센다. 손으로 적은 수와 명단이 어긋나면
+ * 어느 쪽이 맞는지 아무도 모른다.
+ */
+function ShiftReport({ busy, onSkip, onDone }: {
+  busy: boolean;
+  onSkip: () => void;
+  onDone: () => void;
+}) {
+  const [상담, set상담] = useState("");
+  const [성공, set성공] = useState("");
+  const [문제, set문제] = useState("");
+  const [실패, set실패] = useState<{ 이름: string; 전화번호: string; 사유: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  /* 놓친 분 한 줄을 받는 작은 창 — 목록 위에 겹쳐 뜬다 */
+  const [adding, setAdding] = useState(false);
+  const [one, setOne] = useState({ 이름: "", 전화번호: "", 사유: "" });
+
+  const num = (v: string) => Number((v ?? "").replace(/[^0-9]/g, "")) || 0;
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/attendance/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 상담수: String(num(상담)), 성공수: String(num(성공)), 문제사항: 문제, 실패 }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? "보고를 올리지 못했습니다.");
+      onDone();
+    } catch (e: any) {
+      setMsg(`${String(e.message ?? e)} — 보고는 못 올렸지만 퇴근은 찍으실 수 있습니다.`);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-back" {...backdrop(() => !saving && onSkip())}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <h3>오늘 하루 보고</h3>
+        <p className="modal-lead">
+          적어 주시면 그대로 퇴근이 찍힙니다. 놓친 분은 <b>이름과 번호</b>까지 적어 주세요 —
+          그래야 다시 연락을 드릴 수 있습니다.
+        </p>
+
+        <div className="form-grid">
+          <div className="field">
+            <label>상담한 분</label>
+            <input className="input" inputMode="numeric" value={상담} autoFocus
+                   placeholder="예: 5"
+                   onChange={(e) => set상담(e.target.value.replace(/[^0-9]/g, ""))} />
+          </div>
+          <div className="field">
+            <label>등록하신 분</label>
+            <input className="input" inputMode="numeric" value={성공}
+                   placeholder="예: 3"
+                   onChange={(e) => set성공(e.target.value.replace(/[^0-9]/g, ""))} />
+          </div>
+        </div>
+
+        <h4 className="viz-title mt">
+          놓친 분 {실패.length}명
+          <button type="button" className="linkish" onClick={() => { setOne({ 이름: "", 전화번호: "", 사유: "" }); setAdding(true); }}>
+            한 분 적기
+          </button>
+        </h4>
+        {실패.length === 0 ? (
+          <p className="stat-note">놓친 분이 없으면 비워 두셔도 됩니다.</p>
+        ) : (
+          <div className="lwrap">
+            {실패.map((x, i) => (
+              <div className="lrow" key={i}>
+                <div className="who">
+                  <b>{x.이름 || "이름 모름"}</b>
+                  <span>{x.전화번호 || "번호 모름"} · {x.사유 || "사유 안 적음"}</span>
+                </div>
+                <div className="mid">
+                  <button type="button" className="btn-ghost mini danger"
+                          onClick={() => set실패(실패.filter((_, k) => k !== i))}>빼기</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="field full" style={{ marginTop: 14 }}>
+          <label>문제사항 및 해결</label>
+          <textarea className="input area" rows={3} value={문제}
+                    placeholder="오늘 있었던 일과 어떻게 하셨는지 적어주세요"
+                    onChange={(e) => set문제(e.target.value)} />
+        </div>
+
+        {msg && <div className="alert-bad">{msg}</div>}
+
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onSkip} disabled={saving || busy}>
+            보고 없이 퇴근
+          </button>
+          <button className="btn-dark" onClick={save} disabled={saving || busy}>
+            {saving ? "올리는 중…" : "보고하고 퇴근"}
+          </button>
+        </div>
+
+        {/* 놓친 분 한 분을 받는 창 — 보고 창 위에 겹쳐 뜬다 */}
+        {adding && (
+          <div className="modal-back" {...backdrop(() => setAdding(false))}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3>놓친 분 적기</h3>
+              <div className="form-grid">
+                <div className="field">
+                  <label>이름</label>
+                  <input className="input" value={one.이름} autoFocus
+                         onChange={(e) => setOne({ ...one, 이름: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label>전화번호</label>
+                  <input className="input" inputMode="tel" placeholder="010-0000-0000"
+                         value={one.전화번호}
+                         onChange={(e) => setOne({ ...one, 전화번호: e.target.value })} />
+                </div>
+                <div className="field full">
+                  <label>등록 안 한 까닭</label>
+                  <input className="input" value={one.사유}
+                         placeholder="예: 가격 부담 · 타 업체 비교 중"
+                         onChange={(e) => setOne({ ...one, 사유: e.target.value })} />
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button className="btn-ghost" onClick={() => setAdding(false)}>그만두기</button>
+                <button className="btn-dark"
+                        onClick={() => {
+                          if (!one.이름.trim() && !one.전화번호.trim()) return;
+                          set실패([...실패, one]);
+                          setAdding(false);
+                        }}>
+                  더하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
