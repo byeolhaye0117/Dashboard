@@ -292,6 +292,15 @@ export default function Client(p: Props) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
+  /*
+   * 숫자 칸을 눌러 여는 명단
+   *
+   * 「마감 임박 1」을 보고 나면 그 한 분이 누구인지가 궁금해진다. 그런데 갈래를
+   * 눌러 목록을 거르고 다시 되돌려야 했다. 떠 있는 창으로 보여주면 닫는 순간
+   * 보던 목록이 그대로다.
+   */
+  const [peek, setPeek] = useState<"" | "전체" | "신규" | "마감임박" | "마감">("");
+
   /* 합치기 — 한 번 더 묻는다. 되돌리기 어려운 일이다 */
   const [merging, setMerging] = useState<{ keep: string; drop: string } | null>(null);
   const [mergeBusy, setMergeBusy] = useState(false);
@@ -468,11 +477,56 @@ export default function Client(p: Props) {
     return out;
   }, [dupeGroups]);
 
-  const newThisMonth = scoped.filter((m) => (m.가입일 ?? "").startsWith(thisMonth)).length;
-  const using = scoped.filter((m) => stateOf(m) === "활성").length;
-  const soon = scoped.filter((m) => stateOf(m) === "마감임박").length;
+  /*
+   * 어느 달을 보고 있나 — 위 숫자가 이 달을 따른다
+   *
+   * ── 무엇이 세는 자가 다른가 ────────────────────────────────
+   * 「전체 회원」과 「신규」는 가입일로 센다. 달을 옮기면 그 달 말까지 들어오신
+   * 분(누적)과 그 달에 들어오신 분이 된다.
+   *
+   * 「마감」은 회원권이 끝나는 날로 센다 — 그 달에 끝나는 분이다.
+   *
+   * 「마감 임박」만은 달을 안 따른다. 「7일 안에 끝남」은 오늘에서만 뜻이
+   * 있는 말이라, 지난달을 보면서 그때의 7일을 세는 것은 쓸 데가 없다.
+   * 대신 칸에 「오늘 기준」이라고 적어 둔다.
+   */
+  const [month, setMonth] = useState(thisMonth);
+  const 이달인가 = month === thisMonth;
+  const shift = (m: string, n: number) => {
+    const [y, mm] = m.split("-").map(Number);
+    const d = new Date(Date.UTC(y, mm - 1 + n, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  };
+  /** 그 달의 마지막 날 — 누적을 셀 때 여기까지 본다 */
+  const 달끝 = (() => {
+    const [y, mm] = month.split("-").map(Number);
+    return `${month}-${String(new Date(Date.UTC(y, mm, 0)).getUTCDate()).padStart(2, "0")}`;
+  })();
+
+  /** 그 달 말까지 들어오신 분 — 달을 안 옮기면 지금까지 전부다 */
+  const 누적 = useMemo(
+    () => scoped.filter((m) => !(m.가입일 ?? "").slice(0, 10) || (m.가입일 ?? "").slice(0, 10) <= 달끝),
+    [scoped, 달끝]
+  );
+  const 신규목록 = useMemo(
+    () => scoped.filter((m) => (m.가입일 ?? "").startsWith(month)),
+    [scoped, month]
+  );
+  /** 그 달에 회원권이 끝나는 분 */
+  const 마감목록 = useMemo(
+    () => scoped.filter((m) => (endOf[m.id] ?? "").startsWith(month)),
+    [scoped, endOf, month]
+  );
+  const 임박목록 = useMemo(
+    () => scoped.filter((m) => stateOf(m) === "마감임박"),
+    [scoped, mainOf, now]
+  );
+
+  const newThisMonth = 신규목록.length;
+  const using = 누적.filter((m) => stateOf(m) === "활성").length;
+  const soon = 임박목록.length;
   /* 양도·홀딩은 재등록 대상이 아니다. 「마감」에 섞으면 전화 명단이 틀어진다 */
-  const expired = scoped.filter((m) => stateOf(m) === "마감").length;
+  const expired = 마감목록.length;
 
   const list = useMemo(() => {
     return scoped
@@ -525,24 +579,80 @@ export default function Client(p: Props) {
         )}
       </div>
 
+      {/* 숫자 칸보다 위에 둔다 — 밑에 두면 숫자를 먼저 읽고 나서 그게 어느 달
+          것인지를 뒤늦게 찾게 된다 */}
+      <div className="whenbar">
+        <button className="icon-btn" onClick={() => setMonth(shift(month, -1))}
+                aria-label="지난달">‹</button>
+        <b className="num">{month.slice(0, 4)}년 {Number(month.slice(5, 7))}월</b>
+        <button className="icon-btn" onClick={() => setMonth(shift(month, 1))}
+                aria-label="다음달">›</button>
+        {!이달인가 && (
+          <button className="btn-ghost mini" onClick={() => setMonth(thisMonth)}>이 달로</button>
+        )}
+      </div>
+
       <div className="stats">
-        <div className="stat">
-          <div className="lb">전체 회원</div>
-          <div className="vl num">{scoped.length}</div>
-          <div className="dt">활성 {using}명</div>
+        {/* 눌러서 명단을 편다. 볼 것이 없는 칸은 안 눌린다 —
+            0명짜리를 눌러 빈 창이 뜨면 고장으로 읽힌다 */}
+        <div className={`stat${누적.length > 0 ? " tapme" : ""}`}
+             role={누적.length > 0 ? "button" : undefined}
+             tabIndex={누적.length > 0 ? 0 : undefined}
+             onClick={() => 누적.length > 0 && setPeek("전체")}
+             onKeyDown={(e) => {
+               if (누적.length > 0 && (e.key === "Enter" || e.key === " ")) {
+                 e.preventDefault(); setPeek("전체");
+               }
+             }}>
+          <div className="lb">전체 회원{누적.length > 0 && <i className="goto">명단 보기</i>}</div>
+          <div className="vl num">{누적.length}</div>
+          <div className="dt">
+            {이달인가 ? `활성 ${using}명` : `${Number(month.slice(5, 7))}월 말까지 누적`}
+          </div>
         </div>
-        <div className="stat">
-          <div className="lb">이번 달 신규</div>
+        <div className={`stat${newThisMonth > 0 ? " tapme" : ""}`}
+             role={newThisMonth > 0 ? "button" : undefined}
+             tabIndex={newThisMonth > 0 ? 0 : undefined}
+             onClick={() => newThisMonth > 0 && setPeek("신규")}
+             onKeyDown={(e) => {
+               if (newThisMonth > 0 && (e.key === "Enter" || e.key === " ")) {
+                 e.preventDefault(); setPeek("신규");
+               }
+             }}>
+          <div className="lb">
+            {이달인가 ? "이번 달 신규" : `${Number(month.slice(5, 7))}월 신규`}
+            {newThisMonth > 0 && <i className="goto">명단 보기</i>}
+          </div>
           <div className="vl num">{newThisMonth}</div>
           <div className="dt">가입일 기준</div>
         </div>
-        <div className="stat">
-          <div className="lb">마감 임박</div>
+        <div className={`stat${soon > 0 ? " tapme" : ""}`}
+             role={soon > 0 ? "button" : undefined}
+             tabIndex={soon > 0 ? 0 : undefined}
+             onClick={() => soon > 0 && setPeek("마감임박")}
+             onKeyDown={(e) => {
+               if (soon > 0 && (e.key === "Enter" || e.key === " ")) {
+                 e.preventDefault(); setPeek("마감임박");
+               }
+             }}>
+          <div className="lb">마감 임박{soon > 0 && <i className="goto">명단 보기</i>}</div>
           <div className="vl num">{soon}</div>
-          <div className="dt">{SOON}일 안에 끝남</div>
+          {/* 이 칸만 달을 안 따른다 — 「7일 안에」는 오늘에서만 뜻이 있다 */}
+          <div className="dt">오늘부터 {SOON}일 안에 끝남</div>
         </div>
-        <div className="stat">
-          <div className="lb">마감</div>
+        <div className={`stat${expired > 0 ? " tapme" : ""}`}
+             role={expired > 0 ? "button" : undefined}
+             tabIndex={expired > 0 ? 0 : undefined}
+             onClick={() => expired > 0 && setPeek("마감")}
+             onKeyDown={(e) => {
+               if (expired > 0 && (e.key === "Enter" || e.key === " ")) {
+                 e.preventDefault(); setPeek("마감");
+               }
+             }}>
+          <div className="lb">
+            {이달인가 ? "마감" : `${Number(month.slice(5, 7))}월 마감`}
+            {expired > 0 && <i className="goto">명단 보기</i>}
+          </div>
           <div className="vl num">{expired}</div>
           <div className="dt">재등록 대상</div>
         </div>
@@ -732,6 +842,70 @@ export default function Client(p: Props) {
           ))}
         </div>
       )}
+
+      {/*
+        숫자를 눌러 편 명단
+
+        갈래를 눌러 목록을 거르고 다시 되돌리는 대신, 떠 있는 창으로 보여준다.
+        닫으면 보던 목록이 그대로다. 한 줄을 누르면 그 회원 창으로 넘어간다 —
+        「마감 임박 1명」을 보고 나서 바로 전화를 걸려면 연락처가 있어야 한다.
+      */}
+      {peek && (() => {
+        const 목록 =
+          peek === "전체" ? 누적
+          : peek === "신규" ? 신규목록
+          : peek === "마감임박" ? 임박목록
+          : 마감목록;
+        const 이름 =
+          peek === "전체" ? `${이달인가 ? "" : `${Number(month.slice(5, 7))}월 말까지 `}전체 회원`
+          : peek === "신규" ? `${Number(month.slice(5, 7))}월 신규`
+          : peek === "마감임박" ? `오늘부터 ${SOON}일 안에 끝나는 분`
+          : `${Number(month.slice(5, 7))}월에 끝나는 분`;
+        const 줄 = 목록
+          .slice()
+          .sort((a, b2) =>
+            peek === "신규"
+              ? (b2.가입일 ?? "").localeCompare(a.가입일 ?? "")
+              : peek === "전체"
+                ? (a.이름 ?? "").localeCompare(b2.이름 ?? "", "ko")
+                : (endOf[a.id] ?? "").localeCompare(endOf[b2.id] ?? "")
+          );
+        return (
+          <div className="modal-back" {...backdrop(() => setPeek(""))}>
+            <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+              <h3>{이름} {줄.length}명</h3>
+              <p className="page-sub" style={{ margin: "2px 0 12px" }}>
+                {branch ? branchName(branch) : "전 지점"} · 이름을 누르면 그 회원 창이 열립니다
+              </p>
+              <div className="table-wrap">
+                <table className="grid picky">
+                  <thead>
+                    <tr>
+                      <th>이름</th><th>연락처</th><th>지점</th>
+                      <th>가입일</th><th>만료일</th><th>상태</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {줄.map((m) => (
+                      <tr key={m.id} onClick={() => { setPeek(""); setDetail(m); }}>
+                        <td className="strong">{m.이름}</td>
+                        <td className="num">{showPhone(m.전화번호) || <span className="dim">-</span>}</td>
+                        <td className="dim">{branchName(m.지점코드)}</td>
+                        <td className="dim num">{(m.가입일 ?? "").slice(0, 10) || "-"}</td>
+                        <td className="dim num">{(endOf[m.id] ?? "").slice(0, 10) || "-"}</td>
+                        <td><span className={`pill ${TONE[stateOf(m)] ?? ""}`}>{stateOf(m)}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="modal-actions">
+                <button className="btn-dark" onClick={() => setPeek("")}>닫기</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/*
         합치기는 한 번 더 묻는다
@@ -1140,16 +1314,39 @@ function 본자리(k: string, v?: string): string {
  *
  * 눈에 보이는 값이라 다르면 그 자리에서 고치실 수 있다.
  */
-function nextStart(pr: ProductMeta | undefined, tickets: Ticket[], products: ProductMeta[], now: string): string {
+function nextStart(
+  pr: ProductMeta | undefined,
+  tickets: Ticket[],
+  products: ProductMeta[],
+  now: string,
+  /**
+   * 지금 담고 있는 줄들
+   *
+   * ── 왜 이것까지 봐야 하나 ──────────────────────────────────
+   * 이미 팔아 둔 이용권만 봤다. 그래서 회원권과 무료 서비스를 한 번에 담으면,
+   * 서비스가 회원권을 못 보고 오늘부터 시작했다 — 11월 30일까지인 회원권
+   * 밑에 8월 12일~18일짜리 7일 서비스가 붙어, 이미 쓰고 있는 날에 덧칠한
+   * 꼴이 됐다. 드린 것이 아니라 없앤 것이다.
+   *
+   * 지금 담은 줄도 곧 팔릴 이용권이다. 같이 본다.
+   */
+  cart: { 상품코드: string; 종료일: string }[] = []
+): string {
   const cat = ticketCat(pr);
   const prOf = (code: string) => products.find((x) => x.code === code);
   let last = "";
+  const 늦으면 = (end: string) => { if (end && end > last) last = end; };
+
   tickets.forEach((t) => {
     if (ticketCat(prOf(t.상품코드)) !== cat) return;
     if ((t.상태 ?? "").includes("환불")) return;
-    const end = (t.종료일 ?? "").slice(0, 10);
-    if (end && end > last) last = end;
+    늦으면((t.종료일 ?? "").slice(0, 10));
   });
+  cart.forEach((l) => {
+    if (ticketCat(prOf(l.상품코드)) !== cat) return;
+    늦으면((l.종료일 ?? "").slice(0, 10));
+  });
+
   if (!last || last < now) return now;
   return addDays(last, 1);
 }
@@ -1530,7 +1727,7 @@ function PurchaseFields({
     }
 
     /* 쓰고 있는 것이 있으면 그 뒤로 이어 붙인다 */
-    const start = nextStart(pr, tickets, products, baseDate || today());
+    const start = nextStart(pr, tickets, products, baseDate || today(), b.lines);
     const months = canPickMonths(pr) ? pr.months || 1 : pr.months;
     setB({
       ...b,

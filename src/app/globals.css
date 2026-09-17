@@ -859,9 +859,13 @@ table.cal thead .sticky { background: var(--surface); }
 .tile .mini > i.bad { background: var(--bad); }
 
 /* 눌러서 아래 명단으로 가는 칸 — 눌리는 곳이라는 티가 나야 아무도 안 누르지 않는다 */
-.tile.tapme { cursor: pointer; transition: border-color .12s, background .12s; }
-.tile.tapme:hover { border-color: var(--muted); background: var(--surface-2); }
-.tile.tapme:active { transform: translateY(1px); }
+.tile.tapme, .stat.tapme { cursor: pointer; transition: border-color .12s, background .12s; }
+.tile.tapme:hover, .stat.tapme:hover { border-color: var(--muted); background: var(--surface-2); }
+.tile.tapme:active, .stat.tapme:active { transform: translateY(1px); }
+.stat .lb .goto {
+  float: right; font-style: normal; font-size: 10.5px; font-weight: 700;
+  color: var(--point); letter-spacing: -.01em;
+}
 .tile .lb .goto {
   float: right; font-style: normal; font-size: 10.5px; font-weight: 700;
   color: var(--point); letter-spacing: -.01em;
