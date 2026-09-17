@@ -522,6 +522,9 @@ export default function Client(p: Props) {
   const [wipe, setWipe] = useState<Payment | null>(null);
   /** 결제 한 줄을 눌러 여는 상세 — 무엇을 얼마에 팔았는지 */
   const [detail, setDetail] = useState<Payment | null>(null);
+  /* 목록에서 어느 상품 줄을 누르셨나 — 상세에서 그 줄만 먼저 보여준다.
+     한 결제에 상품이 셋이면 셋이 다 뜨는데, 누르신 것은 그중 하나다 */
+  const [detailItem, setDetailItem] = useState<string>("");
   /* 이름을 눌러 여는 회원 카드. 화면을 옮기지 않으므로 닫으면 보던 자리 그대로다 */
   const [card, setCard] = useState<string>("");
   const [wiping, setWiping] = useState(false);
@@ -824,13 +827,16 @@ export default function Client(p: Props) {
           const items = 몫
             ? ts
                 .map((t, i) => ({
+                  /* 어느 이용권 줄인지 들고 간다 — 상세 창에서 누르신 상품만
+                     먼저 보여주는 데 쓴다 */
+                  tid: t.id,
                   name: productOf(t.상품코드)?.name || t.상품코드 || "-",
                   받음: 몫[i],
                   미수: 0,
                 }))
                 .filter((it) => it.받음 > 0)
-            : [{ name: "", 받음, 미수: 0 }];
-          const 줄 = items.length ? items : [{ name: "", 받음, 미수: 0 }];
+            : [{ tid: "", name: "", 받음, 미수: 0 }];
+          const 줄 = items.length ? items : [{ tid: "", name: "", 받음, 미수: 0 }];
           return 줄.map((it, i) => ({ x, it, 첫줄: i === 0, 개수: 줄.length }));
         }
         const 계약 = 받은돈(x) + num(x.미수금액);
@@ -841,13 +847,14 @@ export default function Client(p: Props) {
               const 값 = 적힘 ? num(t.금액) : parts?.[i] ?? 0;
               const 미수 = num(t.미수금);
               return {
+                tid: t.id,
                 name: productOf(t.상품코드)?.name || t.상품코드 || "-",
                 받음: Math.max(0, 값 - 미수),
                 미수,
               };
             })
           /* 이용권이 안 붙은 결제 — 상품을 알 수 없다. 줄은 그대로 세운다 */
-          : [{ name: "", 받음: 받은돈(x), 미수: num(x.미수금액) }];
+          : [{ tid: "", name: "", 받음: 받은돈(x), 미수: num(x.미수금액) }];
         return items.map((it, i) => ({ x, it, 첫줄: i === 0, 개수: items.length }));
       });
   }, [payRows, byPay, productOf]);
@@ -1616,9 +1623,10 @@ export default function Client(p: Props) {
                       /* 미수금 받은 줄은 화면에서 만든 줄이라 시트에 없다.
                          상세는 원래 결제 줄을 연다 — 여기서 고친 값이 원래
                          줄에 덮어써지면 판 날의 금액이 회수액으로 바뀐다 */
-                      onClick={() => setDetail(
-                        x.회수 ? p.payments.find((o) => o.id === x.id) ?? x : x
-                      )}>
+                      onClick={() => {
+                        setDetail(x.회수 ? p.payments.find((o) => o.id === x.id) ?? x : x);
+                        setDetailItem(it.tid ?? "");
+                      }}>
                     {/*
                       한 결제를 여러 줄로 펴도 날짜와 이름은 줄마다 적는다
 
@@ -2052,7 +2060,8 @@ export default function Client(p: Props) {
           canEdit={p.canEditPay}
           canSeeMember={p.canSeeMember}
           onMember={(id) => { setDetail(null); setCard(id); }}
-          onClose={() => setDetail(null)}
+          pickedItem={detailItem}
+          onClose={() => { setDetail(null); setDetailItem(""); }}
         />
       )}
 
@@ -2159,7 +2168,7 @@ export default function Client(p: Props) {
  */
 function PayDetail({
   x, items, productOf, memberName, branch, staffNames, options,
-  canEdit, canSeeMember, onMember, onClose,
+  canEdit, canSeeMember, pickedItem, onMember, onClose,
 }: {
   x: Payment;
   /** 이 결제에 딸린 이용권 줄 */
@@ -2173,6 +2182,14 @@ function PayDetail({
   canEdit: boolean;
   /** 회원 화면을 볼 수 있는가 — 이름에 길을 걸지 말지 */
   canSeeMember: boolean;
+  /**
+   * 목록에서 누르신 상품 줄
+   *
+   * 한 결제에 상품이 셋이면 상세에도 셋이 다 뜬다. 그런데 누르신 것은 그중
+   * 하나다 — 「완초자 30회」를 눌렀는데 세 줄이 다 뜨면, 어느 것을 고치러
+   * 들어왔는지 다시 찾아야 한다. 그 줄만 먼저 보여주고 나머지는 접어 둔다.
+   */
+  pickedItem?: string;
   /** 이름을 누르면 회원 카드를 연다 — 창을 여는 일은 위에서 한다 */
   onMember: (id: string) => void;
   onClose: () => void;
@@ -2196,6 +2213,11 @@ function PayDetail({
   const [edit, setEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  /* 누르신 상품이 있으면 그 줄만 먼저 편다. 나머지는 「전부 보기」로 연다 */
+  const [모두, set모두] = useState(
+    () => !pickedItem || !items.some((t) => t.id === pickedItem)
+  );
+  const 보일줄 = 모두 ? items : items.filter((t) => t.id === pickedItem);
   const [f, setF] = useState({
     결제일: (x.결제일시 ?? "").slice(0, 10),
     결제수단: x.결제수단 ?? "",
@@ -2450,7 +2472,20 @@ function PayDetail({
         )}
         {msg && <div className="alert-bad">{msg}</div>}
 
-        <h4 className="viz-title mt">무엇을 팔았나</h4>
+        <h4 className="viz-title mt">
+          무엇을 팔았나
+          {items.length > 1 && pickedItem && items.some((t) => t.id === pickedItem) && (
+            <button type="button" className="linkish" onClick={() => set모두(!모두)}>
+              {모두 ? "누른 상품만 보기" : `나머지 ${items.length - 1}줄도 보기`}
+            </button>
+          )}
+        </h4>
+        {!모두 && (
+          <p className="stat-note" style={{ marginTop: 0 }}>
+            목록에서 누르신 상품만 보고 있습니다. 같은 결제로 판 상품이{" "}
+            <b>{items.length - 1}개</b> 더 있습니다.
+          </p>
+        )}
         {items.length === 0 ? (
           /* 이어 붙일 이용권을 못 찾은 경우. 짐작해서 채우지 않는다 */
           <p className="stat-note">
@@ -2470,7 +2505,7 @@ function PayDetail({
                 </tr>
               </thead>
               <tbody>
-                {items.map((t) => {
+                {보일줄.map((t) => {
                   const pr = productOf(t.상품코드);
                   const 적힘 = (t.금액 ?? "").trim() !== "";
                   const 기간 = [
@@ -2534,7 +2569,9 @@ function PayDetail({
                   숫자를 나란히 놓고, 다르면 한 번 눌러 맞출 수 있게 한다 —
                   어느 쪽을 맞출지는 대표님이 정하시는 편이 낫다.
                 */}
-                {edit && (
+                {/* 합계는 결제 전체의 값이다. 한 줄만 펴 놓고 합계를 보여주면
+                    그 줄이 그 금액인 줄로 읽힌다 */}
+                {edit && 모두 && (
                   <tr className="sumrow">
                     <td><b>상품 합계</b></td>
                     <td className="r num"><b>{money(상품받음 + 상품미수)}</b></td>
@@ -2549,7 +2586,7 @@ function PayDetail({
           </div>
         )}
 
-        {edit && items.length > 0 && (
+        {edit && 모두 && items.length > 0 && (
           <p className={어긋남 ? "alert-bad" : "stat-note"} style={{ marginTop: 10 }}>
             상품 줄에서 실제로 받은 돈 <b className="num">{money(상품받음)}원</b>
             {어긋남 ? (
