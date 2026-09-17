@@ -1637,3 +1637,118 @@ export async function unenrollFromConsultation(
     이유: 자국있음 ? "" : "전화번호가 같고 이용권·결제가 없어 이 상담이 올린 회원으로 봤습니다.",
   };
 }
+
+/**
+ * 두 줄로 나뉜 한 분을 하나로 합친다
+ *
+ * ── 왜 지우기로는 안 되나 ───────────────────────────────────
+ * 겹친 줄이 둘 다 이용권과 결제를 달고 있으면 어느 쪽도 지울 수가 없다.
+ * 회원을 지우면 그 줄에 달린 것도 같이 내려가기 때문이다. 8월에 판 것과
+ * 9월에 판 것이 서로 다른 줄에 붙어 있으면, 어느 쪽을 지우든 매출이 사라진다.
+ *
+ * 그래서 지우는 대신 옮긴다. 딸린 것을 남길 줄로 전부 옮기고, 비어 있던
+ * 칸을 없앨 줄에서 채워 넣은 다음, 껍데기만 남은 줄을 내린다.
+ *
+ * ── 순서가 중요하다 ─────────────────────────────────────────
+ * 딸린 것을 먼저 옮기고 회원 줄을 나중에 내린다. 반대로 하면 중간에 끊겼을 때
+ * 회원은 없는데 이용권만 남아, 아무 데도 안 붙은 이용권이 된다.
+ *
+ * 이용권에 얹은 서비스(24시 같은 것)는 이용권번호에 매달려 있어서 따로 옮길
+ * 것이 없다 — 이용권이 옮겨가면 같이 따라간다.
+ */
+export async function mergeMembers(
+  keepId: string,
+  dropId: string,
+  staffId: string
+): Promise<{ 이용권: number; 결제: number; 채운칸: string[] }> {
+  if (!keepId || !dropId) throw new Error("합칠 두 회원을 골라주세요.");
+  if (keepId === dropId) throw new Error("같은 회원끼리는 합칠 수 없습니다.");
+
+  const m = await readSheet(SHEET_M);
+  const mCols = resolve(SHEET_M, m.headers, M_COLS);
+  const 살아있음 = (r: Row) => (r["삭제여부"] ?? "").toUpperCase() !== "Y";
+
+  const iKeep = m.rows.findIndex((r) => 살아있음(r) && get(r, mCols, "회원번호") === keepId);
+  const iDrop = m.rows.findIndex((r) => 살아있음(r) && get(r, mCols, "회원번호") === dropId);
+  if (iKeep < 0 || iDrop < 0) throw new Error("합칠 회원을 찾지 못했습니다.");
+
+  /* 다른 지점 사람을 합치면 지점 매출이 통째로 옮겨간다. 같은 지점일 때만 */
+  if (get(m.rows[iKeep], mCols, "지점코드") !== get(m.rows[iDrop], mCols, "지점코드")) {
+    throw new Error("지점이 다른 두 분은 합칠 수 없습니다.");
+  }
+
+  const stamp = now();
+  let 옮긴이용권 = 0;
+  let 옮긴결제 = 0;
+
+  /* 이용권과 결제의 「회원번호」를 남길 줄로 바꿔 단다 */
+  for (const [sheet, spec] of [[SHEET_V, V_COLS], [SHEET_P, P_COLS]] as const) {
+    let data;
+    try {
+      data = await readSheet(sheet);
+    } catch {
+      continue;
+    }
+    const c = resolve(sheet, data.headers, spec as any);
+    const items: { rowNumber: number; row: Row }[] = [];
+    data.rows.forEach((r, i) => {
+      if (!살아있음(r)) return;
+      if (get(r, c, "회원번호") !== dropId) return;
+      items.push({
+        rowNumber: data.rowNumbers[i],
+        row: { ...r, ...toSheetRow({ 회원번호: keepId, 수정일시: stamp, 수정자: staffId }, c) },
+      });
+    });
+    if (items.length > 0) await updateRows(sheet, data.headers, items);
+    if (sheet === SHEET_V) 옮긴이용권 = items.length;
+    else 옮긴결제 = items.length;
+  }
+
+  /*
+   * 비어 있던 칸을 없앨 줄에서 채운다
+   *
+   * 한쪽에만 적혀 있는 값이 흔하다 — 문의에서 올라온 줄에는 성별·나이대가
+   * 있고, 손으로 넣은 줄에는 동네·직업이 있다. 남길 줄에 이미 적힌 값은
+   * 건드리지 않는다. 덮어쓰면 어느 쪽이 맞는지 아무도 모르게 된다.
+   */
+  const 채울칸 = ["성별", "나이대", "거주동네", "직업", "방문경로", "담당직원사번", "상담번호", "가입일"];
+  const 채운칸: string[] = [];
+  const next: Record<string, string> = {};
+  채울칸.forEach((k) => {
+    const 있는값 = (get(m.rows[iKeep], mCols, k) ?? "").trim();
+    const 줄값 = (get(m.rows[iDrop], mCols, k) ?? "").trim();
+    if (!있는값 && 줄값) {
+      next[k] = 줄값;
+      채운칸.push(k);
+    }
+  });
+
+  /* 가입일은 둘 중 이른 날로 맞춘다 — 언제부터 다니셨나가 뒤로 밀리면 안 된다 */
+  const 가입keep = (get(m.rows[iKeep], mCols, "가입일") ?? "").slice(0, 10);
+  const 가입drop = (get(m.rows[iDrop], mCols, "가입일") ?? "").slice(0, 10);
+  if (가입keep && 가입drop && 가입drop < 가입keep) {
+    next["가입일"] = 가입drop;
+    if (!채운칸.includes("가입일")) 채운칸.push("가입일");
+  }
+
+  /* 메모는 덮어쓰지 않고 잇는다 — 둘 다 사람이 적어 둔 말이다 */
+  const 메모keep = (get(m.rows[iKeep], mCols, "메모") ?? "").trim();
+  const 메모drop = (get(m.rows[iDrop], mCols, "메모") ?? "").trim();
+  const 합친메모 = [메모keep, 메모drop].filter(Boolean).join("\n");
+  const 자국 = `${today()} ${dropId} 줄을 합침`;
+  next["메모"] = [합친메모, 자국].filter(Boolean).join("\n");
+
+  await updateRow(SHEET_M, m.rowNumbers[iKeep], m.headers, {
+    ...m.rows[iKeep],
+    ...toSheetRow({ ...next, 수정일시: stamp, 수정자: staffId }, mCols),
+  });
+
+  /* 껍데기만 남은 줄을 내린다. 딸린 것은 이미 다 옮겼으므로 같이 내려갈 것이 없다 */
+  await updateRow(SHEET_M, m.rowNumbers[iDrop], m.headers, {
+    ...m.rows[iDrop],
+    삭제여부: "Y",
+    ...toSheetRow({ 메모: `${keepId} 줄로 합쳐졌습니다 (${today()})`, 수정일시: stamp, 수정자: staffId }, mCols),
+  });
+
+  return { 이용권: 옮긴이용권, 결제: 옮긴결제, 채운칸 };
+}

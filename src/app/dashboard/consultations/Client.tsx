@@ -531,7 +531,7 @@ export default function Client(p: Props) {
                 <th>방문 약속</th>
                 <th>문의</th>
                 <th>채널</th>
-                <th>등록자</th>
+                <th>접수자</th>
                 <th>상담자</th>
                 <th>지점</th>
                 <th>다음 연락</th>
@@ -565,6 +565,8 @@ export default function Client(p: Props) {
                     <td className="dim">{chan(c) || "-"}</td>
                     {/* 이 줄을 화면에 넣은 사람 */}
                     <td className="dim">
+                      {/* 이 칸이 생기기 전 줄은 접수자가 안 적혀 있다. 그때는
+                          상담자 칸에 접수한 사람이 들어가 있었으므로 그것을 쓴다 */}
                       {p.staffNames[c["접수자사번"]] ?? p.staffNames[c["상담자사번"]] ?? "-"}
                     </td>
                     {/* 실제로 상담을 한 사람. 등록으로 넘길 때 다시 물어 고친다 */}
@@ -631,7 +633,9 @@ function NewForm({
   const [f, setF] = useState<Record<string, string>>({
     상담날짜: nowMinute(),
     지점코드: defaultBranch,
-    상담자사번: me,
+    /* 문의를 받은 사람. 넣는 사람이 기본이지만, 데스크가 대신 넣어 주는 일이
+       흔해 고를 수 있게 둔다 */
+    접수자사번: me,
     진행상태: "예약",
   });
   const [msg, setMsg] = useState("");
@@ -649,7 +653,11 @@ function NewForm({
     const res = await fetch("/api/consultations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(f),
+      /* 접수하면서 바로 「등록」으로 넣으신 경우에만 상담자를 같이 적는다.
+         그 자리에서 상담까지 하신 것이니 접수자가 곧 상담자다 */
+      body: JSON.stringify(
+        f["진행상태"] === "등록" ? { ...f, 상담자사번: f["접수자사번"] } : f
+      ),
     });
     const data = await res.json();
     setBusy(false);
@@ -707,8 +715,15 @@ function NewForm({
               {STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
             </select>
           </L>
-          <L label="상담자">
-            <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => set("상담자사번", e.target.value)}>
+          {/*
+            접수자와 상담자는 다른 사람이다
+
+            여기서 고르는 사람은 이 문의를 「받은」 사람이다. 상담해서 등록까지
+            시킨 사람은 나중에 「등록」으로 넘길 때 그 자리에서 고른다 — 그때가
+            돼야 누가 상담했는지 알 수 있다.
+          */}
+          <L label="접수자">
+            <select className="input" value={f["접수자사번"] ?? ""} onChange={(e) => set("접수자사번", e.target.value)}>
               {counselors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </L>
@@ -947,8 +962,19 @@ function Detail({
                        value={forInput(f["상담날짜"] ?? "")}
                        onChange={(e) => setV("상담날짜", e.target.value.replace("T", " "))} />
               </L>
+              <L label="접수자">
+                <select className="input" value={f["접수자사번"] ?? ""} onChange={(e) => setV("접수자사번", e.target.value)}>
+                  <option value="">정하지 않음</option>
+                  {Object.entries(staffNames).map(([id, nm]) => (
+                    <option key={id} value={id}>{nm}</option>
+                  ))}
+                </select>
+              </L>
+              {/* 상담자는 보통 「등록」으로 넘길 때 정해지지만, 잘못 고른 것을
+                  여기서 바로잡을 수도 있어야 한다 */}
               <L label="상담자">
                 <select className="input" value={f["상담자사번"] ?? ""} onChange={(e) => setV("상담자사번", e.target.value)}>
+                  <option value="">아직 상담 전</option>
                   {Object.entries(staffNames).map(([id, nm]) => (
                     <option key={id} value={id}>{nm}</option>
                   ))}
@@ -1005,8 +1031,12 @@ function Detail({
           <Kv k="성별 · 나이" v={[item["성별"], item["나이대"]].filter(Boolean).join(" · ")} />
           {/* 상담을 한 사람과 화면에 넣은 사람은 다를 수 있다.
               접수는 데스크에서 대신 해 주는 일이 흔하다 */}
-          <Kv k="상담자" v={staffNames[item["상담자사번"]] ?? "-"} />
-          <Kv k="등록자" v={staffNames[item["접수자사번"]] ?? "-"} />
+          {/* 문의를 받은 사람과 상담해서 등록시킨 사람은 다르다. 나란히
+              놓아야 다른지 같은지가 한눈에 보인다 */}
+          <Kv k="접수자" v={staffNames[item["접수자사번"]] ?? "-"} />
+          <Kv k="상담자"
+              v={staffNames[item["상담자사번"]]
+                ?? (stageNow(item) === "등록" ? "-" : "아직 상담 전")} />
           <Kv k="방문 약속" v={item["약속일시"]?.replace("T", " ")} />
           <Kv
             k={isNoShowReason(item["미등록사유"]) ? "미방문 사유" : "미등록 사유"}

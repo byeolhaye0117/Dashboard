@@ -60,7 +60,10 @@ export async function POST(req: Request) {
           {
             상담번호: id,
             이름: body.이름, 전화번호: body.전화번호, 지점코드: branch,
-            성별: body.성별, 나이대: body.나이대, 담당직원사번: body.상담자사번,
+            성별: body.성별, 나이대: body.나이대,
+            /* 회원의 담당은 실제로 상담한 사람이다. 그 자리에서 바로 등록으로
+               넣으신 경우라 접수자가 곧 상담자다 */
+            담당직원사번: body.상담자사번 || body.접수자사번,
             문의채널: body.문의채널 ?? body.방문경로,
           },
           session.staffId

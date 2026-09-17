@@ -246,10 +246,28 @@ const isAlive = (t: Ticket, now: string): boolean => {
 };
 
 export default function Client(p: Props) {
-  const [tab, setTab] = useState("전체");
-  const [q, setQ] = useState("");
+  const [tab, setTab] = useState(() => 본자리("tab") || "전체");
+  const [q, setQ] = useState(() => 본자리("q"));
   const [openNew, setOpenNew] = useState(false);
   const [detail, setDetail] = useState<Member | null>(null);
+
+  /*
+   * 보고 있던 갈래 · 지점 · 검색어 · 자리를 적어 둔다
+   *
+   * 무엇을 고치든 화면을 새로 읽는다. 적어 두지 않으면 갈래는 「전체」로,
+   * 검색어는 빈칸으로, 자리는 맨 위로 돌아가 고치던 줄을 다시 찾아야 한다.
+   */
+  useEffect(() => { 본자리("tab", tab); }, [tab]);
+  useEffect(() => { 본자리("q", q); }, [q]);
+
+  /* 새로 읽은 뒤 보던 자리로 내려간다. 한 번 쓰고 지운다 — 다음에 그냥
+     들어오실 때는 맨 위가 맞다 */
+  useEffect(() => {
+    const y = Number(본자리("scroll"));
+    if (!y) return;
+    본자리("scroll", "");
+    requestAnimationFrame(() => window.scrollTo({ top: y }));
+  }, []);
 
   /* 주소에 적힌 회원번호가 있으면 그 창을 다시 연다 —
      이용권을 고치고 새로 읽은 뒤에도 보던 자리로 돌아오게 하는 길이다 */
@@ -273,6 +291,35 @@ export default function Client(p: Props) {
   const [killing, setKilling] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+
+  /* 합치기 — 한 번 더 묻는다. 되돌리기 어려운 일이다 */
+  const [merging, setMerging] = useState<{ keep: string; drop: string } | null>(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeErr, setMergeErr] = useState("");
+
+  async function doMerge() {
+    if (!merging || mergeBusy) return;
+    setMergeBusy(true);
+    setMergeErr("");
+    try {
+      const res = await fetch("/api/members/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(merging),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "합치지 못했습니다.");
+      alert(
+        `${j.남긴이름}님으로 합쳤습니다.\n\n` +
+        `이용권 ${j.이용권}개 · 결제 ${j.결제}건을 옮겼습니다.` +
+        (j.채운칸?.length ? `\n비어 있던 칸을 채웠습니다: ${j.채운칸.join(" · ")}` : "")
+      );
+      reloadTo(merging.keep);
+    } catch (e: any) {
+      setMergeErr(String(e.message ?? e));
+      setMergeBusy(false);
+    }
+  }
 
   const now = today();
   const thisMonth = now.slice(0, 7);
@@ -625,8 +672,11 @@ export default function Client(p: Props) {
         <div className="viz" style={{ marginBottom: 14 }}>
           <h3 className="viz-title">겹친 줄 {dupeGroups.length}쌍</h3>
           <p className="viz-sub">
-            같은 지점에 같은 번호가 둘 이상입니다. <b>이용권·결제가 없는 줄</b>만 지울 수 있습니다 —
-            회원을 지우면 그 줄에 달린 이용권과 결제도 같이 내려갑니다.
+            같은 지점에 같은 번호가 둘 이상입니다. <b>「이 줄로 합치기」</b>를 누르시면 다른 줄의
+            이용권·결제가 이 줄로 옮겨오고 빈 칸도 채워집니다 — 아무것도 잃지 않습니다.
+            <br />
+            지우기는 <b>이용권·결제가 없는 줄</b>에만 열려 있습니다. 회원을 지우면 그 줄에 달린
+            이용권과 결제도 같이 내려가기 때문입니다.
           </p>
           {dupeGroups.map((g) => (
             <div className="dupe-group" key={g[0].m.id}>
@@ -648,6 +698,18 @@ export default function Client(p: Props) {
                       이용권 <b>{x.이용권}</b> · 결제 <b>{x.결제}</b>
                     </span>
                     {x.상담발 && <span className="pill">상담에서 올라옴</span>}
+                    {p.can.update && p.can.remove && g.length === 2 && (
+                      /* 이 줄을 남기고 나머지 한 줄을 여기로 옮겨 붙인다.
+                         셋 이상 겹친 경우는 어느 쪽부터 합칠지 정해야 해서
+                         내놓지 않는다 — 두 번 눌러 차례로 합치시면 된다 */
+                      <button className="btn-ghost mini ok"
+                              onClick={() => setMerging({
+                                keep: x.m.id,
+                                drop: g.find((y) => y.m.id !== x.m.id)!.m.id,
+                              })}>
+                        이 줄로 합치기
+                      </button>
+                    )}
                     {p.can.remove && (
                       비었나 ? (
                         <button className="btn-ghost mini danger"
@@ -655,22 +717,69 @@ export default function Client(p: Props) {
                           이 줄 지우기
                         </button>
                       ) : (
-                        <span className="dim" style={{ fontSize: 11.5 }}>달린 것이 있어 못 지웁니다</span>
+                        <span className="dim" style={{ fontSize: 11.5 }}>혼자서는 못 지웁니다</span>
                       )
                     )}
                   </div>
                 );
               })}
-              {g.every((x) => x.이용권 > 0 || x.결제 > 0) && (
+              {g.length > 2 && (
                 <p className="stat-note">
-                  두 줄 다 이용권이나 결제가 달려 있습니다. 어느 쪽으로 합칠지 정하셔야 하니
-                  <b> 지우지 마시고</b> 알려주세요 — 옮기는 길을 따로 만들겠습니다.
+                  세 줄 이상 겹쳤습니다. 두 줄씩 차례로 합치시면 됩니다.
                 </p>
               )}
             </div>
           ))}
         </div>
       )}
+
+      {/*
+        합치기는 한 번 더 묻는다
+
+        되돌리기 어려운 일이라 무엇이 어디로 옮겨가는지 눌러 보기 전에 적어
+        준다. 「지우기」와 달리 잃는 것이 없다는 것도 여기서 말해 둔다 —
+        지우기와 나란히 있는 단추라 같은 일로 읽히기 쉽다.
+      */}
+      {merging && (() => {
+        const K = p.items.find((m) => m.id === merging.keep);
+        const D = p.items.find((m) => m.id === merging.drop);
+        const 셈 = (id: string) => ({
+          t: p.tickets.filter((x) => x.회원번호 === id).length,
+          y: p.payments.filter((x) => x.회원번호 === id).length,
+        });
+        const dc = 셈(merging.drop);
+        return (
+          <div className="modal-back" {...backdrop(() => !mergeBusy && setMerging(null))}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3>두 줄을 하나로 합칩니다</h3>
+              <div className="kv">
+                <div className="kv-row"><span>남길 줄</span>
+                  <b>{merging.keep} {K?.이름}</b></div>
+                <div className="kv-row"><span>내릴 줄</span>
+                  <b>{merging.drop} {D?.이름}</b></div>
+                <div className="kv-row"><span>옮겨올 것</span>
+                  <b className="num">이용권 {dc.t}개 · 결제 {dc.y}건</b></div>
+              </div>
+              <p className="stat-note">
+                내릴 줄의 <b>이용권과 결제가 모두 남길 줄로 옮겨옵니다.</b> 비어 있던 칸
+                (성별 · 나이대 · 동네 · 직업 · 방문 경로 · 담당)은 내릴 줄의 값으로 채워집니다 —
+                이미 적힌 값은 건드리지 않습니다. 가입일은 둘 중 이른 날로 맞춥니다.
+                <br />
+                메모는 두 줄의 것을 이어 붙이고, 합친 자국을 남깁니다. 내린 줄은 시트에
+                그대로 있어서 나중에 되짚어 볼 수 있습니다.
+              </p>
+              {mergeErr && <div className="alert-bad">{mergeErr}</div>}
+              <div className="modal-actions">
+                <button className="btn-ghost" disabled={mergeBusy}
+                        onClick={() => setMerging(null)}>그만두기</button>
+                <button className="btn-dark" disabled={mergeBusy} onClick={doMerge}>
+                  {mergeBusy ? "합치는 중…" : "합치기"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {list.length === 0 ? (
         <div className="empty">
@@ -989,7 +1098,33 @@ function endOf(pr: ProductMeta | undefined, start: string, months: number): stri
  */
 function reloadTo(memberId?: string): void {
   if (memberId) location.hash = memberId;
+  /* 어디까지 내려와 있었는지도 같이 적어 둔다 — 백 명짜리 목록에서 밑에 있는
+     분을 고치고 나면 맨 위로 튕겨, 그 줄을 다시 찾아 내려가야 했다 */
+  본자리("scroll", String(Math.round(window.scrollY)));
   location.reload();
+}
+
+/**
+ * 보고 있던 자리를 기억한다
+ *
+ * ── 무엇이 불편했나 ──────────────────────────────────────────
+ * 무엇을 고치든 화면을 새로 읽는다(location.reload). 그때 갈래는 「전체」로,
+ * 지점은 처음 값으로, 검색어는 빈칸으로, 자리는 맨 위로 돌아갔다. 「번호 겹침」을
+ * 열어 놓고 한 줄을 고치면 그 갈래가 사라져 다시 찾아 들어가야 했고, 이름을
+ * 검색해 고치면 검색어가 지워져 또 쳐야 했다.
+ *
+ * 창을 닫으면 지워지는 자리에 적어 둔다 — 다음에 새로 여실 때는 처음부터다.
+ * 그게 맞다. 고치고 돌아오는 그 순간만 이어 주면 된다.
+ */
+function 본자리(k: string, v?: string): string {
+  try {
+    if (typeof window === "undefined") return "";
+    if (v === undefined) return sessionStorage.getItem(`members/${k}`) ?? "";
+    sessionStorage.setItem(`members/${k}`, v);
+    return v;
+  } catch {
+    return "";
+  }
 }
 
 /**
