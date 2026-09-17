@@ -2061,6 +2061,12 @@ export default function Client(p: Props) {
           canSeeMember={p.canSeeMember}
           onMember={(id) => { setDetail(null); setCard(id); }}
           pickedItem={detailItem}
+          /* 이 분의 결제 전부 — 환불 줄과 미수금 받은 줄은 뺀다. 고칠 수 있는
+             것만 세워야 눌러서 갔다가 못 고치는 일이 없다 */
+          siblings={payments
+            .filter((o) => o.회원번호 === detail.회원번호 && !o.회수 && !isRefund(o))
+            .sort((a, b2) => (b2.결제일시 ?? "").localeCompare(a.결제일시 ?? ""))}
+          onSwitch={(o) => { setDetail(o); setDetailItem(""); }}
           onClose={() => { setDetail(null); setDetailItem(""); }}
         />
       )}
@@ -2168,7 +2174,7 @@ export default function Client(p: Props) {
  */
 function PayDetail({
   x, items, productOf, memberName, branch, staffNames, options,
-  canEdit, canSeeMember, pickedItem, onMember, onClose,
+  canEdit, canSeeMember, pickedItem, siblings, onSwitch, onMember, onClose,
 }: {
   x: Payment;
   /** 이 결제에 딸린 이용권 줄 */
@@ -2190,6 +2196,16 @@ function PayDetail({
    * 들어왔는지 다시 찾아야 한다. 그 줄만 먼저 보여주고 나머지는 접어 둔다.
    */
   pickedItem?: string;
+  /**
+   * 이 회원의 다른 결제들
+   *
+   * 한 분이 여러 번 결제하시면 목록에도 여러 줄이 뜬다. 그런데 창을 열면 그중
+   * 한 건만 보여, 다른 건을 고치려면 창을 닫고 그 줄을 다시 찾아야 했다.
+   * 여기에 나란히 세워 두고 눌러서 옮겨 다니게 한다.
+   */
+  siblings: Payment[];
+  /** 다른 결제로 옮겨 간다 */
+  onSwitch: (x: Payment) => void;
   /** 이름을 누르면 회원 카드를 연다 — 창을 여는 일은 위에서 한다 */
   onMember: (id: string) => void;
   onClose: () => void;
@@ -2213,11 +2229,14 @@ function PayDetail({
   const [edit, setEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  /* 누르신 상품이 있으면 그 줄만 먼저 편다. 나머지는 「전부 보기」로 연다 */
-  const [모두, set모두] = useState(
-    () => !pickedItem || !items.some((t) => t.id === pickedItem)
-  );
-  const 보일줄 = 모두 ? items : items.filter((t) => t.id === pickedItem);
+  /*
+   * 상품은 늘 다 보여준다
+   *
+   * 한때 목록에서 누르신 줄만 펴고 나머지를 접었다. 그런데 이 창을 여는 까닭은
+   * 「이 결제가 무엇이었나」를 보려는 것이라, 감추면 볼 것이 없어진다.
+   * 누르신 줄은 감추는 대신 표시해 둔다.
+   */
+  const 보일줄 = items;
   const [f, setF] = useState({
     결제일: (x.결제일시 ?? "").slice(0, 10),
     결제수단: x.결제수단 ?? "",
@@ -2340,9 +2359,35 @@ function PayDetail({
           <MemberLink id={x.회원번호} name={memberName} can={canSeeMember} onOpen={onMember} />
           {" · "}{money(합)}원
         </h3>
-        <p className="page-sub" style={{ margin: "2px 0 12px" }}>
+        <p className="page-sub" style={{ margin: "2px 0 10px" }}>
           {(x.결제일시 ?? "").slice(0, 16).replace("T", " ")} · {branch} · {x.id}
         </p>
+
+        {/*
+          이 분의 다른 결제
+
+          날짜가 다른 건도 한자리에 세운다. 눌러서 그 건으로 옮겨 가 고치시면
+          된다 — 창을 닫고 목록에서 그 줄을 다시 찾을 일이 없다.
+          고치던 중에는 안 보여준다. 옮겨 가면 적던 것이 날아간다.
+        */}
+        {!edit && siblings.length > 1 && (
+          <>
+            <p className="stat-note" style={{ marginTop: 0 }}>
+              이 분의 결제 <b>{siblings.length}건</b> — 눌러서 옮겨 가시면 됩니다
+            </p>
+            <div className="paypick">
+              {siblings.map((s2) => (
+                <button key={s2.id} type="button"
+                        className={`pchip${s2.id === x.id ? " on" : ""}`}
+                        onClick={() => s2.id !== x.id && onSwitch(s2)}>
+                  <span className="d num">{(s2.결제일시 ?? "").slice(5, 10)}</span>
+                  <b className="a num">{money(받은돈(s2))}</b>
+                  {남은미수(s2) > 0 && <i className="u num">미수 {money(남은미수(s2))}</i>}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         {edit ? (
           <div className="form-grid">
@@ -2472,20 +2517,7 @@ function PayDetail({
         )}
         {msg && <div className="alert-bad">{msg}</div>}
 
-        <h4 className="viz-title mt">
-          무엇을 팔았나
-          {items.length > 1 && pickedItem && items.some((t) => t.id === pickedItem) && (
-            <button type="button" className="linkish" onClick={() => set모두(!모두)}>
-              {모두 ? "누른 상품만 보기" : `나머지 ${items.length - 1}줄도 보기`}
-            </button>
-          )}
-        </h4>
-        {!모두 && (
-          <p className="stat-note" style={{ marginTop: 0 }}>
-            목록에서 누르신 상품만 보고 있습니다. 같은 결제로 판 상품이{" "}
-            <b>{items.length - 1}개</b> 더 있습니다.
-          </p>
-        )}
+        <h4 className="viz-title mt">무엇을 팔았나</h4>
         {items.length === 0 ? (
           /* 이어 붙일 이용권을 못 찾은 경우. 짐작해서 채우지 않는다 */
           <p className="stat-note">
@@ -2513,7 +2545,9 @@ function PayDetail({
                     (t.종료일 ?? "").slice(0, 10),
                   ].filter(Boolean).join(" ~ ");
                   return (
-                    <tr key={t.id}>
+                    /* 목록에서 누르고 들어오신 줄 — 어느 것을 보러 왔는지
+                       잊지 않게 표시만 해 둔다. 감추지는 않는다 */
+                    <tr key={t.id} className={t.id === pickedItem ? "hit" : ""}>
                       <td>
                         <b>{pr?.name || t.상품코드}</b>
                         {(t.얹음 || 기간 || t.총횟수) && (
@@ -2571,7 +2605,7 @@ function PayDetail({
                 */}
                 {/* 합계는 결제 전체의 값이다. 한 줄만 펴 놓고 합계를 보여주면
                     그 줄이 그 금액인 줄로 읽힌다 */}
-                {edit && 모두 && (
+                {edit && (
                   <tr className="sumrow">
                     <td><b>상품 합계</b></td>
                     <td className="r num"><b>{money(상품받음 + 상품미수)}</b></td>
@@ -2586,7 +2620,7 @@ function PayDetail({
           </div>
         )}
 
-        {edit && 모두 && items.length > 0 && (
+        {edit && items.length > 0 && (
           <p className={어긋남 ? "alert-bad" : "stat-note"} style={{ marginTop: 10 }}>
             상품 줄에서 실제로 받은 돈 <b className="num">{money(상품받음)}원</b>
             {어긋남 ? (

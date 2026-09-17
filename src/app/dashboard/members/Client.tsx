@@ -299,7 +299,7 @@ export default function Client(p: Props) {
    * 눌러 목록을 거르고 다시 되돌려야 했다. 떠 있는 창으로 보여주면 닫는 순간
    * 보던 목록이 그대로다.
    */
-  const [peek, setPeek] = useState<"" | "전체" | "신규" | "마감임박" | "마감">("");
+  const [peek, setPeek] = useState<"" | "전체" | "신규" | "재등록" | "마감임박" | "마감">("");
 
   /* 합치기 — 한 번 더 묻는다. 되돌리기 어려운 일이다 */
   const [merging, setMerging] = useState<{ keep: string; drop: string } | null>(null);
@@ -512,6 +512,27 @@ export default function Client(p: Props) {
     () => scoped.filter((m) => (m.가입일 ?? "").startsWith(month)),
     [scoped, month]
   );
+  /*
+   * 그 달에 다시 끊으신 분
+   *
+   * 그 달에 시작하는 회원권이 있는데 가입일은 그 달이 아닌 분이다. 가입일이
+   * 그 달이면 그건 신규지 재등록이 아니다 — 둘을 겹쳐 세면 신규가 재등록에도
+   * 들어가 달 합계가 사람 수보다 커진다.
+   *
+   * 회원권 갈래만 본다(mainOf). 사물함을 하나 더 끊은 것을 재등록이라 부르면
+   * 「다시 다니기로 하신 분」이 몇 분인지 알 수 없게 된다.
+   */
+  const 재등록목록 = useMemo(
+    () =>
+      scoped.filter(
+        (m) =>
+          !(m.가입일 ?? "").startsWith(month) &&
+          (mainOf[m.id] ?? []).some(
+            (t) => (t.시작일 ?? "").startsWith(month) && t.상태 !== "환불"
+          )
+      ),
+    [scoped, mainOf, month]
+  );
   /** 그 달에 회원권이 끝나는 분 */
   const 마감목록 = useMemo(
     () => scoped.filter((m) => (endOf[m.id] ?? "").startsWith(month)),
@@ -523,6 +544,7 @@ export default function Client(p: Props) {
   );
 
   const newThisMonth = 신규목록.length;
+  const again = 재등록목록.length;
   const using = 누적.filter((m) => stateOf(m) === "활성").length;
   const soon = 임박목록.length;
   /* 양도·홀딩은 재등록 대상이 아니다. 「마감」에 섞으면 전화 명단이 틀어진다 */
@@ -625,6 +647,22 @@ export default function Client(p: Props) {
           </div>
           <div className="vl num">{newThisMonth}</div>
           <div className="dt">가입일 기준</div>
+        </div>
+        <div className={`stat${again > 0 ? " tapme" : ""}`}
+             role={again > 0 ? "button" : undefined}
+             tabIndex={again > 0 ? 0 : undefined}
+             onClick={() => again > 0 && setPeek("재등록")}
+             onKeyDown={(e) => {
+               if (again > 0 && (e.key === "Enter" || e.key === " ")) {
+                 e.preventDefault(); setPeek("재등록");
+               }
+             }}>
+          <div className="lb">
+            {이달인가 ? "이번 달 재등록" : `${Number(month.slice(5, 7))}월 재등록`}
+            {again > 0 && <i className="goto">명단 보기</i>}
+          </div>
+          <div className="vl num">{again}</div>
+          <div className="dt">다시 끊으신 분</div>
         </div>
         <div className={`stat${soon > 0 ? " tapme" : ""}`}
              role={soon > 0 ? "button" : undefined}
@@ -868,17 +906,19 @@ export default function Client(p: Props) {
         const 목록 =
           peek === "전체" ? 누적
           : peek === "신규" ? 신규목록
+          : peek === "재등록" ? 재등록목록
           : peek === "마감임박" ? 임박목록
           : 마감목록;
         const 이름 =
           peek === "전체" ? `${이달인가 ? "" : `${Number(month.slice(5, 7))}월 말까지 `}전체 회원`
           : peek === "신규" ? `${Number(month.slice(5, 7))}월 신규`
+          : peek === "재등록" ? `${Number(month.slice(5, 7))}월 재등록`
           : peek === "마감임박" ? `오늘부터 ${SOON}일 안에 끝나는 분`
           : `${Number(month.slice(5, 7))}월에 끝나는 분`;
         const 줄 = 목록
           .slice()
           .sort((a, b2) =>
-            peek === "신규"
+            peek === "신규" || peek === "재등록"
               ? (b2.가입일 ?? "").localeCompare(a.가입일 ?? "")
               : peek === "전체"
                 ? (a.이름 ?? "").localeCompare(b2.이름 ?? "", "ko")
