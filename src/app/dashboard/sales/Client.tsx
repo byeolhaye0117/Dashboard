@@ -1351,9 +1351,9 @@ export default function Client(p: Props) {
               까닭이 이것이다. 안 적으면 어디로 샜나 싶다 */}
           <span className="sub">
             {lead.base > 0
-              ? `상담 ${lead.base}건 중 ${lead.done}건 등록` +
+              ? `문의 ${lead.base}건 중 ${lead.done}건 등록` +
                 (lead.going > 0 ? ` · ${lead.going}건 진행중` : "")
-              : "이 달 상담 없음"}
+              : "이 달 문의 없음"}
           </span>
           <div className="mini">
             <i className="good" style={{ width: `${lead.winRate ?? 0}%` }} />
@@ -1371,9 +1371,9 @@ export default function Client(p: Props) {
           <b className="vl num">{lead.failRate === null ? "-" : `${lead.failRate}%`}</b>
           <span className="sub">
             {lead.base > 0
-              ? `상담 ${lead.base}건 중 ${lead.fail}건 미등록` +
+              ? `문의 ${lead.base}건 중 ${lead.fail}건 미등록` +
                 (lead.going > 0 ? ` · ${lead.going}건 진행중` : "")
-              : "이 달 상담 없음"}
+              : "이 달 문의 없음"}
           </span>
           <div className="mini">
             <i className={lead.failRate !== null && lead.failRate >= 50 ? "bad" : "warn"}
@@ -1829,7 +1829,7 @@ export default function Client(p: Props) {
       {/* 셈하는 법을 바꿨으면 이 글도 같이 바꿔야 한다. 화면에 적힌 설명이
           실제 셈과 다르면, 숫자가 맞아도 대표님은 못 믿으신다 */}
       <p className="sec-sub">
-        맡은 상담 전체로 셉니다 · 아직 진행중인 건은 등록이 아니므로 분모에 그대로 둡니다
+        받은 문의 전체로 셉니다 · 아직 진행중인 건은 등록이 아니므로 분모에 그대로 둡니다
       </p>
       <div className="viz">
         {(branch === "전체" ? convByBranch : convByBranch.filter((b) => b.code === branch))
@@ -1838,7 +1838,7 @@ export default function Client(p: Props) {
                  title={`문의 ${b.base}건 · 등록 ${b.done} · 미등록 ${b.fail} · 진행중 ${b.going}`}>
               <span className="nm">{b.name}</span>
               {b.winRate === null ? (
-                <span className="norow">이 달 상담 없음</span>
+                <span className="norow">이 달 문의 없음</span>
               ) : (
                 <span className="tr"><i style={{ width: `${b.winRate}%` }} /></span>
               )}
@@ -1850,7 +1850,7 @@ export default function Client(p: Props) {
                title={`문의 ${lead.base}건 · 등록 ${lead.done} · 미등록 ${lead.fail} · 진행중 ${lead.going}`}>
             <span className="nm">전 지점</span>
             {lead.winRate === null ? (
-              <span className="norow">이 달 상담 없음</span>
+              <span className="norow">이 달 문의 없음</span>
             ) : (
               <span className="tr"><i style={{ width: `${lead.winRate}%` }} /></span>
             )}
@@ -2059,11 +2059,11 @@ export default function Client(p: Props) {
       {/* 눌러서 펼친 상담 명단 — 세는 규칙은 위 칸과 똑같은 것을 쓴다 */}
       {leadBox && (
         <LeadListBox
-          title={leadBox === "등록" ? "등록한 상담" : "등록 안 한 상담"}
+          title={leadBox === "등록" ? "등록한 문의" : "등록 안 한 문의"}
           sub={
             leadBox === "등록"
-              ? `${month.replace("-", "년 ")}월 · 맡은 상담 ${lead.base}건 가운데`
-              : `${month.replace("-", "년 ")}월 · 맡은 상담 ${lead.base}건 가운데` +
+              ? `${month.replace("-", "년 ")}월 · 받은 문의 ${lead.base}건 가운데`
+              : `${month.replace("-", "년 ")}월 · 받은 문의 ${lead.base}건 가운데` +
                 (lead.going > 0 ? ` · 아직 진행중인 ${lead.going}건은 빠져 있습니다` : "")
           }
           rows={leadRows.filter((c) => stageNow(c, now) === leadBox)}
@@ -2615,7 +2615,7 @@ function LeadListBox({ title, sub, rows, staffNames, branchName, now, onPick, on
         <p className="page-sub" style={{ margin: "2px 0 12px" }}>{sub}</p>
 
         {줄.length === 0 ? (
-          <p className="stat-note">이 달에 해당하는 상담이 없습니다.</p>
+          <p className="stat-note">이 달에 해당하는 문의가 없습니다.</p>
         ) : (
           <div className="table-wrap">
             {/* 창 안의 표는 보통 읽으라고만 있는데 이 표는 눌러서 편다.

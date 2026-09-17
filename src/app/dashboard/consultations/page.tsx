@@ -72,7 +72,7 @@ async function body() {
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
   return (
-    <Shell session={session} menus={menus} branches={myBranches} active="상담" crumb="상담"
+    <Shell session={session} menus={menus} branches={myBranches} active="상담" crumb="문의"
            canChangePassword={Boolean(ab.get("직원관리")?.update)}>
       <Client
         items={visible}

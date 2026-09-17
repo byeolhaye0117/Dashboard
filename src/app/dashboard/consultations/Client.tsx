@@ -344,13 +344,13 @@ export default function Client(p: Props) {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">상담</h1>
+          <h1 className="page-title">문의</h1>
           {p.onlyMine && <p className="page-sub">내 담당 건만 보입니다</p>}
         </div>
         {p.can.create && (
           <button className="btn-dark" onClick={() => setOpenNew(true)}>
             <Icon name="plus" size={16} strokeWidth={2} />
-            상담 접수
+            문의 접수
           </button>
         )}
       </div>
@@ -502,10 +502,10 @@ export default function Client(p: Props) {
       {list.length === 0 ? (
         <div className="empty">
           <Icon name="phone" size={26} />
-          <b>{p.items.length === 0 ? "아직 접수된 상담이 없습니다" : "조건에 맞는 상담이 없습니다"}</b>
+          <b>{p.items.length === 0 ? "아직 접수된 문의가 없습니다" : "조건에 맞는 문의가 없습니다"}</b>
           <p>
             {p.items.length === 0
-              ? "오른쪽 위 상담 접수 단추로 첫 문의를 기록해보세요."
+              ? "오른쪽 위 문의 접수 단추로 첫 문의를 기록해보세요."
               /* 기간을 좁혀 두고 「필터를 바꿔보세요」라고만 하면 어느 필터를
                  말하는지 모른다. 지금 무엇으로 걸러져 있는지 그대로 적는다 */
               : allTime
@@ -662,7 +662,7 @@ function NewForm({
   return (
     <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>상담 접수</h3>
+        <h3>문의 접수</h3>
         <p className="modal-lead">
           이름과 연락처만 있으면 됩니다. 나머지는 나중에 알게 되면 수정에서 채우시면 됩니다.
           <br />

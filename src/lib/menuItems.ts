@@ -33,7 +33,9 @@ export const MENUS: MenuItem[] = [
   { key: "홈", label: "홈", short: "홈", href: "/dashboard", icon: "home", group: "기본" },
   { key: "회원", label: "회원", short: "회원", href: "/dashboard/members", icon: "users", group: "기본" },
   { key: "매출", label: "매출", short: "매출", href: "/dashboard/sales", icon: "card", group: "기본" },
-  { key: "상담", label: "상담", short: "상담", href: "/dashboard/consultations", icon: "phone", group: "기본" },
+  /* key 는 「상담」 그대로 둔다 — 시트 권한 탭이 이 글자로 적혀 있어서, 여기를
+     바꾸면 그 메뉴의 권한이 통째로 없는 것이 된다. 화면에 보이는 이름만 바꾼다 */
+  { key: "상담", label: "문의", short: "문의", href: "/dashboard/consultations", icon: "phone", group: "기본" },
   { key: "PT·수업", label: "PT·수업", short: "PT", href: "/dashboard/lessons", icon: "dumbbell", group: "기본" },
   { key: "근태", label: "근태", short: "근태", href: "/dashboard/attendance", icon: "clock", group: "운영" },
   { key: "공지", label: "공지·업무", short: "업무", href: "/dashboard/notices", icon: "clipboard", group: "운영" },
@@ -71,7 +73,7 @@ export const ACTION_HINTS: Record<string, ActionHint> = {
     remove: "회원 지우기 · 이용권 지우기",
   },
   매출: { note: "지금은 보기만 씁니다 — 매출은 회원 결제에서 자동으로 쌓입니다" },
-  상담: { create: "상담 남기기", update: "상담 고치기", remove: "상담 지우기" },
+  상담: { create: "문의 남기기", update: "문의 고치기", remove: "문의 지우기" },
   "PT·수업": {
     create: "수업 잡기 · 수업 사진 올리기",
     update: "남의 수업까지 고치기 (내 수업은 등록만 있어도 됩니다)",
