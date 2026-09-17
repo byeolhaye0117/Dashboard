@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
-import { termOf, type ProductMeta } from "@/lib/productMeta";
+import { termOf, groupOf, type ProductMeta } from "@/lib/productMeta";
 import { stageNow, baseDate, STAGES } from "@/lib/stage";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 import { backdrop } from "@/lib/backdrop";
@@ -97,6 +97,10 @@ type MemberCard = {
 
 /** 어떤 분들이 등록하셨나 — 회원 한 줄에서 사람을 말하는 값만 */
 type Person = {
+  /** 이용권과 이어 재등록을 가리는 데 쓴다 */
+  id: string;
+  /** 탈퇴하신 분도 받는다 — 「지금 다니시는 분」을 셀 때만 가른다 */
+  회원상태: string;
   지점코드: string; 가입일: string;
   성별: string; 나이대: string; 거주동네: string; 직업: string; 방문경로: string;
 };
@@ -1039,15 +1043,51 @@ export default function Client(p: Props) {
    * 회원이 된 분이 몇 분인지, 그중 문의를 거친 분이 몇인지 같이 적는다.
    * 성공률의 뜻은 그대로 두고, 옆에 실제 수를 놓아 견주게 하는 것이다.
    */
-  const 이달등록 = useMemo(
-    () =>
-      p.people.filter(
-        (m) =>
-          (m.가입일 ?? "").startsWith(month) &&
-          (branch === "전체" || m.지점코드 === branch)
-      ).length,
-    [p.people, month, branch]
-  );
+  /*
+   * 이 달에 등록한 분 — 신규와 재등록을 같이 센다
+   *
+   * ── 무엇이 틀렸었나 ────────────────────────────────────────
+   * 「가입일이 이 달인 분」만 셌다. 그러면 처음 오신 분만 잡힌다. 원래
+   * 다니시던 분이 이 달에 다시 끊으신 것은 분명 등록인데 이 숫자 어디에도
+   * 없었다 — 성공률이 실제보다 낮게 나오고 있었다.
+   *
+   * ── 무엇을 세나 ───────────────────────────────────────────
+   * 신규 : 가입일이 이 달인 분
+   * 재등록: 이 달에 시작하는 이용권이 있는데 가입일은 이 달이 아닌 분
+   *
+   * 이용권 갈래만 본다(groupOf). 사물함을 하나 더 끊은 것을 등록이라 부르면
+   * 「다시 다니기로 하신 분」이 몇 분인지 알 수 없어진다. 회원 화면의
+   * 재등록과 같은 규칙이다 — 두 화면이 다른 수를 말하면 안 된다.
+   *
+   * 사람 번호로 모은다. 한 분이 이 달에 두 개를 끊어도 한 분이다.
+   */
+  const 등록한분 = useMemo(() => {
+    const 본다 = (c: string) => branch === "전체" || c === branch;
+    const 이지점 = new Map(
+      p.people.filter((m) => 본다(m.지점코드)).map((m) => [m.id, m])
+    );
+
+    const 신규 = new Set<string>();
+    이지점.forEach((m, id) => {
+      if ((m.가입일 ?? "").startsWith(month)) 신규.add(id);
+    });
+
+    const 재등록 = new Set<string>();
+    p.tickets.forEach((t) => {
+      const id = t.회원번호 ?? "";
+      if (!id || 신규.has(id)) return;
+      if (!이지점.has(id)) return;
+      if (!(t.시작일 ?? "").startsWith(month)) return;
+      /* 얹은 옵션(24시)은 제 이용권이 아니다 — 그것만으로 등록이라 할 수 없다 */
+      if (t.얹음) return;
+      if (groupOf(p.products.find((x) => x.code === t.상품코드)) !== "이용권") return;
+      재등록.add(id);
+    });
+
+    return { 신규: 신규.size, 재등록: 재등록.size, 합: 신규.size + 재등록.size };
+  }, [p.people, p.tickets, p.products, month, branch]);
+
+  const 이달등록 = 등록한분.합;
   /** 문의 시트에 줄이 없는 등록 — 걸어 들어오신 분 */
   const 문의없이 = Math.max(0, 이달등록 - lead.done);
 
@@ -1066,6 +1106,53 @@ export default function Client(p: Props) {
   );
 
   /*
+   * 놓친 분 명단 — 같은 분을 두 번 세지 않는다
+   *
+   * ── 무엇이 틀렸었나 ────────────────────────────────────────
+   * 퇴근 보고의 줄 수와 문의 미등록의 건수를 그냥 더했다. 그런데 문의로
+   * 접수해 둔 분을 그날 저녁 퇴근 보고에도 적으면 한 분이 두 번 들어간다.
+   * 놓침이 부풀고 성공률은 그만큼 낮게 나온다.
+   *
+   * 전화번호(숫자만)로 같은 분을 묶는다. 번호를 안 적은 줄은 묶을 길이 없으니
+   * 줄마다 제 자리를 준다 — 억지로 이름만 보고 묶으면 다른 분을 한 분으로
+   * 만들어 버린다.
+   *
+   * 퇴근 보고 쪽을 먼저 넣는다. 그쪽이 실제로 만난 직원이 적은 것이라
+   * 사번이 더 맞다 — 직원별 표에서 이 사번을 쓴다.
+   */
+  const 놓친분 = useMemo(() => {
+    const 번호 = (v: string) => (v ?? "").replace(/[^0-9]/g, "");
+    const 본것 = new Set<string>();
+    const 목록: { key: string; 사번: string; 이름: string; 전화번호: string; 사유: string; 어디: "보고" | "문의" }[] = [];
+
+    보고실패.forEach((f, i) => {
+      const k = 번호(f.전화번호) || `보고:${f.id || i}`;
+      if (본것.has(k)) return;
+      본것.add(k);
+      목록.push({
+        key: k, 사번: f.사번 || "-", 이름: f.이름 || "이름 없음",
+        전화번호: f.전화번호 || "", 사유: f.사유 || "", 어디: "보고",
+      });
+    });
+
+    leadRows.forEach((c, i) => {
+      if (stageNow(c, now) !== "미등록") return;
+      const k = 번호(c.전화번호 ?? "") || `문의:${c.상담번호 || i}`;
+      if (본것.has(k)) return;
+      본것.add(k);
+      목록.push({
+        key: k, 사번: c.상담자사번 || "-", 이름: c.이름 || "이름 없음",
+        전화번호: c.전화번호 ?? "", 사유: c.미등록사유 ?? "", 어디: "문의",
+      });
+    });
+
+    return 목록;
+  }, [보고실패, leadRows, now]);
+
+  /** 두 곳에 다 적혀 있어 한 번만 센 분 */
+  const 겹쳐뺀수 = 보고실패.length + lead.fail - 놓친분.length;
+
+  /*
    * 등록성공률 — 실제로 들어온 분과 놓친 분으로 잰다
    *
    * ── 무엇이 모자랐나 ────────────────────────────────────────
@@ -1073,11 +1160,11 @@ export default function Client(p: Props) {
    * 둘러보고 그냥 가신 분도 그 시트에 없다. 실제로 일어난 일의 일부만 보고
    * 88%라고 말하고 있었던 것이다.
    *
-   * 분모를 「실제로 등록한 분 + 놓친 분」으로 둔다. 등록은 회원 시트에서
-   * 세므로 문의를 거쳤든 걸어 들어오셨든 다 들어간다 — 겹쳐 세지 않는다.
-   * 놓친 분은 퇴근 보고와 문의 미등록을 더한다.
+   * 분모를 「등록한 분 + 놓친 분」으로 둔다. 양쪽 다 사람 수다 — 등록은
+   * 회원 번호로, 놓침은 전화번호로 모아 센다. 한쪽은 사람이고 한쪽은 줄이면
+   * 한 분을 두 번 만난 것이 두 분처럼 잡힌다.
    */
-  const 놓침 = 보고실패.length + lead.fail;
+  const 놓침 = 놓친분.length;
   const 만난분 = 이달등록 + 놓침;
   const winRate = 만난분 > 0 ? Math.round((이달등록 / 만난분) * 100) : null;
   const failRate = 만난분 > 0 ? Math.round((놓침 / 만난분) * 100) : null;
@@ -1155,13 +1242,10 @@ export default function Client(p: Props) {
      * 만난 분 대비 몇 분을 놓쳤는지가 있어야 견줄 수 있다.
      *
      * 퇴근 보고의 놓친 분과 문의 시트의 미등록을 같이 센다. 문의 쪽은
-     * 상담자로, 보고 쪽은 적은 사람으로 잡힌다.
+     * 상담자로, 보고 쪽은 적은 사람으로 잡힌다. 두 곳에 다 있는 분은
+     * 위에서 한 번으로 묶어 두었다 — 여기서 또 더하면 안 된다.
      */
-    보고실패.forEach((f) => { 자리(f.사번 || "-").fail += 1; });
-    leadRows.forEach((c) => {
-      if (stageNow(c, now) !== "미등록") return;
-      자리(c.상담자사번 || "-").fail += 1;
-    });
+    놓친분.forEach((f) => { 자리(f.사번).fail += 1; });
     return Object.entries(map)
       .map(([id, v]) => ({
         id,
@@ -1171,7 +1255,7 @@ export default function Client(p: Props) {
         failRate: v.count + v.fail > 0 ? Math.round((v.fail / (v.count + v.fail)) * 100) : null,
       }))
       .sort((a, b) => b.sum - a.sum);
-  }, [cur.live, p.staffNames, 보고실패, leadRows, now]);
+  }, [cur.live, p.staffNames, 놓친분]);
 
   /*
    * 날짜별 — 얼마를 무엇으로 받았나
@@ -1192,6 +1276,13 @@ export default function Client(p: Props) {
   const dist = useMemo(() => {
     const 사람 = p.people
       .filter((m) => branch === "전체" || m.지점코드 === branch)
+      /*
+       * 「전체 회원」은 지금 다니시는 분이다 — 그만두신 분은 뺀다.
+       * 「이 달 등록」은 그 달에 일어난 일이라 그대로 센다. 그 달에 등록했다
+       * 그 달에 그만두셨어도 등록은 등록이다 — 지난 달을 다시 열어 봤을 때
+       * 숫자가 달라지면 안 된다.
+       */
+      .filter((m) => (who === "all" ? m.회원상태 !== "탈퇴" : true))
       .filter((m) => who === "all" || (m.가입일 ?? "").startsWith(month));
 
     const 세기 = (k: keyof Person, 정해둔?: string[]) => {
@@ -1441,10 +1532,13 @@ export default function Client(p: Props) {
               어디서 나온 숫자인지 아무도 되짚을 수 없다 */}
           <span className="sub">
             만난 {만난분}분 중 <b className="num">{이달등록}분</b> 등록
-            {문의없이 > 0 && ` · 그중 ${문의없이}분은 문의 없이 등록`}
+            {이달등록 > 0 && ` (신규 ${등록한분.신규} · 재등록 ${등록한분.재등록})`}
+            {문의없이 > 0 && ` · 그중 ${문의없이}분은 문의 없이`}
           </span>
+          {/* 막대도 위의 큰 숫자와 같은 것을 말해야 한다 — 예전에는 막대만
+              문의 기준이라 88%라 적힌 칸에 60%짜리 막대가 서 있었다 */}
           <div className="mini">
-            <i className="good" style={{ width: `${lead.winRate ?? 0}%` }} />
+            <i className="good" style={{ width: `${winRate ?? 0}%` }} />
           </div>
         </div>
         <div className={`tile${lead.fail > 0 ? " tapme" : ""}`}
@@ -1460,12 +1554,15 @@ export default function Client(p: Props) {
           <span className="sub">
             {놓침 > 0
               ? `만난 ${만난분}분 중 ${놓침}분 놓침` +
-                (보고실패.length > 0 ? ` (퇴근 보고 ${보고실패.length} · 문의 미등록 ${lead.fail})` : "")
+                (보고실패.length > 0 || lead.fail > 0
+                  ? ` (퇴근 보고 ${보고실패.length} · 문의 미등록 ${lead.fail}` +
+                    (겹쳐뺀수 > 0 ? ` · 겹친 ${겹쳐뺀수}분 뺌)` : ")")
+                  : "")
               : "놓친 분 없음"}
           </span>
           <div className="mini">
-            <i className={lead.failRate !== null && lead.failRate >= 50 ? "bad" : "warn"}
-               style={{ width: `${lead.failRate ?? 0}%` }} />
+            <i className={failRate !== null && failRate >= 50 ? "bad" : "warn"}
+               style={{ width: `${failRate ?? 0}%` }} />
           </div>
         </div>
       </div>
@@ -1781,8 +1878,9 @@ export default function Client(p: Props) {
           */}
           <p className="viz-sub">
             매출은 상품을 팔 때 고른 <b>결제 담당</b> 기준입니다.
-            놓침은 <b>퇴근 보고</b>에 적은 분과 <b>문의 미등록</b>을 더한 값이며,
-            놓친 비율은 <b>판 건수 + 놓친 건수</b>를 만난 분으로 보고 잰 것입니다.
+            놓침은 <b>퇴근 보고</b>에 적은 분과 <b>문의 미등록</b>을 모은 것입니다 —
+            두 곳에 다 적힌 분은 전화번호로 묶어 한 번만 셉니다.
+            놓친 비율은 <b>판 건수 + 놓친 분</b>을 만난 분으로 보고 잰 것입니다.
           </p>
           <div className="table-wrap t2wrap">
             <table className="grid t2">

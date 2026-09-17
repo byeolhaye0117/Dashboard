@@ -9,7 +9,7 @@ import OptionEdit from "@/components/OptionEdit";
 import { korDate, today, daysBetween, weekdayIndex } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
-import { termOf, sellsByMonth, type ProductMeta } from "@/lib/productMeta";
+import { termOf, sellsByMonth, groupOf, type Grp, type ProductMeta } from "@/lib/productMeta";
 import { SALE_TYPES } from "@/lib/saleTypes";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 import { REFUND_STAGES, REFUND_REASONS } from "@/lib/refund";
@@ -173,32 +173,6 @@ const PAY_METHODS = ["카드", "현금", "계좌", "카드+계좌"];
 const SOON = 7;
 
 const money = (n: number) => n.toLocaleString("ko-KR");
-
-/**
- * 상품을 카테고리로 나눈다
- *
- * 이용권: 회원권 · 1:1PT · 그룹수업. 이게 끊기면 회원이 아니다
- * 부가  : 운동복 · 사물함 · 프로틴 · 일일권 같은 것. 돈은 냈지만 이게
- *         살아 있다고 회원권이 살아 있는 것은 아니다
- * 옵션  : 24시 · 여성전용처럼 회원권에 얹는 추가 요금
- * 서비스: 돈을 안 받고 얹어준 것
- *
- * 이걸 안 나누면 사물함 3개월 때문에 회원권이 끝난 사람이
- * "이용중"으로 보인다.
- */
-export type Grp = "이용권" | "부가" | "옵션" | "서비스";
-
-/** 상품 화면에서 부가 상품으로 정한 이름들. 「기타」는 예전에 쓰던 이름이다 */
-const EXTRA_KINDS = ["부가상품권", "부가상품", "부가", "기타", "용품"];
-
-const groupOf = (pr?: ProductMeta): Grp => {
-  if (!pr) return "이용권";
-  const k = (pr.kind ?? "").replace(/\s/g, "");
-  if (pr.isService || k === "서비스") return "서비스";
-  if (pr.isOption || k === "옵션") return "옵션";
-  if (EXTRA_KINDS.includes(k)) return "부가";
-  return "이용권";
-};
 
 /**
  * 이용권을 카테고리로 나눈다
