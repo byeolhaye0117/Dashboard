@@ -1026,6 +1026,17 @@ i.s6 { background: var(--s6); }
   display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
 }
 .tab-bar .tab-lead { flex: 1; }
+/* 근태 고치기 창의 회차 단추
+   단추에 출퇴근 시각까지 넣었더니 32px 높이에 두 줄이 눌려 들어가 찌부러졌다.
+   시각을 아랫줄로 내리고 높이를 글에 맞춘다 — 어느 줄을 고치는지가 번호가
+   아니라 눈에 보이는 시각으로 갈리므로, 그 시각이 읽혀야 뜻이 있다 */
+.tab-bar.rounds { gap: 6px; flex-wrap: wrap; }
+.tab-bar.rounds .mini-tab {
+  flex: 0 1 auto; height: auto; min-height: 46px; padding: 7px 13px;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+  gap: 2px; line-height: 1.25; white-space: nowrap;
+}
+.tab-bar.rounds .mini-tab .tm { font-size: 11px; font-weight: 600; opacity: .75; }
 .tab-bar .btn-dark { flex: 0 0 auto; height: 32px; padding: 0 12px; font-size: 12.5px; }
 
 .mini-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }

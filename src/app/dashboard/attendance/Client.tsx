@@ -778,20 +778,23 @@ function EditBox({ person, day, rounds, canRemove, onClose }: {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{person.name} · {korDate(day)}</h3>
 
-        <div className="tab-bar" style={{ marginBottom: 12 }}>
+        <div className="tab-bar rounds" style={{ marginBottom: 12 }}>
           {줄들.map((r, i) => (
             <button key={r.id || i} type="button"
                     className={`mini-tab${nth === i ? " on" : ""}`}
                     onClick={() => pick(i)}>
               {/* 어느 줄인지가 번호가 아니라 눈에 보이는 시각으로 갈린다 */}
-              {i + 1}회차
-              {r.출근시각 && ` ${r.출근시각}~${r.퇴근시각 || "…"}`}
+              <span>{i + 1}회차</span>
+              <span className="tm">
+                {r.출근시각 ? `${r.출근시각} ~ ${r.퇴근시각 || "…"}` : "비어 있음"}
+              </span>
             </button>
           ))}
           <button type="button"
                   className={`mini-tab${nth === 줄들.length ? " on" : ""}`}
                   onClick={() => pick(줄들.length)}>
-            {줄들.length === 0 ? "기록 적기" : "구간 더 넣기"}
+            <span>{줄들.length === 0 ? "기록 적기" : "구간 더 넣기"}</span>
+            <span className="tm">{줄들.length === 0 ? "손으로 채우기" : `${줄들.length + 1}회차`}</span>
           </button>
         </div>
 
