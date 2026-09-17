@@ -235,8 +235,38 @@ export default function Client(p: Props) {
 
   const now = today();
 
+  /*
+   * 어느 달을 보고 있나
+   *
+   * 지금까지 쌓인 상담을 한 목록에 다 늘어놓았다. 몇 달만 지나도 「이번 달에
+   * 몇 건 들어왔나」를 눈으로 세야 하고, 갈래마다 붙은 수도 지난 것까지
+   * 합친 값이라 이 달 성적을 말하지 못했다.
+   *
+   * 날짜를 재는 자는 다른 화면과 같다(baseDate) — 약속을 잡은 건은 약속 날,
+   * 아직인 건은 문의가 들어온 날. 매출 화면이 상담을 세는 자도 이것이라,
+   * 두 화면의 「이 달 상담 16건」이 같은 값을 말한다.
+   */
+  const [month, setMonth] = useState(now.slice(0, 7));
+  /** 달 안에서 하루만 볼 때 — 비어 있으면 그 달 전체 */
+  const [day, setDay] = useState("");
+  /** 지난 것까지 통째로 볼 때 */
+  const [allTime, setAllTime] = useState(false);
+
+  const shift = (m: string, n: number) => {
+    const [y, mm] = m.split("-").map(Number);
+    const d = new Date(Date.UTC(y, mm - 1 + n, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  };
+
+  /** 기간으로 먼저 거른다 — 갈래에 붙는 수도 이 안에서 센다 */
+  const inRange = useMemo(() => {
+    if (allTime) return p.items;
+    const 자 = day || month;
+    return p.items.filter((c) => baseDate(c).startsWith(자));
+  }, [p.items, month, day, allTime]);
+
   const list = useMemo(() => {
-    return p.items.filter((c) => {
+    return inRange.filter((c) => {
       if (tab !== "전체") {
         if (tab === "결론입력") {
           if (!needsResult(c)) return false;
@@ -260,7 +290,7 @@ export default function Client(p: Props) {
        표에 보이는 날짜와 순서가 어긋난다. */
     /* 빠른 것이 위다. 오늘 누구부터 오는지가 이 표를 보는 이유다 */
     .sort((a, b) => whenKey(a).localeCompare(whenKey(b)) || a.id.localeCompare(b.id));
-  }, [p.items, tab, branch, q]);
+  }, [inRange, tab, branch, q]);
 
   const thisMonth = now.slice(0, 7);
   const inMonth = p.items.filter((c) => baseDate(c).startsWith(thisMonth));
@@ -356,16 +386,41 @@ export default function Client(p: Props) {
       )}
 
 
+      {/*
+        어느 기간을 보고 있나
+
+        갈래마다 붙은 수도 이 기간 안에서 센다. 기간은 좁혔는데 수는 지난 것까지
+        합쳐 있으면, 「등록 14건」을 눌렀는데 목록에 3건만 뜨는 일이 난다.
+      */}
+      <div className="whenbar">
+        <button className="icon-btn" onClick={() => { setMonth(shift(month, -1)); setDay(""); setAllTime(false); }}
+                aria-label="지난달">‹</button>
+        <b className="num">{allTime ? "전체 기간" : `${month.slice(0, 4)}년 ${Number(month.slice(5, 7))}월`}</b>
+        <button className="icon-btn" onClick={() => { setMonth(shift(month, 1)); setDay(""); setAllTime(false); }}
+                aria-label="다음달">›</button>
+        {/* 하루만 보고 싶을 때. 달을 옮기면 지워진다 — 다른 달의 날로 거르면
+            아무것도 안 남아 「자료가 없나」 하게 된다 */}
+        <input className="input mini" type="date" value={day}
+               onChange={(e) => { setDay(e.target.value); setAllTime(false); }} />
+        {day && (
+          <button className="btn-ghost mini" onClick={() => setDay("")}>이 달 전체</button>
+        )}
+        <button className={`btn-ghost mini${allTime ? " ok" : ""}`}
+                onClick={() => { setAllTime(!allTime); setDay(""); }}>
+          {allTime ? "이 달만 보기" : "전체 기간"}
+        </button>
+      </div>
+
       <div className="filters">
         <div className="chips">
           <button className={`chip${tab === "전체" ? " on" : ""}`} onClick={() => setTab("전체")}>
-            전체<span className="cnt num">{p.items.length}</span>
+            전체<span className="cnt num">{inRange.length}</span>
           </button>
 
           {CHANNELS.map((ch) => (
             <button key={ch} className={`chip${tab === ch ? " on" : ""}`} onClick={() => setTab(ch)}>
               {ch}
-              <span className="cnt num">{p.items.filter((c) => chan(c) === ch).length}</span>
+              <span className="cnt num">{inRange.filter((c) => chan(c) === ch).length}</span>
             </button>
           ))}
 
@@ -373,22 +428,22 @@ export default function Client(p: Props) {
 
           {/* 아직 아무것도 안 잡힌 건. 예약보다 앞이라 왼쪽에 둔다 */}
           <button className={`chip${tab === "문의" ? " on" : ""}`} onClick={() => setTab("문의")}>
-            문의<span className="cnt num">{p.items.filter((c) => stageNow(c) === "문의").length}</span>
+            문의<span className="cnt num">{inRange.filter((c) => stageNow(c) === "문의").length}</span>
           </button>
           <button className={`chip${tab === "예약" ? " on" : ""}`} onClick={() => setTab("예약")}>
-            예약<span className="cnt num">{p.items.filter((c) => stageNow(c) === "예약").length}</span>
+            예약<span className="cnt num">{inRange.filter((c) => stageNow(c) === "예약").length}</span>
           </button>
           <button className={`chip${tab === "약속전환" ? " on" : ""}`} onClick={() => setTab("약속전환")}>
             약속전환
             <span className="cnt num">
-              {p.items.filter((c) => hasAppt(c) && !isSettled(c) && !isAutoFail(c)).length}
+              {inRange.filter((c) => hasAppt(c) && !isSettled(c) && !isAutoFail(c)).length}
             </span>
           </button>
           <button className={`chip${tab === "등록" ? " on" : ""}`} onClick={() => setTab("등록")}>
-            등록<span className="cnt num">{p.items.filter((c) => stageNow(c) === "등록").length}</span>
+            등록<span className="cnt num">{inRange.filter((c) => stageNow(c) === "등록").length}</span>
           </button>
           <button className={`chip${tab === "미등록" ? " on" : ""}`} onClick={() => setTab("미등록")}>
-            미등록<span className="cnt num">{p.items.filter((c) => stageNow(c) === "미등록").length}</span>
+            미등록<span className="cnt num">{inRange.filter((c) => stageNow(c) === "미등록").length}</span>
           </button>
 
           {todo > 0 && (
@@ -425,7 +480,11 @@ export default function Client(p: Props) {
           <p>
             {p.items.length === 0
               ? "오른쪽 위 상담 접수 단추로 첫 문의를 기록해보세요."
-              : "필터를 바꿔보세요."}
+              /* 기간을 좁혀 두고 「필터를 바꿔보세요」라고만 하면 어느 필터를
+                 말하는지 모른다. 지금 무엇으로 걸러져 있는지 그대로 적는다 */
+              : allTime
+                ? "갈래나 검색어를 바꿔보세요."
+                : `${day || `${month.slice(0, 4)}년 ${Number(month.slice(5, 7))}월`}에 해당하는 상담이 없습니다. 달을 옮기거나 「전체 기간」을 눌러보세요.`}
           </p>
         </div>
       ) : (

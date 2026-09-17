@@ -667,6 +667,13 @@ table.t2 { min-width: 640px; }
 .input.mini { height: 30px; padding: 0 9px; font-size: 12.5px; width: auto; }
 .gotrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
+/* 목록 위의 기간 고르개 — 달을 옮기고 하루를 고른다 */
+.whenbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 14px 0 2px;
+}
+.whenbar > b { font-size: 15px; font-weight: 800; letter-spacing: -.02em; min-width: 108px; }
+
 /* 좁은 화면에서는 이름을 한 줄 차지하게 두고, 표시와 금액을 그 밑에 나란히 둔다.
    한 줄에 셋을 다 밀어 넣으면 이름이 한 글자씩 끊기고 금액이 화면 밖으로 나간다 */
 @media (max-width: 560px) {
