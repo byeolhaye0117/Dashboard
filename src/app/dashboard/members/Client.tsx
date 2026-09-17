@@ -533,14 +533,30 @@ export default function Client(p: Props) {
       ),
     [scoped, mainOf, month]
   );
-  /** 그 달에 회원권이 끝나는 분 */
-  const 마감목록 = useMemo(
+  /*
+   * 그 달에 회원권이 끝나는 분을 둘로 가른다
+   *
+   * ── 왜 나누나 ──────────────────────────────────────────────
+   * 「마감 임박」이 달을 안 따르고 늘 「오늘부터 7일」이었다. 그래서 8월을 봐도
+   * 9월을 봐도 같은 분이 떠서, 달을 옮긴 뜻이 없었다.
+   *
+   * 이제 둘 다 그 달에 끝나는 분을 본다. 다만 오늘을 기준으로 가른다 —
+   * 아직 안 지난 분은 전화를 걸 수 있고(임박), 이미 지난 분은 재등록을
+   * 권해야 한다(마감). 할 일이 다르니 칸도 다르다.
+   *
+   * 둘을 더하면 그 달에 끝나는 분 전부다. 겹치지 않는다.
+   */
+  const 끝나는달 = useMemo(
     () => scoped.filter((m) => (endOf[m.id] ?? "").startsWith(month)),
     [scoped, endOf, month]
   );
   const 임박목록 = useMemo(
-    () => scoped.filter((m) => stateOf(m) === "마감임박"),
-    [scoped, mainOf, now]
+    () => 끝나는달.filter((m) => (endOf[m.id] ?? "").slice(0, 10) >= now),
+    [끝나는달, endOf, now]
+  );
+  const 마감목록 = useMemo(
+    () => 끝나는달.filter((m) => (endOf[m.id] ?? "").slice(0, 10) < now),
+    [끝나는달, endOf, now]
   );
 
   const newThisMonth = 신규목록.length;
@@ -673,10 +689,12 @@ export default function Client(p: Props) {
                  e.preventDefault(); setPeek("마감임박");
                }
              }}>
-          <div className="lb">마감 임박{soon > 0 && <i className="goto">명단 보기</i>}</div>
+          <div className="lb">
+            {Number(month.slice(5, 7))}월 마감 임박
+            {soon > 0 && <i className="goto">명단 보기</i>}
+          </div>
           <div className="vl num">{soon}</div>
-          {/* 이 칸만 달을 안 따른다 — 「7일 안에」는 오늘에서만 뜻이 있다 */}
-          <div className="dt">오늘부터 {SOON}일 안에 끝남</div>
+          <div className="dt">아직 안 지남 · 전화 대상</div>
         </div>
         <div className={`stat${expired > 0 ? " tapme" : ""}`}
              role={expired > 0 ? "button" : undefined}
@@ -688,11 +706,11 @@ export default function Client(p: Props) {
                }
              }}>
           <div className="lb">
-            {이달인가 ? "마감" : `${Number(month.slice(5, 7))}월 마감`}
+            {Number(month.slice(5, 7))}월 마감
             {expired > 0 && <i className="goto">명단 보기</i>}
           </div>
           <div className="vl num">{expired}</div>
-          <div className="dt">재등록 대상</div>
+          <div className="dt">이미 지남 · 재등록 대상</div>
         </div>
       </div>
 
@@ -913,8 +931,8 @@ export default function Client(p: Props) {
           peek === "전체" ? `${이달인가 ? "" : `${Number(month.slice(5, 7))}월 말까지 `}전체 회원`
           : peek === "신규" ? `${Number(month.slice(5, 7))}월 신규`
           : peek === "재등록" ? `${Number(month.slice(5, 7))}월 재등록`
-          : peek === "마감임박" ? `오늘부터 ${SOON}일 안에 끝나는 분`
-          : `${Number(month.slice(5, 7))}월에 끝나는 분`;
+          : peek === "마감임박" ? `${Number(month.slice(5, 7))}월에 끝나는 분 (아직 안 지남)`
+          : `${Number(month.slice(5, 7))}월에 끝난 분`;
         const 줄 = 목록
           .slice()
           .sort((a, b2) =>
