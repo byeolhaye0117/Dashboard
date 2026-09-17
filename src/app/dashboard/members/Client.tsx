@@ -297,8 +297,48 @@ export default function Client(p: Props) {
   /** 골라 둔 회원들 — 한 번에 지울 대상 */
   const [picked, setPicked] = useState<string[]>([]);
   const [killing, setKilling] = useState(false);
+  /** 고른 분들의 결제를 일일권 한 분에게 몰아 넣기 전에 한 번 더 묻는다 */
+  const [moving, setMoving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+
+  /*
+   * 결제를 받아 줄 「일일권」 회원
+   *
+   * 이름으로 찾는다. 하루 쓰고 가시는 분의 결제를 몰아 두려고 만들어 둔
+   * 자리이므로, 지점마다 하나씩 있어야 한다 — 보고 있는 지점 것을 먼저
+   * 찾고, 「전 지점」으로 보고 계시면 아무 곳의 것이나 잡되 옮길 때 지점을
+   * 다시 본다. 없으면 단추 자체가 안 뜬다.
+   */
+  /*
+   * 이 결제로 무엇을 샀나
+   *
+   * 결제 줄에는 상품 이름이 없다. 이용권 줄에 결제번호가 달려 있으므로
+   * 그것으로 거슬러 찾는다. 결제번호가 없던 옛 줄은 같은 회원 · 같은 날로
+   * 잇는다 — 옮기기 전에 무엇이 옮겨가는지 눈으로 봐야 하기 때문이다.
+   */
+  const 산것 = (x: Payment) => {
+    const 붙은것 = p.tickets.filter(
+      (t) =>
+        t.회원번호 === x.회원번호 &&
+        (t.결제번호
+          ? t.결제번호 === x.id
+          : (t.시작일 ?? "").slice(0, 10) === (x.결제일시 ?? "").slice(0, 10))
+    );
+    return 붙은것
+      .map((t) => p.products.find((y) => y.code === t.상품코드)?.name ?? t.상품코드)
+      .filter(Boolean)
+      .join(" · ");
+  };
+
+  const 일일권 = useMemo(() => {
+    const 일일권인가 = (m: Member) => (m.이름 ?? "").replace(/\s/g, "") === "일일권";
+    return (
+      p.items.find((m) => 일일권인가(m) && m.지점코드 === branch) ??
+      p.items.find(일일권인가) ??
+      null
+    );
+  }, [p.items, branch]);
 
   /*
    * 숫자 칸을 눌러 여는 명단
@@ -558,6 +598,23 @@ export default function Client(p: Props) {
     () => 끝나는달.filter((m) => (endOf[m.id] ?? "").slice(0, 10) >= now),
     [끝나는달, endOf, now]
   );
+  /*
+   * 「마감 임박」이 어느 구간을 세고 있는지 그 자리에 적는다
+   *
+   * 「아직 안 지남 · 전화 대상」이라고만 적혀 있었다. 며칠을 보고 있는 것인지
+   * 알 수 없어, 이 1분이 내일 끝나는 분인지 이달 말에 끝나는 분인지 몰랐다.
+   *
+   * 세는 규칙 그대로 적는다 — 그 달에 끝나는 분 가운데 오늘 이후. 지난 달을
+   * 보고 계시면 이미 다 지났으므로 셀 것이 없고, 다음 달이면 그 달 전부다.
+   */
+  const 임박구간 = useMemo(() => {
+    const 짧게 = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+    const 달첫날 = `${month}-01`;
+    if (달끝 < now) return "이 달은 이미 다 지났습니다";
+    const 시작 = now > 달첫날 ? now : 달첫날;
+    return `${짧게(시작)} ~ ${짧게(달끝)} 만료`;
+  }, [month, 달끝, now]);
+
   const 마감목록 = useMemo(
     () => 끝나는달.filter((m) => (endOf[m.id] ?? "").slice(0, 10) < now),
     [끝나는달, endOf, now]
@@ -648,7 +705,7 @@ export default function Client(p: Props) {
                  e.preventDefault(); setPeek("전체");
                }
              }}>
-          <div className="lb">전체 회원{누적.length > 0 && <i className="goto">명단 보기</i>}</div>
+          <div className="lb">전체 회원</div>
           <div className="vl num">{누적.length}</div>
           <div className="dt">
             {이달인가 ? `활성 ${using}명` : `${Number(month.slice(5, 7))}월 말까지 누적`}
@@ -665,10 +722,8 @@ export default function Client(p: Props) {
              }}>
           <div className="lb">
             {이달인가 ? "이번 달 신규" : `${Number(month.slice(5, 7))}월 신규`}
-            {newThisMonth > 0 && <i className="goto">명단 보기</i>}
           </div>
           <div className="vl num">{newThisMonth}</div>
-          <div className="dt">처음 끊으신 분</div>
         </div>
         <div className={`stat${again > 0 ? " tapme" : ""}`}
              role={again > 0 ? "button" : undefined}
@@ -681,10 +736,8 @@ export default function Client(p: Props) {
              }}>
           <div className="lb">
             {이달인가 ? "이번 달 재등록" : `${Number(month.slice(5, 7))}월 재등록`}
-            {again > 0 && <i className="goto">명단 보기</i>}
           </div>
           <div className="vl num">{again}</div>
-          <div className="dt">다시 끊으신 분</div>
         </div>
         <div className={`stat${soon > 0 ? " tapme" : ""}`}
              role={soon > 0 ? "button" : undefined}
@@ -697,10 +750,9 @@ export default function Client(p: Props) {
              }}>
           <div className="lb">
             {Number(month.slice(5, 7))}월 마감 임박
-            {soon > 0 && <i className="goto">명단 보기</i>}
           </div>
           <div className="vl num">{soon}</div>
-          <div className="dt">아직 안 지남 · 전화 대상</div>
+          <div className="dt">{임박구간}</div>
         </div>
         <div className={`stat${expired > 0 ? " tapme" : ""}`}
              role={expired > 0 ? "button" : undefined}
@@ -713,10 +765,8 @@ export default function Client(p: Props) {
              }}>
           <div className="lb">
             {Number(month.slice(5, 7))}월 마감
-            {expired > 0 && <i className="goto">명단 보기</i>}
           </div>
           <div className="vl num">{expired}</div>
-          <div className="dt">이미 지남 · 재등록 대상</div>
         </div>
       </div>
 
@@ -802,10 +852,123 @@ export default function Client(p: Props) {
               지우기
             </button>
           )}
+          {/*
+            하루 쓰고 가신 분을 일일권 한 분에게 몰아 넣는다
+
+            그때그때 회원으로 넣어 두면 명단이 「이용권 없음」인 분들로 가득 차
+            몇 분이 다니시는지가 안 보인다. 그렇다고 지우면 그날 판 일일권
+            매출이 같이 사라진다. 결제만 옮기고 회원 줄을 내린다.
+          */}
+          {일일권 && !killing && (
+            <button className="btn-ghost" style={{ marginTop: 0 }}
+                    onClick={() => setMoving(true)}>
+              일일권으로 옮기기
+            </button>
+          )}
           <button className="btn-ghost" style={{ marginTop: 0 }}
                   onClick={() => { setPicked([]); setKilling(false); }}>선택 해제</button>
         </div>
       )}
+
+      {moving && 일일권 && (() => {
+        const 갈분들 = picked
+          .map((id) => p.items.find((m) => m.id === id))
+          .filter(Boolean) as Member[];
+        const 줄 = 갈분들.flatMap((m) =>
+          p.payments
+            .filter((x) => x.회원번호 === m.id)
+            .map((x) => ({ 이름: m.이름, x }))
+        );
+        const 합 = 줄.reduce((s, r) => s + (Number((r.x.결제금액 ?? "").replace(/[^0-9-]/g, "")) || 0), 0);
+        const 딴지점 = 갈분들.filter((m) => m.지점코드 !== 일일권.지점코드);
+        return (
+          <div className="modal-back" {...backdrop(() => !busy && setMoving(false))}>
+            <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+              <h3>{picked.length}분의 결제를 「{일일권.이름}」으로 옮깁니다</h3>
+              <p className="modal-lead">
+                결제일 · 상품 · 금액 · 결제수단은 <b>적힌 그대로</b> 갑니다 —
+                매출은 한 푼도 안 움직입니다. 옮긴 뒤 이분들의 회원 줄만 내려가
+                명단에서 사라집니다. 누구의 결제였는지는 메모에 남습니다.
+              </p>
+
+              {딴지점.length > 0 ? (
+                <div className="alert-bad">
+                  {딴지점.map((m) => m.이름).join(" · ")}님은 지점이 달라 옮길 수 없습니다.
+                  「{일일권.이름}」은 {branchName(일일권.지점코드)} 소속입니다 —
+                  그 지점 분들만 고르시거나, 지점마다 일일권 회원을 하나씩 만들어 주세요.
+                </div>
+              ) : 줄.length === 0 ? (
+                <div className="alert-bad">
+                  고르신 분들에게 옮길 결제가 없습니다. 회원 줄만 지우시려면
+                  「지우기」를 쓰시는 것이 맞습니다.
+                </div>
+              ) : (
+                <div className="table-wrap" style={{ maxHeight: 280 }}>
+                  <table className="grid">
+                    <thead>
+                      <tr>
+                        <th>누구 것</th><th>결제일</th><th>무엇</th>
+                        <th className="r">금액</th><th>결제수단</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {줄.map((r, i) => (
+                        <tr key={`${r.x.id}-${i}`}>
+                          <td>{r.이름}</td>
+                          <td className="num">{(r.x.결제일시 ?? "").slice(0, 10)}</td>
+                          <td>{산것(r.x) || "-"}</td>
+                          <td className="r num">
+                            {money(Number((r.x.결제금액 ?? "").replace(/[^0-9-]/g, "")) || 0)}원
+                          </td>
+                          <td>{r.x.결제수단 || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={3}>{줄.length}건</td>
+                        <td className="r num"><b>{money(합)}원</b></td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {msg && <div className="alert-bad">{msg}</div>}
+
+              <div className="modal-actions">
+                <button className="btn-ghost" disabled={busy}
+                        onClick={() => { setMoving(false); setMsg(""); }}>그만두기</button>
+                <button className="btn-dark" disabled={busy || 딴지점.length > 0 || 줄.length === 0}
+                        onClick={async () => {
+                          setBusy(true);
+                          setMsg("");
+                          try {
+                            const res = await fetch("/api/members/move-sales", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ to: 일일권.id, ids: picked }),
+                            });
+                            const j = await res.json();
+                            if (!res.ok) throw new Error(j.error ?? "옮기지 못했습니다.");
+                            alert(
+                              `${j.받은이름}님으로 ${j.옮긴사람}분의 결제를 옮겼습니다.\n\n` +
+                              `이용권 ${j.이용권}개 · 결제 ${j.결제}건`
+                            );
+                            location.reload();
+                          } catch (e: any) {
+                            setMsg(String(e.message ?? e));
+                            setBusy(false);
+                          }
+                        }}>
+                  {busy ? "옮기는 중…" : `${줄.length}건 옮기기`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="filters">
         <div className="chips">

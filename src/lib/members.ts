@@ -1821,3 +1821,132 @@ export async function mergeMembers(
 
   return { 이용권: 옮긴이용권, 결제: 옮긴결제, 겹친이용권, 겹친결제, 채운칸 };
 }
+
+/**
+ * 고른 분들의 결제를 한 회원(일일권)으로 옮긴다
+ *
+ * ── 무엇에 쓰나 ─────────────────────────────────────────────
+ * 하루 쓰고 가시는 분을 그때그때 회원으로 넣어 두면, 회원 명단이 「이용권
+ * 없음」인 분들로 가득 찬다. 몇 분이 다니시는지가 안 보인다.
+ *
+ * 그렇다고 지우면 그날 판 일일권 매출이 같이 사라진다. 그래서 지우는 대신
+ * 결제를 「일일권」 한 분에게 몰아 붙이고, 회원 줄만 내린다. 결제일 · 상품 ·
+ * 금액 · 결제수단은 적힌 그대로 간다 — 매출은 한 푼도 안 움직인다.
+ *
+ * ── 합치기와 무엇이 다른가 ──────────────────────────────────
+ * 합치기(mergeMembers)는 한 사람이 두 줄로 나뉜 것을 되돌리는 일이라,
+ * 똑같은 줄이 두 개면 저장이 두 번 눌린 자국으로 보고 하나만 남긴다.
+ *
+ * 여기는 반대다. 서로 다른 두 분이 같은 날 같은 일일권을 같은 값으로 사신
+ * 것은 두 건이지 한 건이 아니다. 그래서 겹친다고 내리는 일이 절대 없다.
+ *
+ * 빈 칸을 채우거나 가입일을 당기는 일도 안 한다 — 일일권은 사람이 아니라
+ * 자리라서, 지나간 손님의 성별·나이대가 거기 남으면 안 된다.
+ */
+export async function moveSalesTo(
+  targetId: string,
+  fromIds: string[],
+  staffId: string
+): Promise<{ 옮긴사람: number; 이용권: number; 결제: number }> {
+  const ids = [...new Set(fromIds.map((x) => (x ?? "").trim()).filter(Boolean))];
+  if (!targetId) throw new Error("어느 회원으로 옮길지 골라주세요.");
+  if (ids.length === 0) throw new Error("옮길 분을 골라주세요.");
+  if (ids.includes(targetId)) throw new Error("받을 회원은 옮길 목록에 넣을 수 없습니다.");
+
+  const m = await readSheet(SHEET_M);
+  const mCols = resolve(SHEET_M, m.headers, M_COLS);
+  const 살아있음 = (r: Row) => (r["삭제여부"] ?? "").toUpperCase() !== "Y";
+
+  const iTarget = m.rows.findIndex(
+    (r) => 살아있음(r) && get(r, mCols, "회원번호") === targetId
+  );
+  if (iTarget < 0) throw new Error("받을 회원을 찾지 못했습니다.");
+  const 받는지점 = get(m.rows[iTarget], mCols, "지점코드");
+
+  /* 지점이 다르면 그 지점 매출이 통째로 옮겨간다. 같은 지점일 때만 */
+  const 자리 = new Map<string, number>();
+  ids.forEach((id) => {
+    const i = m.rows.findIndex((r) => 살아있음(r) && get(r, mCols, "회원번호") === id);
+    if (i < 0) throw new Error(`${id} 회원을 찾지 못했습니다.`);
+    if (get(m.rows[i], mCols, "지점코드") !== 받는지점) {
+      throw new Error(
+        `${get(m.rows[i], mCols, "이름")}님은 지점이 달라 옮길 수 없습니다. ` +
+          `그 지점의 일일권으로 옮겨주세요.`
+      );
+    }
+    자리.set(id, i);
+  });
+
+  const stamp = now();
+  const 옮긴 = { 이용권: 0, 결제: 0 };
+  const 몰린곳 = new Set(ids);
+
+  /* 이용권과 결제의 「회원번호」를 받을 줄로 바꿔 단다 — 값은 손대지 않는다 */
+  for (const [sheet, spec] of [[SHEET_V, V_COLS], [SHEET_P, P_COLS]] as const) {
+    let data;
+    try {
+      data = await readSheet(sheet);
+    } catch {
+      continue;
+    }
+    const c = resolve(sheet, data.headers, spec as any);
+    const items: { rowNumber: number; row: Row }[] = [];
+    data.rows.forEach((r, i) => {
+      if (!살아있음(r)) return;
+      if (!몰린곳.has(get(r, c, "회원번호"))) return;
+      items.push({
+        rowNumber: data.rowNumbers[i],
+        row: { ...r, ...toSheetRow({ 회원번호: targetId, 수정일시: stamp, 수정자: staffId }, c) },
+      });
+    });
+    if (items.length > 0) await updateRows(sheet, data.headers, items);
+    if (sheet === SHEET_V) 옮긴.이용권 = items.length;
+    else 옮긴.결제 = items.length;
+  }
+
+  /*
+   * 껍데기만 남은 회원 줄을 내린다
+   *
+   * 누구의 결제였는지는 남겨 둔다. 일일권에 결제가 쌓이고 나면 「이 12만원은
+   * 누구였지」를 되짚을 길이 아무 데도 없어지기 때문이다. 메모에 이름과
+   * 연락처를 적어 두면, 시트를 열어 그날 줄을 찾아볼 수 있다.
+   */
+  const 자국 = `${today()} ${targetId} 로 결제를 옮김`;
+  for (const id of ids) {
+    const i = 자리.get(id)!;
+    const 옛메모 = (get(m.rows[i], mCols, "메모") ?? "").trim();
+    await updateRow(SHEET_M, m.rowNumbers[i], m.headers, {
+      ...m.rows[i],
+      삭제여부: "Y",
+      ...toSheetRow(
+        {
+          메모: [옛메모, 자국].filter(Boolean).join("\n"),
+          수정일시: stamp,
+          수정자: staffId,
+        },
+        mCols
+      ),
+    });
+  }
+
+  /* 받은 줄에도 자국을 남긴다 — 누가 언제 몰아 넣었는지 */
+  const 받은메모 = (get(m.rows[iTarget], mCols, "메모") ?? "").trim();
+  await updateRow(SHEET_M, m.rowNumbers[iTarget], m.headers, {
+    ...m.rows[iTarget],
+    ...toSheetRow(
+      {
+        메모: [
+          받은메모,
+          `${today()} ${ids.length}분의 결제를 받아옴 (${ids.join(" · ")})`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        수정일시: stamp,
+        수정자: staffId,
+      },
+      mCols
+    ),
+  });
+
+  return { 옮긴사람: ids.length, ...옮긴 };
+}

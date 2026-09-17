@@ -892,6 +892,15 @@ table.cal thead .sticky { background: var(--surface); }
 .tile.tapme, .stat.tapme { cursor: pointer; transition: border-color .12s, background .12s; }
 .tile.tapme:hover, .stat.tapme:hover { border-color: var(--muted); background: var(--surface-2); }
 .tile.tapme:active, .stat.tapme:active { transform: translateY(1px); }
+/* 회원 화면 칸의 「명단 보기」 칩을 뺐다 — 다섯 칸에 다 붙어 있으면 그 자체가
+   글자 벽이 되어, 정작 읽어야 할 숫자보다 먼저 눈에 들어왔다.
+   눌리는 곳이라는 티는 모서리의 작은 꺾쇠가 낸다 */
+.stat.tapme { position: relative; }
+.stat.tapme::after {
+  content: "›"; position: absolute; top: 9px; right: 12px;
+  font-size: 16px; line-height: 1; font-weight: 700; color: var(--muted); opacity: .45;
+}
+.stat.tapme:hover::after { opacity: 1; color: var(--point); }
 .stat .lb .goto {
   float: right; font-style: normal; font-size: 10.5px; font-weight: 700;
   color: var(--point); letter-spacing: -.01em;
