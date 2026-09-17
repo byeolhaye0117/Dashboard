@@ -2668,6 +2668,19 @@ function LeadListBox({ title, sub, rows, staffNames, branchName, now, onPick, on
 }
 
 /**
+ * 날짜+시각 칸에 넣을 값
+ *
+ * datetime-local 은 「2026-08-14」처럼 날짜만 주면 칸을 통째로 비운다. 그대로
+ * 저장하면 날짜까지 날아간다. 시각이 없으면 00:00 을 붙여 넣는다.
+ * 상담 화면이 쓰는 것과 같은 규칙이다.
+ */
+function 칸시각(v: string): string {
+  const t = (v ?? "").trim().replace(" ", "T");
+  if (!t) return "";
+  return t.length > 10 ? t.slice(0, 16) : `${t.slice(0, 10)}T00:00`;
+}
+
+/**
  * 떠 있는 상담 한 건
  *
  * 명단에서 이름만 보면 「이 사람 왜 등록 안 했지」에서 멈춘다. 답은 사유와
@@ -2695,28 +2708,48 @@ function LeadDetailBox({ c, staffNames, branchName, now, options, canEdit, onMem
   /*
    * 여기서 바로 고친다
    *
-   * 「등록 안 한 까닭」을 보고 나면 그 자리에서 사유를 바꾸거나 다음 연락 날짜를
-   * 잡게 된다. 그런데 고치려면 상담 화면으로 건너가야 했고, 그러면 보던 달과
-   * 걸러 둔 것을 다시 맞춰야 했다.
+   * 「등록 안 한 까닭」을 보고 나면 그 자리에서 사유를 적거나 다음 연락 날짜를
+   * 잡게 된다. 고치려고 상담 화면으로 건너가면 보던 달과 걸러 둔 것을 다시
+   * 맞춰야 했다.
    *
-   * 여는 칸은 이 자리에서 실제로 손대는 것만 둔다 — 상태 · 사유 · 다음 연락 ·
-   * 메모. 이름과 연락처까지 열어 두면 매출을 보다가 회원 정보를 고치게 된다.
+   * 처음에는 상태 · 사유 · 다음 연락 · 메모만 열어 두었다. 그런데 이름을
+   * 잘못 적었거나 연락처를 나중에 받은 건이 그대로 남아, 결국 상담 화면으로
+   * 가게 됐다. 위 칸도 다 연다 — 여기서 끝나야 여기서 끝난다.
    */
   const [edit, setEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [f, setF] = useState({
+    이름: c.이름 ?? "",
+    전화번호: c.전화번호 ?? "",
     진행상태: st,
+    상담날짜: 칸시각(c.상담날짜 ?? ""),
+    약속일시: 칸시각(c.약속일시 ?? ""),
+    문의채널: c.문의채널 ?? "",
+    문의유형: c.문의유형 ?? "",
+    상담자사번: c.상담자사번 ?? "",
     미등록사유: c.미등록사유 ?? "",
     다음연락예정일: c.다음연락예정일 ?? "",
+    문의내용: c.문의내용 ?? "",
     메모: c.메모 ?? "",
   });
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
+
+  /* 이름 차례로 세운다 — 사번 차례면 찾는 이름이 어디쯤인지 모른다 */
+  const 직원목록 = Object.entries(staffNames)
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
   async function save() {
     if (busy) return;
     if (f.진행상태 === "미등록" && !f.미등록사유.trim()) {
       return setMsg("등록 안 한 까닭을 골라주세요. 나중에 왜 놓쳤는지 알 수 없습니다.");
+    }
+    /* 「문의」로 받아 둔 건은 이름도 연락처도 없을 수 있다 — 상담 화면과
+       같은 규칙이다. 그 밖의 단계는 둘 다 있어야 한다 */
+    if (f.진행상태 !== "문의") {
+      if (!f.이름.trim()) return setMsg("이름을 적어주세요.");
+      if (!f.전화번호.trim()) return setMsg("연락처를 적어주세요.");
     }
     setBusy(true);
     setMsg("");
@@ -2726,11 +2759,22 @@ function LeadDetailBox({ c, staffNames, branchName, now, options, canEdit, onMem
       body: JSON.stringify({
         id: c.상담번호,
         changes: {
+          이름: f.이름.trim(),
+          전화번호: f.전화번호.trim(),
           진행상태: f.진행상태,
+          /* 시각까지 적힌 칸이다. 비면 빈 값으로 보내 날짜를 지운다 */
+          상담날짜: f.상담날짜 ? f.상담날짜.replace("T", " ") : "",
+          약속일시: f.약속일시 ? f.약속일시.replace("T", " ") : "",
+          문의채널: f.문의채널,
+          /* 시트 제목 줄이 방문경로일 수도 있어 둘 다 채운다 */
+          방문경로: f.문의채널,
+          문의유형: f.문의유형,
+          상담자사번: f.상담자사번,
           /* 미등록이 아니게 되면 사유도 지운다 — 등록했는데 「가격 부담」이
              남아 있으면 나중에 그 줄이 무슨 말인지 알 수 없다 */
           미등록사유: f.진행상태 === "미등록" ? f.미등록사유 : "",
           다음연락예정일: f.다음연락예정일,
+          문의내용: f.문의내용,
           메모: f.메모,
         },
       }),
@@ -2752,6 +2796,12 @@ function LeadDetailBox({ c, staffNames, branchName, now, options, canEdit, onMem
     location.reload();
   }
 
+  const 채널목록 = options["문의채널"]?.length
+    ? options["문의채널"]
+    : options["방문경로"]?.length
+      ? options["방문경로"]
+      : ["전화문의", "네이버톡톡", "카카오채널", "네이버플레이스예약", "문자"];
+
   const 사유목록 = options["미등록사유"]?.length
     ? options["미등록사유"]
     : ["연락 두절", "약속 취소", "말없이 안 옴", "가격 부담", "거리 · 위치",
@@ -2768,6 +2818,10 @@ function LeadDetailBox({ c, staffNames, branchName, now, options, canEdit, onMem
           {c.상담번호 ? ` · ${c.상담번호}` : ""}
         </p>
 
+        {/* 고치는 중에는 감춘다. 위에 옛 값, 밑에 고치는 칸이 같이 떠 있으면
+            어느 것이 진짜인지 알 수 없다 */}
+        {!edit && (
+          <>
         <div className="kv">
           <div className="kv-row"><span>상태</span>
             <b className={st === "등록" ? "good" : st === "미등록" ? "bad" : ""}>{st}</b></div>
@@ -2801,11 +2855,24 @@ function LeadDetailBox({ c, staffNames, branchName, now, options, canEdit, onMem
             </p>
           </>
         )}
+          </>
+        )}
 
         {edit && (
           <>
-            <h4 className="viz-title mt">수정하기</h4>
             <div className="form-grid">
+              <div className="field">
+                <label>이름</label>
+                <input className="input" value={f.이름}
+                       placeholder={f.진행상태 === "문의" ? "모르면 비워 두셔도 됩니다" : ""}
+                       onChange={(e) => set("이름", e.target.value)} />
+              </div>
+              <div className="field">
+                <label>연락처</label>
+                <input className="input" inputMode="tel" value={f.전화번호}
+                       placeholder={f.진행상태 === "문의" ? "모르면 비워 두셔도 됩니다" : "010-0000-0000"}
+                       onChange={(e) => set("전화번호", e.target.value)} />
+              </div>
               <div className="field">
                 <label>진행 상태</label>
                 <select className="input" value={f.진행상태}
@@ -2814,12 +2881,47 @@ function LeadDetailBox({ c, staffNames, branchName, now, options, canEdit, onMem
                 </select>
               </div>
               <div className="field">
+                <label>상담자</label>
+                <select className="input" value={f.상담자사번}
+                        onChange={(e) => set("상담자사번", e.target.value)}>
+                  <option value="">정하지 않음</option>
+                  {직원목록.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                </select>
+              </div>
+              {/* 문의가 들어온 시각이다. 우리가 넣은 시각은 따로 남는다 */}
+              <div className="field">
+                <label>문의 들어온 날</label>
+                <input className="input" type="datetime-local" value={f.상담날짜}
+                       onChange={(e) => set("상담날짜", e.target.value)} />
+              </div>
+              <div className="field">
+                <label>방문 약속</label>
+                <input className="input" type="datetime-local" value={f.약속일시}
+                       onChange={(e) => set("약속일시", e.target.value)} />
+              </div>
+              <div className="field">
+                <label>문의 채널</label>
+                <select className="input" value={f.문의채널}
+                        onChange={(e) => set("문의채널", e.target.value)}>
+                  <option value="">정하지 않음</option>
+                  {채널목록.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>문의 유형</label>
+                <select className="input" value={f.문의유형}
+                        onChange={(e) => set("문의유형", e.target.value)}>
+                  <option value="">정하지 않음</option>
+                  {(options["문의유형"] ?? []).map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div className="field">
                 <label>다음 연락</label>
                 <input className="input" type="date" value={f.다음연락예정일}
                        onChange={(e) => set("다음연락예정일", e.target.value)} />
               </div>
               {f.진행상태 === "미등록" && (
-                <div className="field full">
+                <div className="field">
                   <label>등록 안 한 까닭</label>
                   <select className="input" value={f.미등록사유}
                           onChange={(e) => set("미등록사유", e.target.value)}>
@@ -2828,6 +2930,11 @@ function LeadDetailBox({ c, staffNames, branchName, now, options, canEdit, onMem
                   </select>
                 </div>
               )}
+              <div className="field full">
+                <label>문의 내용</label>
+                <textarea className="input area" rows={2} value={f.문의내용}
+                          onChange={(e) => set("문의내용", e.target.value)} />
+              </div>
               <div className="field full">
                 <label>메모</label>
                 <textarea className="input area" rows={3} value={f.메모}
