@@ -110,6 +110,8 @@ type Props = {
   canWipePay: boolean;
   /** 결제 한 줄을 고칠 수 있는가 — 회원 수정 권한을 따른다 */
   canEditPay: boolean;
+  /** 회원 화면을 볼 수 있는 계정인가 — 이름에 길을 걸지 말지 */
+  canSeeMember: boolean;
   problem: string;
 };
 
@@ -141,6 +143,29 @@ function sixOf(b: Bucket, total: number) {
 const money = (n: number) => n.toLocaleString("ko-KR");
 const num = (v?: string) => Number((v ?? "").replace(/[^0-9-]/g, "")) || 0;
 const isRefund = (x: Payment) => (x.환불여부 ?? "").toUpperCase() === "Y";
+
+/**
+ * 회원 이름 — 누르면 그 회원 창이 열린다
+ *
+ * 매출을 보다가 「이 사람 뭐 끊었더라」가 궁금해지는 자리는 여기인데, 답은
+ * 회원 화면에 있다. 지금까지는 회원 메뉴로 건너가 이름을 다시 검색해야 했다.
+ *
+ * 회원 화면은 주소 뒤에 회원번호가 붙어 있으면 그 창을 열고 뜬다 — 이용권을
+ * 고치고 새로 읽은 뒤에도 보던 자리로 돌아오려고 만들어 둔 길이다. 그 길을
+ * 그대로 쓴다.
+ *
+ * 줄 전체가 눌리는 표 안에도 들어가므로 눌림이 위로 새지 않게 막는다 —
+ * 안 막으면 회원 창으로 가면서 결제 상세도 같이 열린다.
+ */
+function MemberLink({ id, name, can }: { id?: string; name: string; can: boolean }) {
+  if (!can || !(id ?? "").trim()) return <>{name}</>;
+  return (
+    <a className="mlink" href={`/dashboard/members#${encodeURIComponent(id!)}`}
+       onClick={(e) => e.stopPropagation()}>
+      {name}
+    </a>
+  );
+}
 
 /*
  * 돈은 줄여 쓰지 않는다
@@ -1041,6 +1066,8 @@ export default function Client(p: Props) {
         .filter((x) => !x.회수 && 남은미수(x) > 0)
         .map((x) => ({
           id: x.id,
+          /** 회원번호 — 이름을 눌러 회원 창으로 가는 데 쓴다 */
+          mid: x.회원번호,
           name: p.memberNames[x.회원번호] || x.회원번호 || "-",
           branch: branchName(x.지점코드),
           date: (x.결제일시 ?? "").slice(0, 10),
@@ -1606,7 +1633,10 @@ export default function Client(p: Props) {
                       지우기만 첫 줄에 둔다 — 지우는 것은 결제 한 건이다.
                     */}
                     <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
-                    <td>{p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"}</td>
+                    <td>
+                      <MemberLink id={x.회원번호} can={p.canSeeMember}
+                                  name={p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"} />
+                    </td>
                     <td className="dim">{branchName(x.지점코드)}</td>
                     <td className="nm">{it.name || <span className="dim">기록 없음</span>}</td>
                     <td>
@@ -1899,7 +1929,7 @@ export default function Client(p: Props) {
             {unpaidList.map((u) => (
               <div className="lrow" key={u.id}>
                 <div className="who">
-                  <b>{u.name}</b>
+                  <b><MemberLink id={u.mid} name={u.name} can={p.canSeeMember} /></b>
                   <span>
                     {u.branch} · {u.date.slice(5)} 계약 {money(u.total)}원 · 담당 {u.staff}
                   </span>
@@ -2077,6 +2107,7 @@ export default function Client(p: Props) {
           staffNames={p.staffNames}
           options={p.options}
           canEdit={p.canEditPay}
+          canSeeMember={p.canSeeMember}
           onClose={() => setDetail(null)}
         />
       )}
@@ -2129,7 +2160,7 @@ export default function Client(p: Props) {
  * 비율로 나눠 채웠다가 실제 결제와 전혀 안 맞았다.
  */
 function PayDetail({
-  x, items, productOf, memberName, branch, staffNames, options, canEdit, onClose,
+  x, items, productOf, memberName, branch, staffNames, options, canEdit, canSeeMember, onClose,
 }: {
   x: Payment;
   /** 이 결제에 딸린 이용권 줄 */
@@ -2141,6 +2172,8 @@ function PayDetail({
   options: Record<string, string[]>;
   /** 고칠 수 있는 사람인가 — 회원 메뉴의 수정 권한을 따른다 */
   canEdit: boolean;
+  /** 회원 화면을 볼 수 있는가 — 이름에 길을 걸지 말지 */
+  canSeeMember: boolean;
   onClose: () => void;
 }) {
   const 합 = 받은돈(x);
@@ -2280,7 +2313,9 @@ function PayDetail({
   return (
     <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h3>{memberName} · {money(합)}원</h3>
+        <h3>
+          <MemberLink id={x.회원번호} name={memberName} can={canSeeMember} /> · {money(합)}원
+        </h3>
         <p className="page-sub" style={{ margin: "2px 0 12px" }}>
           {(x.결제일시 ?? "").slice(0, 16).replace("T", " ")} · {branch} · {x.id}
         </p>
