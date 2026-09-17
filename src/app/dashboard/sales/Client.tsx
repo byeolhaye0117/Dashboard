@@ -999,64 +999,6 @@ export default function Client(p: Props) {
     [p.branches, p.leads, month, now]
   );
 
-  /**
-   * 이 달의 상담왕 — 지점 통합
-   *
-   * 상담을 몇 건 맡아 몇 건을 등록시켰고, 그래서 얼마를 만들었는지.
-   *
-   * 세는 기준이 둘이다 — 대표님이 정하신 대로다.
-   *   상담 · 실패 : 상담 탭의 상담자
-   *   등록 · 매출 : 결제 탭의 담당직원
-   *
-   * 상담은 한 사람이 하고 결제는 데스크에서 받는 일이 흔해서, 상담 탭의
-   * 「등록」으로 세면 실제로 판 사람의 실적이 남에게 간다.
-   *
-   * 성공률은 상담 몇 건을 맡아 몇 건을 팔았는가다. 상담 기록 없이 판 건은
-   * 100%로 본다 — 상담 탭에 안 남았을 뿐 판 것은 판 것이다.
-   */
-  const champions = useMemo(() => {
-    const map: Record<string, { rows: Lead[]; sum: number; count: number }> = {};
-    const put = (id: string) => (map[id] ??= { rows: [], sum: 0, count: 0 });
-    leadRows.forEach((c) => {
-      if (!c.상담자사번) return;
-      put(c.상담자사번).rows.push(c);
-    });
-    cur.live.forEach((x) => {
-      if (!x.담당직원사번) return;
-      const v = put(x.담당직원사번);
-      v.sum += 받은돈(x);
-      v.count += 1;
-    });
-    return Object.entries(map)
-      .map(([id, v]) => {
-        const t = tally(v.rows);
-        return {
-          id,
-          name: p.staffNames[id] ?? id,
-          sum: v.sum,
-          count: v.count,
-          ...t,
-          /*
-            맡은 상담 대비 실제로 판 건수
-
-            상담 기록이 없는데 판 건이 있으면 100%로 본다 — 상담 탭에
-            안 남았을 뿐 판 것은 판 것이다. 「-」로 두면 그 사람만 성적이
-            없는 것처럼 보인다.
-            둘 다 없을 때만 잴 것이 없다.
-
-            100 을 넘기지 않는다. 상담 없이 판 건을 100%로 세기로 한 이상,
-            상담 하나에 두 건을 팔았다고 200%가 되면 규칙이 어긋난다.
-          */
-          sellRate:
-            t.base > 0
-              ? Math.min(100, Math.round((v.count / t.base) * 100))
-              : v.count > 0 ? 100 : null,
-        };
-      })
-      .filter((s) => s.base > 0 || s.sum > 0)
-      .sort((a, b) => b.sum - a.sum);
-  }, [leadRows, cur.live, p.staffNames, now]);
-
   /** 미수금 명단 — 누가, 언제, 얼마 */
   const unpaidList = useMemo(
     () =>
@@ -1107,7 +1049,9 @@ export default function Client(p: Props) {
       const id = x.담당직원사번 || "-";
       const v = (map[id] ??= { sum: 0, count: 0 });
       v.sum += 받은돈(x);
-      v.count += 1;
+      /* 미수금 받은 줄은 돈은 이 달에 들어왔지만 판 것은 아니다 —
+         건수에 세면 한 번 판 것이 두 건으로 잡히고 건당 평균이 반토막 난다 */
+      if (!x.회수) v.count += 1;
     });
     return Object.entries(map)
       .map(([id, v]) => ({ id, name: p.staffNames[id] ?? id, ...v }))
@@ -1718,8 +1662,10 @@ export default function Client(p: Props) {
                         </b>
                       </span>
                     </td>
-                    <td className="r dim num">{s.count}</td>
-                    <td className="r dim num">{money(Math.round(s.sum / s.count))}</td>
+                    <td className="r dim num">{s.count > 0 ? s.count : "-"}</td>
+                    <td className="r dim num">
+                      {s.count > 0 ? money(Math.round(s.sum / s.count)) : "-"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1862,59 +1808,6 @@ export default function Client(p: Props) {
           </div>
         )}
       </div>
-
-      {/* 이 달의 상담왕 */}
-      <h2 className="sec-title">이 달의 상담왕</h2>
-      <p className="sec-sub">
-        상담 · 실패는 <b>상담 탭의 상담자</b>, 등록 · 매출은{" "}
-        <b>결제 탭의 담당직원</b> 기준입니다
-      </p>
-      {champions.length === 0 ? (
-        <div className="viz"><p className="dim mini-note">이 달에 쌓인 상담·결제가 없습니다.</p></div>
-      ) : (
-        <div className="table-wrap t2wrap">
-          <table className="grid t2">
-            <thead>
-              <tr>
-                <th style={{ width: 40 }}>순위</th>
-                <th>직원</th>
-                <th className="r">상담</th>
-                <th className="r">등록</th>
-                <th className="r">실패</th>
-                <th>성공률</th>
-                <th className="r">등록 매출</th>
-                <th className="r">건당</th>
-              </tr>
-            </thead>
-            <tbody>
-              {champions.map((s, i) => (
-                <tr key={s.id}>
-                  <td><i className={`rk${i === 0 ? " one" : ""}`}>{i + 1}</i></td>
-                  <td><span className="nm">{s.name}</span></td>
-                  <td className="r dim num">{s.base > 0 ? s.base : "-"}</td>
-                  {/* 등록은 결제 담당 기준이다 — 실제로 판 사람의 건수 */}
-                  <td className="r big num">{s.count > 0 ? s.count : "-"}</td>
-                  <td className="r bad num">{s.fail > 0 ? s.fail : "-"}</td>
-                  <td>
-                    {s.sellRate === null ? (
-                      <span className="dim">-</span>
-                    ) : (
-                      <span className="wbar">
-                        <span><i style={{ width: `${s.sellRate}%` }} /></span>
-                        <b className="num">{s.sellRate}%</b>
-                      </span>
-                    )}
-                  </td>
-                  <td className="r big num">{money(s.sum)}</td>
-                  <td className="r dim num">
-                    {s.count > 0 ? money(Math.round(s.sum / s.count)) : "-"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
 
       {/* 미수금 — 누가, 언제, 얼마 */}
       {unpaidList.length > 0 && (
