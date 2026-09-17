@@ -864,18 +864,25 @@ table.cal thead .sticky { background: var(--surface); }
 @media (max-width: 860px) { .tiles.four { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 460px) { .tiles.four { grid-template-columns: 1fr; } }
 .tile .mini > i.good { background: var(--good); }
+/* 막대는 네 칸 모두 같은 자리에 눕는다
+   밑글 길이가 칸마다 달라 막대가 제각각 높이에 서 있었다. 나란히 놓인 네
+   칸의 같은 것이 어긋나 있으면 눈이 줄을 못 맞춘다. 칸을 세로로 세우고
+   막대를 맨 아래로 밀어 둔다 — 밑글이 몇 줄이든 막대는 한 줄에 선다 */
 .tile {
   padding: 15px 17px 14px; background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--r);
+  display: flex; flex-direction: column;
 }
 .tile .lb { font-size: 11.5px; color: var(--muted); font-weight: 700; }
 .tile .vl {
   display: block; margin: 4px 0 2px; font-size: 23px; font-weight: 800; letter-spacing: -.035em;
 }
 .tile .vl.bad { color: var(--bad); }
-.tile .sub { font-size: 11px; color: var(--muted); }
+/* 밑글에 아래 여백을 준다 — 막대는 margin-top:auto 로 바닥에 붙으므로
+   막대 쪽에 여백을 주면 auto 와 싸운다 */
+.tile .sub { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
 .tile .mini {
-  margin-top: 10px; height: 6px; border-radius: 999px;
+  margin-top: auto; height: 6px; border-radius: 999px;
   background: var(--surface-3); overflow: hidden;
 }
 .tile .mini > i { display: block; height: 100%; border-radius: 999px; background: var(--s1); }

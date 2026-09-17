@@ -1438,15 +1438,17 @@ export default function Client(p: Props) {
           {/* 위 매출이 이미 실입금이라 「실입금 …」을 또 적으면 같은 말이다.
               대신 아직 못 받은 돈이 계약의 얼마쯤인지를 적는다 */}
           {/*
-            언제 매출로 잡히는지를 여기서 말한다
+            밑글은 한 줄이다
 
-            한때는 「매출에서 뺐습니다」까지만 적었다. 받은 날을 적을 데가
-            없어서, 미수금을 지우면 판 날의 달로 거슬러 올라갔기 때문이다.
-            이제 받은 날을 적으면 그 달로 간다 — 그래서 그렇게 적는다.
+            네 칸이 나란히 서 있는데 여기만 넉 줄이면 막대가 저 혼자 밑으로
+            내려가고, 옆 칸과 견주려던 눈이 줄을 못 맞춘다. 꼭 한 가지만
+            적는다 — 몇 건인지와 다 받으면 얼마인지.
+            받은 날을 적으면 그 달 매출로 간다는 설명은 미수금 명단에 있다.
           */}
-          <span className="sub">
+          <span className="sub"
+                title={cur.unpaid > 0 ? "미수금은 받으신 달의 매출로 잡힙니다" : undefined}>
             {cur.unpaid > 0
-              ? `${unpaidList.length}건 · 받으신 달의 매출로 잡힙니다 · 다 받으면 ${money(cur.sum + cur.unpaid)}원`
+              ? `${unpaidList.length}건 · 다 받으면 ${money(cur.sum + cur.unpaid)}원`
               : "전액 입금"}
           </span>
           <div className="mini">
@@ -1491,10 +1493,12 @@ export default function Client(p: Props) {
               까닭이 이것이다. 안 적으면 어디로 샜나 싶다 */}
           {/* 무엇을 무엇으로 나눴는지 그 자리에 적는다 — 안 적으면 88%가
               어디서 나온 숫자인지 아무도 되짚을 수 없다 */}
-          <span className="sub">
+          {/* 한 줄만 적는다. 신규·재등록과 문의를 거친 수까지 여기 늘어놓았더니
+              넉 줄이 되어 막대가 옆 칸과 어긋났다 — 자세한 것은 대고 계시면 뜬다 */}
+          <span className="sub"
+                title={`신규 ${등록한분.신규}분 · 재등록 ${등록한분.재등록}분` +
+                       (문의없이 > 0 ? ` · 그중 ${문의없이}분은 문의 없이 등록` : "")}>
             만난 {만난분}분 중 <b className="num">{이달등록}분</b> 등록
-            {이달등록 > 0 && ` (신규 ${등록한분.신규} · 재등록 ${등록한분.재등록})`}
-            {문의없이 > 0 && ` · 그중 ${문의없이}분은 문의 없이`}
           </span>
           {/* 막대도 위의 큰 숫자와 같은 것을 말해야 한다 — 예전에는 막대만
               문의 기준이라 88%라 적힌 칸에 60%짜리 막대가 서 있었다 */}
@@ -1512,14 +1516,14 @@ export default function Client(p: Props) {
              }}>
           <span className="lb">등록실패율{lead.fail > 0 && <i className="goto">명단 보기</i>}</span>
           <b className="vl num">{failRate === null ? "-" : `${failRate}%`}</b>
-          <span className="sub">
-            {놓침 > 0
-              ? `만난 ${만난분}분 중 ${놓침}분 놓침` +
-                (보고실패.length > 0 || lead.fail > 0
-                  ? ` (퇴근 보고 ${보고실패.length} · 문의 미등록 ${lead.fail}` +
-                    (겹쳐뺀수 > 0 ? ` · 겹친 ${겹쳐뺀수}분 뺌)` : ")")
-                  : "")
-              : "놓친 분 없음"}
+          <span className="sub"
+                title={
+                  놓침 > 0
+                    ? `퇴근 보고 ${보고실패.length}분 · 문의 미등록 ${lead.fail}분` +
+                      (겹쳐뺀수 > 0 ? ` · 두 곳에 다 적힌 ${겹쳐뺀수}분은 한 번만 셈` : "")
+                    : undefined
+                }>
+            {놓침 > 0 ? `만난 ${만난분}분 중 ${놓침}분 놓침` : "놓친 분 없음"}
           </span>
           <div className="mini">
             <i className={failRate !== null && failRate >= 50 ? "bad" : "warn"}
