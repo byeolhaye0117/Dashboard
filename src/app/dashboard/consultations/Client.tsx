@@ -292,8 +292,30 @@ export default function Client(p: Props) {
     .sort((a, b) => whenKey(a).localeCompare(whenKey(b)) || a.id.localeCompare(b.id));
   }, [inRange, tab, branch, q]);
 
+  const branchName = (code: string) => p.branches.find((b) => b.code === code)?.name ?? code;
+
   const thisMonth = now.slice(0, 7);
-  const inMonth = p.items.filter((c) => baseDate(c).startsWith(thisMonth));
+
+  /*
+   * 위 숫자도 고른 기간·고른 지점을 따른다
+   *
+   * ── 무엇이 어긋났나 ────────────────────────────────────────
+   * 목록은 8월로 옮겨 놓았는데 위 칸은 늘 「이번 달」이었다. 지점도 마찬가지로
+   * 전 지점을 세고 있었다. 그래서 8월 쌍용점을 보고 있는데 머리에는 9월 전
+   * 지점 숫자가 떠 있었고, 화면이 두 가지를 한꺼번에 말했다.
+   *
+   * 무엇을 세고 있는지도 숫자 밑에 적는다. 고르개가 화면 여기저기에 있어서,
+   * 숫자만 보고는 어느 기간·어느 지점 것인지 되짚어 올라가야 한다.
+   */
+  const inMonth = useMemo(
+    () => inRange.filter((c) => branch === "전체" || c["지점코드"] === branch),
+    [inRange, branch]
+  );
+  /** 지금 무엇을 세고 있는지 — 숫자 밑에 그대로 적는다 */
+  const 보는범위 = [
+    allTime ? "전체 기간" : day || `${month.slice(0, 4)}년 ${Number(month.slice(5, 7))}월`,
+    branch === "전체" ? "전 지점" : branchName(branch),
+  ].join(" · ");
   const base = inMonth.length;
   const pct = (n: number) => (base ? Math.round((n / base) * 100) : 0);
 
@@ -318,8 +340,6 @@ export default function Client(p: Props) {
     return top ? top[0] : "";
   })();
 
-  const branchName = (code: string) => p.branches.find((b) => b.code === code)?.name ?? code;
-
   return (
     <>
       <div className="page-head">
@@ -335,11 +355,40 @@ export default function Client(p: Props) {
         )}
       </div>
 
+      {/*
+        어느 기간을 보고 있나
+
+        숫자 칸보다 위에 둔다. 밑에 두면 숫자를 먼저 읽고 나서 그게 어느 달
+        것인지를 뒤늦게 찾게 된다.
+
+        위 숫자도 갈래에 붙은 수도 이 기간 안에서 센다. 기간은 좁혔는데 수는
+        지난 것까지 합쳐 있으면, 「등록 14건」을 눌렀는데 목록에 3건만 뜨는
+        일이 난다.
+      */}
+      <div className="whenbar">
+        <button className="icon-btn" onClick={() => { setMonth(shift(month, -1)); setDay(""); setAllTime(false); }}
+                aria-label="지난달">‹</button>
+        <b className="num">{allTime ? "전체 기간" : `${month.slice(0, 4)}년 ${Number(month.slice(5, 7))}월`}</b>
+        <button className="icon-btn" onClick={() => { setMonth(shift(month, 1)); setDay(""); setAllTime(false); }}
+                aria-label="다음달">›</button>
+        {/* 하루만 보고 싶을 때. 달을 옮기면 지워진다 — 다른 달의 날로 거르면
+            아무것도 안 남아 「자료가 없나」 하게 된다 */}
+        <input className="input mini" type="date" value={day}
+               onChange={(e) => { setDay(e.target.value); setAllTime(false); }} />
+        {day && (
+          <button className="btn-ghost mini" onClick={() => setDay("")}>이 달 전체</button>
+        )}
+        <button className={`btn-ghost mini${allTime ? " ok" : ""}`}
+                onClick={() => { setAllTime(!allTime); setDay(""); }}>
+          {allTime ? "이 달만 보기" : "전체 기간"}
+        </button>
+      </div>
+
       <div className="stats">
         <div className="stat">
-          <div className="lb">이번 달 문의</div>
+          <div className="lb">{allTime ? "문의" : day ? "이 날 문의" : "이 달 문의"}</div>
           <div className="vl num">{inMonth.length}</div>
-          <div className="dt">전체 {p.items.length}건 누적</div>
+          <div className="dt">{보는범위} · 전체 {p.items.length}건 누적</div>
         </div>
         <div className="stat">
           <div className="lb">약속전환율</div>
@@ -360,10 +409,12 @@ export default function Client(p: Props) {
 
       {base > 0 && (
         <p className="stat-note">
-          이번 달 {base}건 가운데 <b>{open}건</b>이 아직 진행 중입니다.
+          {보는범위} {base}건 가운데 <b>{open}건</b>이 아직 진행 중입니다.
+          {/* 이 둘은 고른 기간과 상관없이 「지금 밀린 일」이다. 8월을 들여다보는
+              중에도 오늘 챙겨야 할 것은 그대로 알려야 한다 */}
           {todo > 0 && (
             <>
-              {" "}약속 날짜가 지났는데 결론이 없는 건이{" "}
+              {" "}기간과 상관없이, 약속 날짜가 지났는데 결론이 없는 건이{" "}
               <b className="warn-text">{todo}건</b> 있습니다.
             </>
           )}
@@ -385,31 +436,6 @@ export default function Client(p: Props) {
         </p>
       )}
 
-
-      {/*
-        어느 기간을 보고 있나
-
-        갈래마다 붙은 수도 이 기간 안에서 센다. 기간은 좁혔는데 수는 지난 것까지
-        합쳐 있으면, 「등록 14건」을 눌렀는데 목록에 3건만 뜨는 일이 난다.
-      */}
-      <div className="whenbar">
-        <button className="icon-btn" onClick={() => { setMonth(shift(month, -1)); setDay(""); setAllTime(false); }}
-                aria-label="지난달">‹</button>
-        <b className="num">{allTime ? "전체 기간" : `${month.slice(0, 4)}년 ${Number(month.slice(5, 7))}월`}</b>
-        <button className="icon-btn" onClick={() => { setMonth(shift(month, 1)); setDay(""); setAllTime(false); }}
-                aria-label="다음달">›</button>
-        {/* 하루만 보고 싶을 때. 달을 옮기면 지워진다 — 다른 달의 날로 거르면
-            아무것도 안 남아 「자료가 없나」 하게 된다 */}
-        <input className="input mini" type="date" value={day}
-               onChange={(e) => { setDay(e.target.value); setAllTime(false); }} />
-        {day && (
-          <button className="btn-ghost mini" onClick={() => setDay("")}>이 달 전체</button>
-        )}
-        <button className={`btn-ghost mini${allTime ? " ok" : ""}`}
-                onClick={() => { setAllTime(!allTime); setDay(""); }}>
-          {allTime ? "이 달만 보기" : "전체 기간"}
-        </button>
-      </div>
 
       <div className="filters">
         <div className="chips">
