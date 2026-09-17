@@ -10,7 +10,8 @@ import { korDate, today, daysBetween, weekdayIndex } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import { addMonths, addDays, daysLeft } from "@/lib/dateCalc";
 import { termOf, sellsByMonth, groupOf, type Grp, type ProductMeta } from "@/lib/productMeta";
-import { SALE_TYPES, joinKindOf } from "@/lib/saleTypes";
+import { SALE_TYPES } from "@/lib/saleTypes";
+import { joinKinds } from "@/lib/joinKind";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 import { REFUND_STAGES, REFUND_REASONS } from "@/lib/refund";
 import { backdrop } from "@/lib/backdrop";
@@ -175,6 +176,39 @@ const SOON = 7;
 const money = (n: number) => n.toLocaleString("ko-KR");
 
 /**
+ * 두 줄에 똑같이 달려 있는 것 — 저장이 두 번 눌린 자국
+ *
+ * 겹친 회원 줄은 대개 저장 단추가 두 번 눌린 것이라, 양쪽에 똑같은 회원권이
+ * 똑같은 금액으로 하나씩 달려 있다. 합칠 때 그대로 옮기면 한 번 판 것이 두
+ * 번으로 남아 매출이 실제보다 많아진다.
+ *
+ * 「똑같다」는 것은 파는 자리에서 한 번에 만들어진 줄이 같아 보이는 것이다 —
+ * 이용권은 상품 · 금액 · 시작일, 결제는 금액 · 날짜 · 결제수단. 하나라도
+ * 다르면 다른 거래로 본다. 같은 상품을 두 번 끊으신 분의 기록을 우리가
+ * 지워서는 안 된다.
+ *
+ * 서버(members.mergeMembers)가 같은 규칙으로 내린다. 여기 것은 눌러 보기
+ * 전에 무엇이 내려가는지 적어 주기 위한 것이다 — 미리 안 보이면 합친 뒤에
+ * 개수가 안 맞는 것처럼 읽힌다.
+ */
+const 돈만 = (v: string) => (v ?? "").replace(/[^0-9-]/g, "");
+const 티도장 = (x: Ticket) =>
+  `${x.상품코드}|${돈만(x.금액)}|${(x.시작일 ?? "").slice(0, 10)}`;
+const 결도장 = (x: Payment) =>
+  `${돈만(x.결제금액)}|${(x.결제일시 ?? "").slice(0, 10)}|${x.결제수단}`;
+
+function 겹친것(
+  keep: string, drop: string, tickets: Ticket[], payments: Payment[]
+): { t: number; y: number } {
+  const tKeep = new Set(tickets.filter((x) => x.회원번호 === keep).map(티도장));
+  const yKeep = new Set(payments.filter((x) => x.회원번호 === keep).map(결도장));
+  return {
+    t: tickets.filter((x) => x.회원번호 === drop && tKeep.has(티도장(x))).length,
+    y: payments.filter((x) => x.회원번호 === drop && yKeep.has(결도장(x))).length,
+  };
+}
+
+/**
  * 이용권을 카테고리로 나눈다
  *
  * 상품 시트의 「상품분류」를 그대로 본다. 분류에 「케어권」이라고 적어 두면
@@ -292,9 +326,15 @@ export default function Client(p: Props) {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? "합치지 못했습니다.");
+      const 겹침 =
+        (j.겹친이용권 ?? 0) + (j.겹친결제 ?? 0) > 0
+          ? `\n똑같은 것이 이미 있어 이용권 ${j.겹친이용권}개 · 결제 ${j.겹친결제}건은 ` +
+            `옮기지 않고 내렸습니다 — 한 번 판 것이 두 번으로 남지 않습니다.`
+          : "";
       alert(
         `${j.남긴이름}님으로 합쳤습니다.\n\n` +
         `이용권 ${j.이용권}개 · 결제 ${j.결제}건을 옮겼습니다.` +
+        겹침 +
         (j.채운칸?.length ? `\n비어 있던 칸을 채웠습니다: ${j.채운칸.join(" · ")}` : "")
       );
       reloadTo(merging.keep);
@@ -482,45 +522,12 @@ export default function Client(p: Props) {
     () => scoped.filter((m) => !(m.가입일 ?? "").slice(0, 10) || (m.가입일 ?? "").slice(0, 10) <= 달끝),
     [scoped, 달끝]
   );
-  /*
-   * 그 달에 신규인가 재등록인가 — 결제 줄에 고르신 「매출유형」을 따른다
-   *
-   * ── 무엇이 달라졌나 ────────────────────────────────────────
-   * 예전에는 화면이 날짜를 보고 짐작했다. 가입일이 그 달이면 신규, 그 달에
-   * 시작하는 회원권이 있으면 재등록. 그런데 상품을 팔 때 직원이 신규·재등록을
-   * 이미 고르고 있었다. 고르신 값과 화면의 짐작이 다르면 어느 쪽이 맞는지
-   * 알 수 없고, 매출 화면과도 다른 수를 말하게 된다.
-   *
-   * 이제 고르신 값이 먼저다. 「기타매출」은 등록이 아니고(사물함·운동복),
-   * 「PT」나 안 고르신 옛 줄은 전에 끊은 적이 있는지 보고 가른다.
-   * 규칙은 saleTypes 한 곳에 있다 — 매출 화면이 같은 것을 부른다.
-   */
-  const 이달갈래 = useMemo(() => {
-    const 앞줄있나 = (회원번호: string, 결제일: string) =>
-      p.tickets.some((o) => o.회원번호 === 회원번호 && (o.시작일 ?? "") < 결제일);
-
-    const map: Record<string, "신규" | "재등록"> = {};
-    p.payments.forEach((x) => {
-      if (x.환불여부?.toUpperCase() === "Y") return;
-      if (!(x.결제일시 ?? "").startsWith(month)) return;
-      const id = x.회원번호 ?? "";
-      if (!id) return;
-      const 갈래 = joinKindOf(x.매출유형, 앞줄있나(id, (x.결제일시 ?? "").slice(0, 10)));
-      if (!갈래) return;
-      /* 한 달에 두 번 결제하셔도 한 분이다. 둘 다면 신규가 먼저다 */
-      if (map[id] === "신규") return;
-      map[id] = 갈래;
-    });
-
-    /* 결제 줄이 없는데 가입일이 그 달이면 신규다 — 고르신 값을 뒤집는 것이
-       아니라, 고를 자리가 없던 것을 메우는 것이다 */
-    scoped.forEach((m) => {
-      if (map[m.id]) return;
-      if ((m.가입일 ?? "").startsWith(month)) map[m.id] = "신규";
-    });
-
-    return map;
-  }, [p.payments, p.tickets, scoped, month]);
+  /* 그 달에 신규인가 재등록인가 — 규칙은 joinKind 한 곳에 있다.
+     매출 화면이 같은 것을 부르므로 두 화면의 수가 어긋날 수 없다 */
+  const 이달갈래 = useMemo(
+    () => joinKinds(scoped, p.tickets, productOf, month),
+    [scoped, p.tickets, p.products, month]
+  );
 
   const 신규목록 = useMemo(
     () => scoped.filter((m) => 이달갈래[m.id] === "신규"),
@@ -627,7 +634,9 @@ export default function Client(p: Props) {
         )}
       </div>
 
-      <div className="stats">
+      {/* 칸이 다섯이라 한 줄로 눕힌다 — 넷 + 하나로 접히면 마지막 칸이
+          외따로 떨어져 다른 것을 세는 칸처럼 읽힌다 */}
+      <div className="stats row5">
         {/* 눌러서 명단을 편다. 볼 것이 없는 칸은 안 눌린다 —
             0명짜리를 눌러 빈 창이 뜨면 고장으로 읽힌다 */}
         <div className={`stat${누적.length > 0 ? " tapme" : ""}`}
@@ -659,7 +668,7 @@ export default function Client(p: Props) {
             {newThisMonth > 0 && <i className="goto">명단 보기</i>}
           </div>
           <div className="vl num">{newThisMonth}</div>
-          <div className="dt">가입일 기준</div>
+          <div className="dt">처음 끊으신 분</div>
         </div>
         <div className={`stat${again > 0 ? " tapme" : ""}`}
              role={again > 0 ? "button" : undefined}
@@ -991,6 +1000,9 @@ export default function Client(p: Props) {
           y: p.payments.filter((x) => x.회원번호 === id).length,
         });
         const dc = 셈(merging.drop);
+
+        const 겹친 = 겹친것(merging.keep, merging.drop, p.tickets, p.payments);
+
         return (
           <div className="modal-back" {...backdrop(() => !mergeBusy && setMerging(null))}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -1003,10 +1015,23 @@ export default function Client(p: Props) {
                 <div className="kv-row"><span>내릴 줄</span>
                   <b className="bad">{merging.drop} {D?.이름}</b></div>
                 <div className="kv-row"><span>옮겨올 것</span>
-                  <b className="num">이용권 {dc.t}개 · 결제 {dc.y}건</b></div>
+                  <b className="num">
+                    이용권 {dc.t - 겹친.t}개 · 결제 {dc.y - 겹친.y}건
+                  </b></div>
+                {겹친.t + 겹친.y > 0 && (
+                  <div className="kv-row"><span>겹쳐서 내릴 것</span>
+                    <b className="num">이용권 {겹친.t}개 · 결제 {겹친.y}건</b></div>
+                )}
               </div>
+              {겹친.t + 겹친.y > 0 && (
+                <p className="stat-note">
+                  두 줄에 <b>똑같은 회원권이 똑같은 금액으로</b> 달려 있습니다 —
+                  저장이 두 번 눌린 자국입니다. 그대로 옮기면 한 번 판 것이 두 번으로
+                  남으므로, 겹친 것은 옮기지 않고 <b>하나만 남깁니다.</b>
+                </p>
+              )}
               <p className="stat-note">
-                내릴 줄의 <b>이용권과 결제가 모두 남길 줄로 옮겨옵니다.</b> 비어 있던 칸
+                내릴 줄의 <b>이용권과 결제가 남길 줄로 옮겨옵니다.</b> 비어 있던 칸
                 (성별 · 나이대 · 동네 · 직업 · 방문 경로 · 담당)은 내릴 줄의 값으로 채워집니다 —
                 이미 적힌 값은 건드리지 않습니다. 가입일은 둘 중 이른 날로 맞춥니다.
                 <br />

@@ -259,6 +259,21 @@ button { font-family: inherit; }
    숫자를 고쳐 다니지 않도록 */
 .stats { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 @media (max-width: 900px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+/* 다섯 칸을 한 줄로 눕힌다
+   auto-fit 은 자리가 모자라면 접는다. 넷 + 하나로 접히면 마지막 칸이 외따로
+   떨어져, 앞의 넷과 다른 것을 세는 칸처럼 읽힌다. 다섯이 한 묶음일 때는
+   좁아져도 한 줄을 지킨다 — minmax(0,1fr) 이라야 글이 길어도 안 밀린다 */
+@media (min-width: 901px) {
+  .stats.row5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  /* 칸이 좁아진 만큼 숫자를 줄이고, 이름과 「명단 보기」가 한 줄에 눕게 한다 */
+  .stats.row5 .stat { padding: 13px 13px 12px; }
+  .stats.row5 .stat .vl { font-size: 27px; }
+  .stats.row5 .stat .lb {
+    display: flex; align-items: baseline; gap: 6px;
+    white-space: nowrap; overflow: hidden;
+  }
+  .stats.row5 .stat .lb .goto { margin-left: auto; flex: none; }
+}
 .stat {
   background: var(--surface-2); border: 1px solid var(--line);
   border-radius: var(--r); padding: 14px 15px 13px;

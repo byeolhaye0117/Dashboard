@@ -1660,7 +1660,12 @@ export async function mergeMembers(
   keepId: string,
   dropId: string,
   staffId: string
-): Promise<{ 이용권: number; 결제: number; 채운칸: string[] }> {
+): Promise<{
+  이용권: number; 결제: number;
+  /** 남길 줄에 이미 똑같은 것이 있어 옮기지 않고 내린 수 */
+  겹친이용권: number; 겹친결제: number;
+  채운칸: string[];
+}> {
   if (!keepId || !dropId) throw new Error("합칠 두 회원을 골라주세요.");
   if (keepId === dropId) throw new Error("같은 회원끼리는 합칠 수 없습니다.");
 
@@ -1680,6 +1685,35 @@ export async function mergeMembers(
   const stamp = now();
   let 옮긴이용권 = 0;
   let 옮긴결제 = 0;
+  let 겹친이용권 = 0;
+  let 겹친결제 = 0;
+
+  /*
+   * 같은 것이 두 번 들어가지 않게 한다
+   *
+   * ── 무엇이 문제였나 ────────────────────────────────────────
+   * 겹친 줄은 대개 저장 버튼이 두 번 눌린 것이다. 두 줄에 똑같은 회원권이
+   * 똑같은 금액으로 하나씩 달려 있다. 그것을 그대로 옮기면 합친 뒤에
+   * 이용권 2개 · 결제 2건이 되어, 한 번 판 것이 두 번 판 것으로 남는다.
+   * 매출이 실제보다 많아지고, 만료일도 두 줄 가운데 무엇이 맞는지 모르게 된다.
+   *
+   * 그래서 남길 줄에 이미 똑같은 것이 있으면 옮기지 않고 내린다.
+   * 「똑같다」는 것은 파는 자리에서 한 번에 만들어진 줄이 같아 보이는 것이다 —
+   * 이용권은 상품 · 금액 · 시작일이 같을 때, 결제는 금액 · 날짜 · 결제수단이
+   * 같을 때다. 하나라도 다르면 다른 거래로 보고 그대로 옮긴다. 같은 상품을
+   * 두 번 끊으신 분의 기록을 우리가 지워서는 안 된다.
+   */
+  /* 「130,000」과 「130000」이 다른 금액으로 읽히면 안 된다 */
+  const 돈만 = (v: string) => (v ?? "").replace(/[^0-9-]/g, "");
+
+  const 도장 = (sheet: string, r: Row, c: ReturnType<typeof resolve>) =>
+    sheet === SHEET_V
+      ? [get(r, c, "상품코드"), 돈만(get(r, c, "금액")), get(r, c, "시작일").slice(0, 10)].join("|")
+      : [
+          돈만(get(r, c, "결제금액")),
+          get(r, c, "결제일시").slice(0, 10),
+          get(r, c, "결제수단"),
+        ].join("|");
 
   /* 이용권과 결제의 「회원번호」를 남길 줄로 바꿔 단다 */
   for (const [sheet, spec] of [[SHEET_V, V_COLS], [SHEET_P, P_COLS]] as const) {
@@ -1690,18 +1724,53 @@ export async function mergeMembers(
       continue;
     }
     const c = resolve(sheet, data.headers, spec as any);
+
+    /* 남길 줄에 이미 달려 있는 것들의 도장 */
+    const 이미있음 = new Set(
+      data.rows
+        .filter((r) => 살아있음(r) && get(r, c, "회원번호") === keepId)
+        .map((r) => 도장(sheet, r, c))
+    );
+
     const items: { rowNumber: number; row: Row }[] = [];
+    let 내린수 = 0;
     data.rows.forEach((r, i) => {
       if (!살아있음(r)) return;
       if (get(r, c, "회원번호") !== dropId) return;
+
+      if (이미있음.has(도장(sheet, r, c))) {
+        내린수 += 1;
+        items.push({
+          rowNumber: data.rowNumbers[i],
+          row: {
+            ...r,
+            삭제여부: "Y",
+            ...toSheetRow(
+              {
+                메모: `${keepId} 에 같은 것이 이미 있어 내렸습니다 (${today()})`,
+                수정일시: stamp,
+                수정자: staffId,
+              },
+              c
+            ),
+          },
+        });
+        return;
+      }
+
       items.push({
         rowNumber: data.rowNumbers[i],
         row: { ...r, ...toSheetRow({ 회원번호: keepId, 수정일시: stamp, 수정자: staffId }, c) },
       });
     });
     if (items.length > 0) await updateRows(sheet, data.headers, items);
-    if (sheet === SHEET_V) 옮긴이용권 = items.length;
-    else 옮긴결제 = items.length;
+    if (sheet === SHEET_V) {
+      옮긴이용권 = items.length - 내린수;
+      겹친이용권 = 내린수;
+    } else {
+      옮긴결제 = items.length - 내린수;
+      겹친결제 = 내린수;
+    }
   }
 
   /*
@@ -1750,5 +1819,5 @@ export async function mergeMembers(
     ...toSheetRow({ 메모: `${keepId} 줄로 합쳐졌습니다 (${today()})`, 수정일시: stamp, 수정자: staffId }, mCols),
   });
 
-  return { 이용권: 옮긴이용권, 결제: 옮긴결제, 채운칸 };
+  return { 이용권: 옮긴이용권, 결제: 옮긴결제, 겹친이용권, 겹친결제, 채운칸 };
 }
