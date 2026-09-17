@@ -2807,6 +2807,20 @@ function LeadDetailBox({ c, staffNames, branchName, now, options, canEdit, onMem
     : ["연락 두절", "약속 취소", "말없이 안 옴", "가격 부담", "거리 · 위치",
        "운영 시간 안 맞음", "시설 · 환경", "타 업체 등록", "단순 문의였음", "기타"];
 
+  /*
+   * 까닭은 골라도 되고 적어도 된다
+   *
+   * 고르기만 되니 「기타」가 쌓였다. 「기타」는 나중에 아무것도 말해 주지
+   * 않는다 — 왜 놓쳤는지 보려고 여는 칸인데 그 칸에 「기타」만 있으면 연 뜻이
+   * 없다. 목록에 없는 사정은 그 자리에서 적게 한다.
+   *
+   * 이미 적혀 있는 까닭이 목록에 없으면 적는 칸으로 열린다. 목록으로 열면
+   * 고른 것이 없는 것처럼 보여서, 저장할 때 적어 둔 말이 날아간다.
+   */
+  const [직접, set직접] = useState(
+    () => Boolean((c.미등록사유 ?? "").trim()) && !사유목록.includes((c.미등록사유 ?? "").trim())
+  );
+
   return (
     <div className="modal-back" {...backdrop(onClose)}>
       {/* 좁은 창에 두 칸으로 놓으니 「문의 들어온 날」 같은 이름표가 줄바꿈으로
@@ -2922,12 +2936,26 @@ function LeadDetailBox({ c, staffNames, branchName, now, options, canEdit, onMem
               </div>
               {f.진행상태 === "미등록" && (
                 <div className="field">
-                  <label>등록 안 한 까닭</label>
-                  <select className="input" value={f.미등록사유}
-                          onChange={(e) => set("미등록사유", e.target.value)}>
-                    <option value="">고르기</option>
-                    {사유목록.map((v) => <option key={v} value={v}>{v}</option>)}
-                  </select>
+                  {/* 고르개를 바꾸는 단추는 이름표 밖에 둔다 — 이름표 안에
+                      넣으면 그 누름이 칸으로도 전해진다 */}
+                  <span className="lbl-row">
+                    <label>등록 안 한 까닭</label>
+                    <button type="button" className="linkish"
+                            onClick={() => { set직접(!직접); set("미등록사유", ""); }}>
+                      {직접 ? "목록에서 고르기" : "직접 적기"}
+                    </button>
+                  </span>
+                  {직접 ? (
+                    <input className="input" value={f.미등록사유} autoFocus
+                           placeholder="예: 부모님이 반대하심"
+                           onChange={(e) => set("미등록사유", e.target.value)} />
+                  ) : (
+                    <select className="input" value={f.미등록사유}
+                            onChange={(e) => set("미등록사유", e.target.value)}>
+                      <option value="">고르기</option>
+                      {사유목록.map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  )}
                 </div>
               )}
               <div className="field full">

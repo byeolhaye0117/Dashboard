@@ -2079,6 +2079,10 @@ table.perm-table tr.off .what { opacity: .55; }
 }
 .linkish:hover { color: var(--ink); }
 
+/* 이름표와 그 옆의 작은 단추를 한 줄에 — 「직접 적기」처럼 칸을 바꾸는 것 */
+.lbl-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.lbl-row .linkish { font-size: 11.5px; margin-left: 0; }
+
 /*
   누르면 그 회원 창으로 가는 이름
 
