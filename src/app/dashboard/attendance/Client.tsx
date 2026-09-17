@@ -58,8 +58,23 @@ function foldDay(list: Row[], restMin: string, vary: boolean) {
   const rest = punched > 0 ? punched : gross > 0 ? fixedMin : 0;
   const head = rounds[0];
   const openRest = rounds.find((r) => r.휴게시작)?.휴게시작 ?? "";
+  /*
+   * 진짜 근무 구간만 따로 센다
+   *
+   * ── 무엇이 틀렸었나 ────────────────────────────────────────
+   * 달력 칸의 작은 「2」가 줄 개수를 세고 있었다. 그런데 출근을 안 찍은 빈
+   * 줄도 한 줄이라, 빈 줄이 하나 끼면 하루도 두 번 나온 것처럼 보였다.
+   * 눌러서 열어 보면 2회차에는 아무것도 없어, 화면과 창이 서로 다른 말을
+   * 했다.
+   *
+   * 출근 시각이 적힌 줄만 근무 구간이다. 오전에 갔다 저녁에 다시 온 날은
+   * 출근이 둘이다 — 그때만 둘로 센다.
+   */
+  const spans = rounds.filter((r) => r.출근시각);
   return {
     rounds,
+    /** 실제로 출근을 찍은 구간 수 — 달력의 작은 숫자가 이것을 말한다 */
+    spanCount: spans.length,
     head,
     kind: head?.근무구분 ?? "",
     gross,
@@ -528,7 +543,10 @@ export default function Client(p: Props) {
                 {days.map((d) => {
                   const f = byKey[`${s.id}|${d}`];
                   const kind = f?.kind || "";
-                  const twice = (f?.rounds.length ?? 0) > 1;
+                  /* 출근을 찍은 구간이 둘 이상일 때만 숫자를 붙인다.
+                     몇 번인지도 그대로 적는다 — 셋인 날에 「2」가 뜨면
+                     그 자체로 틀린 말이다 */
+                  const spans = f?.spanCount ?? 0;
                   // 원래 안 나오는 날은 빈 칸이 정상이다. "안 찍음"과 구분되어야 한다
                   const offDay = !worksOn(s.workDays, d) && !kind;
                   return (
@@ -551,7 +569,7 @@ export default function Client(p: Props) {
                         }
                         onClick={() => p.canEdit && setEdit({ 사번: s.id, 날짜: d })}>
                       {MARK[kind] ?? (offDay ? "·" : "")}
-                      {twice && <em className="twice">2</em>}
+                      {spans > 1 && <em className="twice">{spans}</em>}
                     </td>
                   );
                 })}
@@ -648,8 +666,25 @@ function EditBox({ person, day, rounds, canRemove, onClose }: {
   canRemove: boolean;
   onClose: () => void;
 }) {
-  // 고칠 회차를 먼저 고른다. 없던 회차를 고르면 새로 만들어진다
-  const [round, setRound] = useState(rounds[0]?.회차 ?? 1);
+  /*
+   * 어느 회차를 먼저 열 것인가
+   *
+   * ── 무엇이 틀렸었나 ────────────────────────────────────────
+   * 회차 단추를 늘 1·2 두 개로 세워 두었다. 그래서 2회차가 없는 날에도
+   * 단추가 서 있었고, 거기서 저장하면 빈 줄이 하나 생겼다 — 그 빈 줄 때문에
+   * 달력에 「2」가 붙고, 눌러 보면 아무것도 없는 일이 났다.
+   *
+   * 이제 실제로 있는 회차만 세운다. 오전에 갔다 저녁에 다시 온 것을 손으로
+   * 적으셔야 할 때를 위해 「다음 회차」 자리를 하나만 더 둔다.
+   */
+  const 있는회차 = [...new Set(rounds.map((r) => r.회차))].sort((a, b) => a - b);
+  const 다음 = (있는회차[있는회차.length - 1] ?? 0) + 1;
+  const 단추 = 있는회차.length > 0 ? [...있는회차, 다음] : [1];
+
+  /* 값이 적힌 회차부터 연다 — 빈 줄이 앞에 끼어 있어도 빈 창이 뜨지 않는다 */
+  const [round, setRound] = useState(
+    rounds.find((r) => r.출근시각)?.회차 ?? 있는회차[0] ?? 1
+  );
   const row = rounds.find((r) => r.회차 === round);
   const [f, setF] = useState({
     근무구분: rounds[0]?.근무구분 ?? "",
@@ -727,11 +762,11 @@ function EditBox({ person, day, rounds, canRemove, onClose }: {
         <h3>{person.name} · {korDate(day)}</h3>
 
         <div className="tab-bar" style={{ marginBottom: 12 }}>
-          {[1, 2].map((n) => (
+          {단추.map((n) => (
             <button key={n} type="button"
                     className={`mini-tab${round === n ? " on" : ""}`}
                     onClick={() => pick(n)}>
-              {n}회차{!rounds.some((r) => r.회차 === n) && n > 1 ? " (없음)" : ""}
+              {있는회차.includes(n) ? `${n}회차` : `${n}회차 만들기`}
             </button>
           ))}
         </div>
