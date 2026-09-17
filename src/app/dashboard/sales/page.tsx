@@ -14,6 +14,7 @@ import { readSheet } from "@/lib/sheets";
 import { withSaleTypes } from "@/lib/options";
 import { getGoals } from "@/lib/sales";
 import { listConsultations } from "@/lib/consultations";
+import { listShiftFails } from "@/lib/reports";
 import { readProduct } from "@/lib/productMeta";
 import Shell from "../Shell";
 import Client from "./Client";
@@ -201,6 +202,15 @@ async function body() {
     leads = [];
   }
 
+  /*
+   * 퇴근 보고에 적힌 「놓친 분」
+   *
+   * 문의로 접수되지 않고 그냥 가신 분은 어느 시트에도 안 남는다. 등록성공률이
+   * 문의 시트만 보면 그분들이 통째로 빠져, 실제보다 늘 좋게 나온다.
+   * 탭이 아직 없어도 화면은 그대로 열려야 하므로 실패해도 빈 목록으로 간다.
+   */
+  const fails = (await listShiftFails()).filter((f) => allowed.has(f.지점코드));
+
   return (
     <Shell session={session} menus={menus} branches={myBranches} active="매출" crumb="매출"
            canChangePassword={Boolean(ab.get("직원관리")?.update)}>
@@ -211,6 +221,7 @@ async function body() {
         products={products.map(readProduct)}
         goals={goals.filter((g) => allowed.has(g.지점코드))}
         leads={leads}
+        fails={fails}
         branches={myBranches.map((b) => ({ code: b.code, name: b.name }))}
         currentBranch={session.currentBranch}
         staffNames={staffNames}

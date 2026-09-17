@@ -111,6 +111,8 @@ type Props = {
   products: ProductMeta[];
   goals: Goal[];
   leads: Lead[];
+  /** 퇴근 보고에 적힌 「놓친 분」 — 문의로 안 남은 분들이다 */
+  fails: { id: string; 날짜: string; 지점코드: string; 사번: string; 이름: string; 전화번호: string; 사유: string }[];
   branches: Named[];
   /** 머리 위에서 고른 지점 — 이 화면의 기본 지점이 된다 */
   currentBranch: string;
@@ -1049,6 +1051,37 @@ export default function Client(p: Props) {
   /** 문의 시트에 줄이 없는 등록 — 걸어 들어오신 분 */
   const 문의없이 = Math.max(0, 이달등록 - lead.done);
 
+  /*
+   * 이 달 놓친 분 — 퇴근 보고에 적은 명단
+   *
+   * 문의 시트의 「미등록」과 합친다. 문의로 접수되고 안 오신 분과, 접수도 없이
+   * 그냥 가신 분은 둘 다 놓친 분이다.
+   */
+  const 보고실패 = useMemo(
+    () =>
+      p.fails.filter(
+        (f) => (f.날짜 ?? "").startsWith(month) && (branch === "전체" || f.지점코드 === branch)
+      ),
+    [p.fails, month, branch]
+  );
+
+  /*
+   * 등록성공률 — 실제로 들어온 분과 놓친 분으로 잰다
+   *
+   * ── 무엇이 모자랐나 ────────────────────────────────────────
+   * 문의 시트만 보고 재고 있었다. 그런데 걸어 들어와 그 자리에서 끊으신 분도,
+   * 둘러보고 그냥 가신 분도 그 시트에 없다. 실제로 일어난 일의 일부만 보고
+   * 88%라고 말하고 있었던 것이다.
+   *
+   * 분모를 「실제로 등록한 분 + 놓친 분」으로 둔다. 등록은 회원 시트에서
+   * 세므로 문의를 거쳤든 걸어 들어오셨든 다 들어간다 — 겹쳐 세지 않는다.
+   * 놓친 분은 퇴근 보고와 문의 미등록을 더한다.
+   */
+  const 놓침 = 보고실패.length + lead.fail;
+  const 만난분 = 이달등록 + 놓침;
+  const winRate = 만난분 > 0 ? Math.round((이달등록 / 만난분) * 100) : null;
+  const failRate = 만난분 > 0 ? Math.round((놓침 / 만난분) * 100) : null;
+
   /** 지점별 문의 → 등록 전환율 */
   const convByBranch = useMemo(
     () =>
@@ -1105,19 +1138,40 @@ export default function Client(p: Props) {
   );
 
   const byStaff = useMemo(() => {
-    const map: Record<string, { sum: number; count: number }> = {};
+    const map: Record<string, { sum: number; count: number; fail: number }> = {};
+    const 자리 = (id: string) => (map[id] ??= { sum: 0, count: 0, fail: 0 });
     cur.live.forEach((x) => {
-      const id = x.담당직원사번 || "-";
-      const v = (map[id] ??= { sum: 0, count: 0 });
+      const v = 자리(x.담당직원사번 || "-");
       v.sum += 받은돈(x);
       /* 미수금 받은 줄은 돈은 이 달에 들어왔지만 판 것은 아니다 —
          건수에 세면 한 번 판 것이 두 건으로 잡히고 건당 평균이 반토막 난다 */
       if (!x.회수) v.count += 1;
     });
+    /*
+     * 놓친 분도 사람마다 센다
+     *
+     * 판 것만 줄 세우면 「많이 판 사람」은 보여도 「많이 놓친 사람」은 안 보인다.
+     * 매출이 큰 사람이 실은 상담을 제일 많이 받아서 그런 것일 수도 있다 —
+     * 만난 분 대비 몇 분을 놓쳤는지가 있어야 견줄 수 있다.
+     *
+     * 퇴근 보고의 놓친 분과 문의 시트의 미등록을 같이 센다. 문의 쪽은
+     * 상담자로, 보고 쪽은 적은 사람으로 잡힌다.
+     */
+    보고실패.forEach((f) => { 자리(f.사번 || "-").fail += 1; });
+    leadRows.forEach((c) => {
+      if (stageNow(c, now) !== "미등록") return;
+      자리(c.상담자사번 || "-").fail += 1;
+    });
     return Object.entries(map)
-      .map(([id, v]) => ({ id, name: p.staffNames[id] ?? id, ...v }))
+      .map(([id, v]) => ({
+        id,
+        name: p.staffNames[id] ?? id,
+        ...v,
+        /** 만난 분 대비 놓친 비율 — 판 건수와 놓친 건수를 더한 것이 만난 분이다 */
+        failRate: v.count + v.fail > 0 ? Math.round((v.fail / (v.count + v.fail)) * 100) : null,
+      }))
       .sort((a, b) => b.sum - a.sum);
-  }, [cur.live, p.staffNames]);
+  }, [cur.live, p.staffNames, 보고실패, leadRows, now]);
 
   /*
    * 날짜별 — 얼마를 무엇으로 받았나
@@ -1380,20 +1434,14 @@ export default function Client(p: Props) {
                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLeadBox("등록"); }
              }}>
           <span className="lb">등록성공률{lead.done > 0 && <i className="goto">명단 보기</i>}</span>
-          <b className="vl num">{lead.winRate === null ? "-" : `${lead.winRate}%`}</b>
+          <b className="vl num">{winRate === null ? "-" : `${winRate}%`}</b>
           {/* 진행중인 건을 적어 둔다 — 성공률과 실패율을 더해 100이 안 되는
               까닭이 이것이다. 안 적으면 어디로 샜나 싶다 */}
+          {/* 무엇을 무엇으로 나눴는지 그 자리에 적는다 — 안 적으면 88%가
+              어디서 나온 숫자인지 아무도 되짚을 수 없다 */}
           <span className="sub">
-            {lead.base > 0
-              ? `문의 ${lead.base}건 중 ${lead.done}건 등록` +
-                (lead.going > 0 ? ` · ${lead.going}건 진행중` : "")
-              : "이 달 문의 없음"}
-          </span>
-          {/* 문의를 거치지 않고 들어오신 분까지 세어 실제 수를 같이 적는다.
-              88%만 보고 「이 달에 14명 들어왔구나」로 읽으면 틀린다 */}
-          <span className="sub">
-            이 달 실제 등록 <b className="num">{이달등록}명</b>
-            {문의없이 > 0 && ` · 그중 ${문의없이}명은 문의 없이 등록`}
+            만난 {만난분}분 중 <b className="num">{이달등록}분</b> 등록
+            {문의없이 > 0 && ` · 그중 ${문의없이}분은 문의 없이 등록`}
           </span>
           <div className="mini">
             <i className="good" style={{ width: `${lead.winRate ?? 0}%` }} />
@@ -1408,12 +1456,12 @@ export default function Client(p: Props) {
                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLeadBox("미등록"); }
              }}>
           <span className="lb">등록실패율{lead.fail > 0 && <i className="goto">명단 보기</i>}</span>
-          <b className="vl num">{lead.failRate === null ? "-" : `${lead.failRate}%`}</b>
+          <b className="vl num">{failRate === null ? "-" : `${failRate}%`}</b>
           <span className="sub">
-            {lead.base > 0
-              ? `문의 ${lead.base}건 중 ${lead.fail}건 미등록` +
-                (lead.going > 0 ? ` · ${lead.going}건 진행중` : "")
-              : "이 달 문의 없음"}
+            {놓침 > 0
+              ? `만난 ${만난분}분 중 ${놓침}분 놓침` +
+                (보고실패.length > 0 ? ` (퇴근 보고 ${보고실패.length} · 문의 미등록 ${lead.fail})` : "")
+              : "놓친 분 없음"}
           </span>
           <div className="mini">
             <i className={lead.failRate !== null && lead.failRate >= 50 ? "bad" : "warn"}
@@ -1732,7 +1780,9 @@ export default function Client(p: Props) {
             이름만 「담당」이라고 적어 두면 그 둘을 같은 것으로 읽는다.
           */}
           <p className="viz-sub">
-            상품을 팔 때 고른 <b>결제 담당</b> 기준입니다. 상담을 받은 사람과 다를 수 있습니다.
+            매출은 상품을 팔 때 고른 <b>결제 담당</b> 기준입니다.
+            놓침은 <b>퇴근 보고</b>에 적은 분과 <b>문의 미등록</b>을 더한 값이며,
+            놓친 비율은 <b>판 건수 + 놓친 건수</b>를 만난 분으로 보고 잰 것입니다.
           </p>
           <div className="table-wrap t2wrap">
             <table className="grid t2">
@@ -1743,6 +1793,8 @@ export default function Client(p: Props) {
                   <th className="r">매출</th>
                   <th>비중</th>
                   <th className="r">건수</th>
+                  <th className="r">놓침</th>
+                  <th>놓친 비율</th>
                   <th className="r">건당 평균</th>
                 </tr>
               </thead>
@@ -1763,6 +1815,19 @@ export default function Client(p: Props) {
                       </span>
                     </td>
                     <td className="r dim num">{s.count > 0 ? s.count : "-"}</td>
+                    <td className={`r num ${s.fail > 0 ? "bad" : "dim"}`}>
+                      {s.fail > 0 ? s.fail : "-"}
+                    </td>
+                    <td>
+                      {s.failRate === null ? (
+                        <span className="dim">-</span>
+                      ) : (
+                        <span className="wbar">
+                          <span><i className="bad" style={{ width: `${s.failRate}%` }} /></span>
+                          <b className="num">{s.failRate}%</b>
+                        </span>
+                      )}
+                    </td>
                     <td className="r dim num">
                       {s.count > 0 ? money(Math.round(s.sum / s.count)) : "-"}
                     </td>
