@@ -80,6 +80,8 @@ type Goal = { 지점코드: string; 연월: string; 목표금액: number };
 type Lead = {
   지점코드: string; 상담날짜: string; 약속일시: string;
   진행상태: string; 상담자사번: string;
+  /** 숫자를 눌러 명단을 펼칠 때 쓴다 */
+  이름?: string; 문의채널?: string; 미등록사유?: string;
 };
 
 /** 떠 있는 창에 적을 회원 한 줄 */
@@ -578,10 +580,14 @@ export default function Client(p: Props) {
    * 온 것인지 알 수 없어서다. 명단이 아직 안 그려진 순간(다른 달을 막 고른
    * 직후)에는 아무 일도 안 하는 것이 낫다 — 엉뚱한 자리로 데려가지 않는다.
    */
-  function 미수금으로() {
-    const 자리 = document.getElementById("unpaid-list");
+  function 내려가기(id: string) {
+    const 자리 = document.getElementById(id);
     if (자리) 자리.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  const 미수금으로 = () => 내려가기("unpaid-list");
+
+  /** 눌러서 펼친 상담 명단 — 「등록」인지 「미등록」인지 */
+  const [leadBox, setLeadBox] = useState<"" | "등록" | "미등록">("");
 
   /** 화면에 적는 구간 이름 — 「이 달」인지 「이 날」인지 */
   const branchName = (c: string) => p.branches.find((b) => b.code === c)?.name ?? c;
@@ -1303,8 +1309,15 @@ export default function Client(p: Props) {
                }} />
           </div>
         </div>
-        <div className="tile">
-          <span className="lb">환불</span>
+        <div className={`tile${refundList.length > 0 ? " tapme" : ""}`}
+             role={refundList.length > 0 ? "button" : undefined}
+             tabIndex={refundList.length > 0 ? 0 : undefined}
+             onClick={() => refundList.length > 0 && 내려가기("refund-list")}
+             onKeyDown={(e) => {
+               if (refundList.length === 0) return;
+               if (e.key === "Enter" || e.key === " ") { e.preventDefault(); 내려가기("refund-list"); }
+             }}>
+          <span className="lb">환불{refundList.length > 0 && <i className="goto">명단 보기 ↓</i>}</span>
           <b className="vl num">{money(cur.refund)}원</b>
           <span className="sub">
             {cur.rows.filter(isRefund).length}건
@@ -1314,8 +1327,17 @@ export default function Client(p: Props) {
             <i style={{ width: `${cur.sum > 0 ? Math.min(100, (cur.refund / cur.sum) * 100) : 0}%` }} />
           </div>
         </div>
-        <div className="tile">
-          <span className="lb">등록성공률</span>
+        {/* 숫자를 누르면 그 명단이 떠 있는 창으로 펼쳐진다. 상담 화면으로
+            건너가면 달과 걸러 둔 것을 다시 맞춰야 한다 */}
+        <div className={`tile${lead.done > 0 ? " tapme" : ""}`}
+             role={lead.done > 0 ? "button" : undefined}
+             tabIndex={lead.done > 0 ? 0 : undefined}
+             onClick={() => lead.done > 0 && setLeadBox("등록")}
+             onKeyDown={(e) => {
+               if (lead.done <= 0) return;
+               if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLeadBox("등록"); }
+             }}>
+          <span className="lb">등록성공률{lead.done > 0 && <i className="goto">명단 보기</i>}</span>
           <b className="vl num">{lead.winRate === null ? "-" : `${lead.winRate}%`}</b>
           {/* 진행중인 건을 적어 둔다 — 성공률과 실패율을 더해 100이 안 되는
               까닭이 이것이다. 안 적으면 어디로 샜나 싶다 */}
@@ -1329,8 +1351,15 @@ export default function Client(p: Props) {
             <i className="good" style={{ width: `${lead.winRate ?? 0}%` }} />
           </div>
         </div>
-        <div className="tile">
-          <span className="lb">등록실패율</span>
+        <div className={`tile${lead.fail > 0 ? " tapme" : ""}`}
+             role={lead.fail > 0 ? "button" : undefined}
+             tabIndex={lead.fail > 0 ? 0 : undefined}
+             onClick={() => lead.fail > 0 && setLeadBox("미등록")}
+             onKeyDown={(e) => {
+               if (lead.fail <= 0) return;
+               if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLeadBox("미등록"); }
+             }}>
+          <span className="lb">등록실패율{lead.fail > 0 && <i className="goto">명단 보기</i>}</span>
           <b className="vl num">{lead.failRate === null ? "-" : `${lead.failRate}%`}</b>
           <span className="sub">
             {lead.base > 0
@@ -1889,7 +1918,7 @@ export default function Client(p: Props) {
         칸을 만들었는데 화면에서 통째로 사라지면, 잘된 건지 안 된 건지 알 수 없다.
       */}
       <>
-          <h2 className="sec-title">환불 {refundList.length}건</h2>
+          <h2 className="sec-title" id="refund-list">환불 {refundList.length}건</h2>
           <p className="sec-sub">신청일부터 완료일까지 어디까지 왔는지</p>
 
           {p.missingRefund.length > 0 ? (
@@ -2016,6 +2045,24 @@ export default function Client(p: Props) {
           canSeeMember={p.canSeeMember}
           onMember={(id) => { setDetail(null); setCard(id); }}
           onClose={() => setDetail(null)}
+        />
+      )}
+
+      {/* 눌러서 펼친 상담 명단 — 세는 규칙은 위 칸과 똑같은 것을 쓴다 */}
+      {leadBox && (
+        <LeadListBox
+          title={leadBox === "등록" ? "등록한 상담" : "등록 안 한 상담"}
+          sub={
+            leadBox === "등록"
+              ? `${month.replace("-", "년 ")}월 · 맡은 상담 ${lead.base}건 가운데`
+              : `${month.replace("-", "년 ")}월 · 맡은 상담 ${lead.base}건 가운데` +
+                (lead.going > 0 ? ` · 아직 진행중인 ${lead.going}건은 빠져 있습니다` : "")
+          }
+          rows={leadRows.filter((c) => stageNow(c, now) === leadBox)}
+          staffNames={p.staffNames}
+          branchName={branchName}
+          now={now}
+          onClose={() => setLeadBox("")}
         />
       )}
 
@@ -2509,6 +2556,85 @@ function PayDetail({
 }
 
 
+
+/**
+ * 떠 있는 상담 명단
+ *
+ * 성공률 88%를 보고 나면 「그 14명이 누구지」가 궁금해진다. 그런데 그 명단은
+ * 상담 화면에 있고, 거기 가면 달과 걸러 둔 것을 다시 맞춰야 한다. 숫자를
+ * 누르면 그 자리에 펼친다 — 닫으면 보던 매출 화면 그대로다.
+ *
+ * 세는 규칙은 위 칸과 똑같은 것(stageNow)을 쓴다. 명단을 따로 세면 「88%인데
+ * 목록은 13명」 같은 일이 난다.
+ */
+function LeadListBox({ title, sub, rows, staffNames, branchName, now, onClose }: {
+  title: string;
+  sub: string;
+  rows: Lead[];
+  staffNames: Record<string, string>;
+  branchName: (code: string) => string;
+  now: string;
+  onClose: () => void;
+}) {
+  /* 최근 것이 위다 — 오늘 무슨 일이 있었나가 먼저 읽혀야 한다 */
+  const 줄 = rows
+    .slice()
+    .sort((a, b) => baseDate(b).localeCompare(baseDate(a)));
+
+  return (
+    <div className="modal-back" {...backdrop(onClose)}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{title} {줄.length}건</h3>
+        <p className="page-sub" style={{ margin: "2px 0 12px" }}>{sub}</p>
+
+        {줄.length === 0 ? (
+          <p className="stat-note">이 달에 해당하는 상담이 없습니다.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th>이름</th><th>날짜</th><th>지점</th>
+                  <th>채널</th><th>상담자</th><th>상태</th>
+                </tr>
+              </thead>
+              <tbody>
+                {줄.map((c, i) => {
+                  const st = stageNow(c, now);
+                  return (
+                    <tr key={`${c.상담날짜}-${c.이름}-${i}`}>
+                      <td className="nm">{(c.이름 ?? "").trim() || <span className="dim">이름 모름</span>}</td>
+                      <td className="dim num">{baseDate(c).slice(5) || "-"}</td>
+                      <td className="dim">{branchName(c.지점코드)}</td>
+                      <td className="dim">{c.문의채널 || "-"}</td>
+                      <td className="dim">{staffNames[c.상담자사번] ?? "-"}</td>
+                      <td>
+                        <span className={`pill${st === "등록" ? " good" : st === "미등록" ? " bad" : ""}`}>
+                          {st}
+                        </span>
+                        {/* 왜 놓쳤는지가 적혀 있으면 같이 보여준다 — 그것이
+                            이 명단을 여는 진짜 이유다 */}
+                        {st === "미등록" && (c.미등록사유 ?? "").trim() && (
+                          <span className="dim" style={{ marginLeft: 6, fontSize: 11.5 }}>
+                            {c.미등록사유}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="modal-actions">
+          <button className="btn-dark" onClick={onClose}>닫기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * 떠 있는 회원 카드

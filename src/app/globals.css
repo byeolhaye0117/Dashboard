@@ -845,7 +845,7 @@ table.cal thead .sticky { background: var(--surface); }
   color: var(--point); letter-spacing: -.01em;
 }
 /* 내려가서 멈춘 자리가 화면 맨 위에 딱 붙으면 답답하다 */
-#unpaid-list { scroll-margin-top: 16px; }
+#unpaid-list, #refund-list { scroll-margin-top: 16px; }
 .tile .mini > i.warn { background: var(--warn); }
 
 /* ── 접어 둔 자세히 보기 ──────────────────── */
