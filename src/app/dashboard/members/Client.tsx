@@ -378,6 +378,31 @@ export default function Client(p: Props) {
     [p.items, branch]
   );
 
+  /*
+   * 한 분이 두 줄로 남아 있는 것을 찾는다
+   *
+   * ── 왜 생겼나 ──────────────────────────────────────────────
+   * 상담에서 「등록」으로 넘기는 길에는 겹침 막이가 있었는데 회원 화면에서
+   * 직접 등록하는 길에는 없었다. 저장을 두 번 눌렀거나, 상담에서 한 번 올라온
+   * 분을 회원 화면에서 또 넣으면 그대로 두 줄이 됐다. 이제 새로 만들 때는
+   * 막지만, 이미 두 줄로 남은 분은 찾아서 알려드려야 정리하실 수 있다.
+   *
+   * 재는 자는 만들 때와 같다 — 같은 지점 · 같은 번호. 이름이 같아도 번호가
+   * 다르면 다른 분이고, 이름이 달라도(오타) 지점과 번호가 같으면 한 분이다.
+   */
+  const dupes = useMemo(() => {
+    const 뭉치 = new Map<string, string[]>();
+    p.items.forEach((m) => {
+      const key = onlyNum(m.전화번호 ?? "");
+      if (!key) return;
+      const k = `${m.지점코드}|${key}`;
+      뭉치.set(k, [...(뭉치.get(k) ?? []), m.id]);
+    });
+    const out = new Set<string>();
+    뭉치.forEach((ids) => { if (ids.length > 1) ids.forEach((id) => out.add(id)); });
+    return out;
+  }, [p.items]);
+
   const newThisMonth = scoped.filter((m) => (m.가입일 ?? "").startsWith(thisMonth)).length;
   const using = scoped.filter((m) => stateOf(m) === "활성").length;
   const soon = scoped.filter((m) => stateOf(m) === "마감임박").length;
@@ -387,7 +412,9 @@ export default function Client(p: Props) {
   const list = useMemo(() => {
     return scoped
       .filter((m) => {
-        if (tab !== "전체" && stateOf(m) !== tab) return false;
+        if (tab === "번호 겹침") {
+          if (!dupes.has(m.id)) return false;
+        } else if (tab !== "전체" && stateOf(m) !== tab) return false;
         if (q) {
           const hay =
             `${m.이름} ${m.전화번호} ${m.거주동네} ${m.직업} ${m.방문경로}`.toLowerCase();
@@ -399,7 +426,7 @@ export default function Client(p: Props) {
          어디쯤인지 짐작할 수가 없다. localeCompare 의 "ko" 가 한글 자모
          차례를 안다 — 그냥 비교하면 유니코드 번호 순이라 어긋난다 */
       .sort((a, b) => (a.이름 ?? "").localeCompare(b.이름 ?? "", "ko"));
-  }, [scoped, p.tickets, tab, q, now]);
+  }, [scoped, p.tickets, tab, q, now, dupes]);
 
   if (p.problem) {
     return (
@@ -553,6 +580,14 @@ export default function Client(p: Props) {
               </span>
             </button>
           ))}
+          {/* 겹친 분이 있을 때만 세운다. 늘 떠 있으면 0을 매일 보게 된다 */}
+          {scoped.some((m) => dupes.has(m.id)) && (
+            <button className={`chip warn-chip${tab === "번호 겹침" ? " on" : ""}`}
+                    onClick={() => setTab("번호 겹침")}>
+              번호 겹침
+              <span className="cnt num">{scoped.filter((m) => dupes.has(m.id)).length}</span>
+            </button>
+          )}
         </div>
         <div className="filter-right">
           <input className="search" placeholder="이름 · 연락처 검색"
@@ -619,7 +654,12 @@ export default function Client(p: Props) {
                                } />
                       </td>
                     )}
-                    <td className="strong">{m.이름}</td>
+                    <td className="strong">
+                      {m.이름}
+                      {/* 같은 지점·같은 번호가 또 있다는 표시. 이름이 서로 달라
+                          목록에서 떨어져 있어도 이것으로 짝을 찾으신다 */}
+                      {dupes.has(m.id) && <span className="pill warn" style={{ marginLeft: 6 }}>겹침</span>}
+                    </td>
                     <td className="num">{showPhone(m.전화번호)}</td>
                     <td className="dim">
                       {[m.성별, m.나이대].filter(Boolean).join(" · ") || "-"}

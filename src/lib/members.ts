@@ -737,6 +737,40 @@ export async function createMember(input: NewMember, staffId: string): Promise<s
 
   const m = await readSheet(SHEET_M);
   const mCols = resolve(SHEET_M, m.headers, M_COLS);
+
+  /*
+   * 같은 분이 두 번 들어오지 않게 막는다
+   *
+   * ── 무엇이 있었나 ──────────────────────────────────────────
+   * 상담에서 「등록」으로 넘기는 길에는 겹침 막이가 있었는데(enrollFromConsultation),
+   * 회원 화면에서 직접 등록하는 이 길에는 없었다. 그냥 한 줄을 더 붙였다.
+   * 그래서 한 분이 두 줄로 남는 일이 생겼다 — 저장을 두 번 눌렀거나, 상담에서
+   * 한 번 올라온 분을 회원 화면에서 또 넣었거나.
+   *
+   * 겹침을 재는 자는 등록 길과 똑같이 「같은 지점 · 같은 번호」다. 두 길이
+   * 다른 자로 재면 한쪽으로 들어온 것이 다른 쪽에서 안 걸린다.
+   *
+   * 막기만 하고 끝내지 않는다. 누구와 겹치는지 번호와 이름을 돌려줘야
+   * 화면에서 「그분에게 상품을 더하시겠어요」를 물을 수 있다.
+   */
+  const key = phoneKey(input.전화번호);
+  if (key) {
+    const hit = m.rows.find(
+      (r) =>
+        (r["삭제여부"] ?? "").toUpperCase() !== "Y" &&
+        phoneKey(get(r, mCols, "전화번호")) === key &&
+        get(r, mCols, "지점코드") === input.지점코드
+    );
+    if (hit) {
+      const 있는번호 = get(hit, mCols, "회원번호");
+      const 있는이름 = get(hit, mCols, "이름");
+      throw new Error(
+        `같은 지점에 같은 번호로 이미 계신 분입니다 — ${있는번호} ${있는이름}. ` +
+        `새로 만드는 대신 그분을 찾아 「상품 추가」로 넣어주세요.`
+      );
+    }
+  }
+
   const memberId = nextId(m.rows.map((r) => get(r, mCols, "회원번호")), "M", 5);
 
   await appendRow(
