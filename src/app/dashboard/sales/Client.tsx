@@ -20,7 +20,7 @@ import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
 import type { ProductMeta } from "@/lib/productMeta";
-import { stageNow, baseDate } from "@/lib/stage";
+import { stageNow, baseDate, STAGES } from "@/lib/stage";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 import { backdrop } from "@/lib/backdrop";
 
@@ -128,6 +128,8 @@ type Props = {
   canEditPay: boolean;
   /** 회원 화면을 볼 수 있는 계정인가 — 이름에 길을 걸지 말지 */
   canSeeMember: boolean;
+  /** 상담을 고칠 수 있는 계정인가 */
+  canEditLead: boolean;
   problem: string;
 };
 
@@ -2080,6 +2082,8 @@ export default function Client(p: Props) {
           staffNames={p.staffNames}
           branchName={branchName}
           now={now}
+          options={p.options}
+          canEdit={p.canEditLead}
           onMember={p.canSeeMember
             ? (id) => { setLeadOne(null); setLeadBox(""); setCard(id); }
             : undefined}
@@ -2672,11 +2676,14 @@ function LeadListBox({ title, sub, rows, staffNames, branchName, now, onPick, on
  * 고치는 일은 여기서 하지 않는다 — 읽는 자리와 고치는 자리를 섞으면 잘못
  * 눌러 바꿔 놓고도 모른다. 고치실 일이 있으면 상담 화면으로 가시면 된다.
  */
-function LeadDetailBox({ c, staffNames, branchName, now, onMember, onClose }: {
+function LeadDetailBox({ c, staffNames, branchName, now, options, canEdit, onMember, onClose }: {
   c: Lead;
   staffNames: Record<string, string>;
   branchName: (code: string) => string;
   now: string;
+  options: Record<string, string[]>;
+  /** 고칠 수 있는 사람인가 — 상담 메뉴의 수정 권한을 따른다 */
+  canEdit: boolean;
   /** 등록으로 이어진 상담이면 그 회원 카드로 건너뛴다 */
   onMember?: (id: string) => void;
   onClose: () => void;
@@ -2685,9 +2692,76 @@ function LeadDetailBox({ c, staffNames, branchName, now, onMember, onClose }: {
   const 약속 = (c.약속일시 ?? "").trim().slice(0, 16).replace("T", " ");
   const 회원 = (c.전환회원번호 ?? "").trim();
 
+  /*
+   * 여기서 바로 고친다
+   *
+   * 「등록 안 한 까닭」을 보고 나면 그 자리에서 사유를 바꾸거나 다음 연락 날짜를
+   * 잡게 된다. 그런데 고치려면 상담 화면으로 건너가야 했고, 그러면 보던 달과
+   * 걸러 둔 것을 다시 맞춰야 했다.
+   *
+   * 여는 칸은 이 자리에서 실제로 손대는 것만 둔다 — 상태 · 사유 · 다음 연락 ·
+   * 메모. 이름과 연락처까지 열어 두면 매출을 보다가 회원 정보를 고치게 된다.
+   */
+  const [edit, setEdit] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [f, setF] = useState({
+    진행상태: st,
+    미등록사유: c.미등록사유 ?? "",
+    다음연락예정일: c.다음연락예정일 ?? "",
+    메모: c.메모 ?? "",
+  });
+  const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
+
+  async function save() {
+    if (busy) return;
+    if (f.진행상태 === "미등록" && !f.미등록사유.trim()) {
+      return setMsg("등록 안 한 까닭을 골라주세요. 나중에 왜 놓쳤는지 알 수 없습니다.");
+    }
+    setBusy(true);
+    setMsg("");
+    const res = await fetch("/api/consultations/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: c.상담번호,
+        changes: {
+          진행상태: f.진행상태,
+          /* 미등록이 아니게 되면 사유도 지운다 — 등록했는데 「가격 부담」이
+             남아 있으면 나중에 그 줄이 무슨 말인지 알 수 없다 */
+          미등록사유: f.진행상태 === "미등록" ? f.미등록사유 : "",
+          다음연락예정일: f.다음연락예정일,
+          메모: f.메모,
+        },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setBusy(false);
+      return setMsg(data.error ?? "저장하지 못했습니다.");
+    }
+    /* 등록으로 바꾸면 서버가 회원 목록에 올린다. 조용히 넘어가면 「올라간 건가」
+       싶어 회원 화면에서 또 손으로 넣게 되고, 그러면 같은 사람이 둘이 된다 */
+    if (data.회원) {
+      alert(data.회원.새로
+        ? `회원 목록에 올렸습니다. (${data.회원.회원번호} ${data.회원.이름})`
+        : `이미 있는 번호라 새로 만들지 않고 이었습니다. (${data.회원.회원번호} ${data.회원.이름})`);
+    } else if (data.회원경고) {
+      alert(`상담은 고쳤지만 회원으로 올리지 못했습니다.\n\n${data.회원경고}`);
+    }
+    location.reload();
+  }
+
+  const 사유목록 = options["미등록사유"]?.length
+    ? options["미등록사유"]
+    : ["연락 두절", "약속 취소", "말없이 안 옴", "가격 부담", "거리 · 위치",
+       "운영 시간 안 맞음", "시설 · 환경", "타 업체 등록", "단순 문의였음", "기타"];
+
   return (
     <div className="modal-back" {...backdrop(onClose)}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      {/* 좁은 창에 두 칸으로 놓으니 「문의 들어온 날」 같은 이름표가 줄바꿈으로
+          끊겼다. 고치는 칸까지 들어오므로 넓은 창으로 둔다 */}
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{(c.이름 ?? "").trim() || "이름 모름"}</h3>
         <p className="page-sub" style={{ margin: "2px 0 12px" }}>
           {branchName(c.지점코드)}
@@ -2728,12 +2802,62 @@ function LeadDetailBox({ c, staffNames, branchName, now, onMember, onClose }: {
           </>
         )}
 
+        {edit && (
+          <>
+            <h4 className="viz-title mt">수정하기</h4>
+            <div className="form-grid">
+              <div className="field">
+                <label>진행 상태</label>
+                <select className="input" value={f.진행상태}
+                        onChange={(e) => set("진행상태", e.target.value)}>
+                  {STAGES.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>다음 연락</label>
+                <input className="input" type="date" value={f.다음연락예정일}
+                       onChange={(e) => set("다음연락예정일", e.target.value)} />
+              </div>
+              {f.진행상태 === "미등록" && (
+                <div className="field full">
+                  <label>등록 안 한 까닭</label>
+                  <select className="input" value={f.미등록사유}
+                          onChange={(e) => set("미등록사유", e.target.value)}>
+                    <option value="">고르기</option>
+                    {사유목록.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="field full">
+                <label>메모</label>
+                <textarea className="input area" rows={3} value={f.메모}
+                          onChange={(e) => set("메모", e.target.value)} />
+              </div>
+            </div>
+            {/* 등록으로 바꾸면 회원이 늘어난다. 누르기 전에 말해 준다 */}
+            {f.진행상태 === "등록" && st !== "등록" && (
+              <p className="stat-note">
+                <b>등록</b>으로 바꾸면 이분이 <b>회원 목록에 올라갑니다.</b>
+                이용권과 결제는 회원 화면에서 따로 넣으셔야 합니다.
+              </p>
+            )}
+            {msg && <div className="alert-bad">{msg}</div>}
+          </>
+        )}
+
         <div className="modal-actions">
-          {회원 && onMember && (
-            <button className="btn-ghost" onClick={() => onMember(회원)}>회원 카드 보기</button>
+          {canEdit && !edit && (
+            <button className="btn-ghost" onClick={() => setEdit(true)}>수정하기</button>
           )}
-          <a className="btn-ghost" href="/dashboard/consultations">상담 화면으로</a>
-          <button className="btn-dark" onClick={onClose}>닫기</button>
+          {회원 && onMember && (
+            <button className="btn-ghost" onClick={() => onMember(회원)}>회원 카드</button>
+          )}
+          <button className="btn-ghost" onClick={onClose} disabled={busy}>닫기</button>
+          {edit && (
+            <button className="btn-dark" onClick={save} disabled={busy}>
+              {busy ? "저장 중…" : "저장"}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -225,6 +225,7 @@ async function body() {
         /* 회원 화면을 볼 수 없는 계정에는 이름을 눌러도 갈 데가 없다 —
            눌러 놓고 대시보드로 튕기는 것보다 아예 안 거는 편이 낫다 */
         canSeeMember={Boolean(ab.get("회원")?.view)}
+        canEditLead={Boolean(ab.get("상담")?.update)}
         problem={problem}
       />
     </Shell>
