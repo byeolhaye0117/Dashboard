@@ -121,9 +121,35 @@ async function body() {
   }
 
   let people: any[] = [];
+  /*
+   * 이름을 눌렀을 때 띄울 회원 카드
+   *
+   * 매출을 보다가 「이 사람 누구지」가 궁금해지는 자리는 여기다. 회원 화면으로
+   * 건너가면 보던 날짜를 잃는다. 떠 있는 창으로 보여주려면 이름 말고도 몇 가지가
+   * 더 있어야 한다 — 연락처 · 지점 · 가입일 · 상태.
+   *
+   * 메모나 비밀번호 같은 것은 안 보낸다. 여기서 쓸 일이 없는 값을 브라우저까지
+   * 내려보낼 까닭이 없다.
+   */
+  let memberCards: Record<string, any> = {};
   try {
     const { items } = await listMembers();
     items.forEach((m) => (memberNames[m.id] = m.이름));
+    items
+      .filter((m) => allowed.has(m.지점코드))
+      .forEach((m) => {
+        memberCards[m.id] = {
+          id: m.id,
+          이름: m.이름,
+          전화번호: m.전화번호 ?? "",
+          지점코드: m.지점코드,
+          가입일: (m.가입일 ?? "").slice(0, 10),
+          회원상태: (m.회원상태 || "유효").trim(),
+          성별: (m.성별 ?? "").trim(),
+          나이대: (m.나이대 ?? "").trim(),
+          담당직원사번: m.담당직원사번 ?? "",
+        };
+      });
     people = items
       .filter((m) => allowed.has(m.지점코드))
       .filter((m) => (m.회원상태 || "유효") !== "탈퇴")
@@ -139,6 +165,7 @@ async function body() {
   } catch {
     memberNames = {};
     people = [];
+    memberCards = {};
   }
 
   // 등록실패율은 상담 자료에서 나온다. 못 읽어도 매출 화면은 그대로 보이게 한다
@@ -172,6 +199,7 @@ async function body() {
         currentBranch={session.currentBranch}
         staffNames={staffNames}
         memberNames={memberNames}
+        memberCards={memberCards}
         people={people}
         options={options}
         missingRefund={missingRefund}

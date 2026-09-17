@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
+import { showPhone } from "@/lib/phone";
 import type { ProductMeta } from "@/lib/productMeta";
 import { stageNow, baseDate } from "@/lib/stage";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
@@ -81,6 +82,13 @@ type Lead = {
   진행상태: string; 상담자사번: string;
 };
 
+/** 떠 있는 창에 적을 회원 한 줄 */
+type MemberCard = {
+  id: string; 이름: string; 전화번호: string; 지점코드: string;
+  가입일: string; 회원상태: string; 성별: string; 나이대: string;
+  담당직원사번: string;
+};
+
 /** 어떤 분들이 등록하셨나 — 회원 한 줄에서 사람을 말하는 값만 */
 type Person = {
   지점코드: string; 가입일: string;
@@ -102,6 +110,8 @@ type Props = {
   currentBranch: string;
   staffNames: Record<string, string>;
   memberNames: Record<string, string>;
+  /** 이름을 눌렀을 때 띄울 회원 카드 — 회원번호로 찾는다 */
+  memberCards: Record<string, MemberCard>;
   /** 결제 탭에 아직 없는 환불 칸 이름 */
   missingRefund: string[];
   /** 시트에 칸을 만들 수 있는 사람인지 (대표) */
@@ -145,25 +155,26 @@ const num = (v?: string) => Number((v ?? "").replace(/[^0-9-]/g, "")) || 0;
 const isRefund = (x: Payment) => (x.환불여부 ?? "").toUpperCase() === "Y";
 
 /**
- * 회원 이름 — 누르면 그 회원 창이 열린다
+ * 회원 이름 — 누르면 그 자리에 회원 카드가 뜬다
  *
- * 매출을 보다가 「이 사람 뭐 끊었더라」가 궁금해지는 자리는 여기인데, 답은
- * 회원 화면에 있다. 지금까지는 회원 메뉴로 건너가 이름을 다시 검색해야 했다.
- *
- * 회원 화면은 주소 뒤에 회원번호가 붙어 있으면 그 창을 열고 뜬다 — 이용권을
- * 고치고 새로 읽은 뒤에도 보던 자리로 돌아오려고 만들어 둔 길이다. 그 길을
- * 그대로 쓴다.
+ * ── 왜 화면을 안 옮기나 ────────────────────────────────────
+ * 매출을 보다가 「이 사람 누구지」가 궁금해지는 자리는 여기다. 회원 화면으로
+ * 건너가면 보던 날짜와 걸러 둔 것을 잃고, 돌아와서 8월 9일을 다시 찾아
+ * 들어가야 한다. 떠 있는 창으로 보여주고 닫으면 보던 자리 그대로 둔다.
  *
  * 줄 전체가 눌리는 표 안에도 들어가므로 눌림이 위로 새지 않게 막는다 —
- * 안 막으면 회원 창으로 가면서 결제 상세도 같이 열린다.
+ * 안 막으면 회원 카드와 결제 상세가 같이 열린다.
  */
-function MemberLink({ id, name, can }: { id?: string; name: string; can: boolean }) {
-  if (!can || !(id ?? "").trim()) return <>{name}</>;
+function MemberLink({ id, name, can, onOpen }: {
+  id?: string; name: string; can: boolean; onOpen: (id: string) => void;
+}) {
+  const mid = (id ?? "").trim();
+  if (!can || !mid) return <>{name}</>;
   return (
-    <a className="mlink" href={`/dashboard/members#${encodeURIComponent(id!)}`}
-       onClick={(e) => e.stopPropagation()}>
+    <button type="button" className="mlink"
+            onClick={(e) => { e.stopPropagation(); onOpen(mid); }}>
       {name}
-    </a>
+    </button>
   );
 }
 
@@ -503,6 +514,8 @@ export default function Client(p: Props) {
   const [wipe, setWipe] = useState<Payment | null>(null);
   /** 결제 한 줄을 눌러 여는 상세 — 무엇을 얼마에 팔았는지 */
   const [detail, setDetail] = useState<Payment | null>(null);
+  /* 이름을 눌러 여는 회원 카드. 화면을 옮기지 않으므로 닫으면 보던 자리 그대로다 */
+  const [card, setCard] = useState<string>("");
   const [wiping, setWiping] = useState(false);
   const [wipeErr, setWipeErr] = useState("");
 
@@ -1578,7 +1591,7 @@ export default function Client(p: Props) {
                     */}
                     <td className="num dim">{(x.결제일시 ?? "").slice(5, 10)}</td>
                     <td>
-                      <MemberLink id={x.회원번호} can={p.canSeeMember}
+                      <MemberLink id={x.회원번호} can={p.canSeeMember} onOpen={setCard}
                                   name={p.memberNames[x.회원번호] ?? x.회원번호 ?? "-"} />
                     </td>
                     <td className="dim">{branchName(x.지점코드)}</td>
@@ -1822,7 +1835,7 @@ export default function Client(p: Props) {
             {unpaidList.map((u) => (
               <div className="lrow" key={u.id}>
                 <div className="who">
-                  <b><MemberLink id={u.mid} name={u.name} can={p.canSeeMember} /></b>
+                  <b><MemberLink id={u.mid} name={u.name} can={p.canSeeMember} onOpen={setCard} /></b>
                   <span>
                     {u.branch} · {u.date.slice(5)} 계약 {money(u.total)}원 · 담당 {u.staff}
                   </span>
@@ -2001,7 +2014,27 @@ export default function Client(p: Props) {
           options={p.options}
           canEdit={p.canEditPay}
           canSeeMember={p.canSeeMember}
+          onMember={(id) => { setDetail(null); setCard(id); }}
           onClose={() => setDetail(null)}
+        />
+      )}
+
+      {/*
+        떠 있는 회원 카드
+
+        이름을 누르면 여기가 뜬다. 화면을 옮긴 적이 없으므로 닫으면 보던
+        날짜 · 걸러 둔 것이 그대로다.
+      */}
+      {card && p.memberCards[card] && (
+        <MemberCardBox
+          card={p.memberCards[card]}
+          tickets={p.tickets.filter((t) => t.회원번호 === card)}
+          payments={p.payments.filter((x) => x.회원번호 === card && !isRefund(x))}
+          productOf={productOf}
+          branchName={branchName}
+          staffNames={p.staffNames}
+          now={now}
+          onClose={() => setCard("")}
         />
       )}
 
@@ -2053,7 +2086,8 @@ export default function Client(p: Props) {
  * 비율로 나눠 채웠다가 실제 결제와 전혀 안 맞았다.
  */
 function PayDetail({
-  x, items, productOf, memberName, branch, staffNames, options, canEdit, canSeeMember, onClose,
+  x, items, productOf, memberName, branch, staffNames, options,
+  canEdit, canSeeMember, onMember, onClose,
 }: {
   x: Payment;
   /** 이 결제에 딸린 이용권 줄 */
@@ -2067,6 +2101,8 @@ function PayDetail({
   canEdit: boolean;
   /** 회원 화면을 볼 수 있는가 — 이름에 길을 걸지 말지 */
   canSeeMember: boolean;
+  /** 이름을 누르면 회원 카드를 연다 — 창을 여는 일은 위에서 한다 */
+  onMember: (id: string) => void;
   onClose: () => void;
 }) {
   const 합 = 받은돈(x);
@@ -2207,7 +2243,8 @@ function PayDetail({
     <div className="modal-back" {...backdrop(onClose)}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>
-          <MemberLink id={x.회원번호} name={memberName} can={canSeeMember} /> · {money(합)}원
+          <MemberLink id={x.회원번호} name={memberName} can={canSeeMember} onOpen={onMember} />
+          {" · "}{money(합)}원
         </h3>
         <p className="page-sub" style={{ margin: "2px 0 12px" }}>
           {(x.결제일시 ?? "").slice(0, 16).replace("T", " ")} · {branch} · {x.id}
@@ -2471,6 +2508,104 @@ function PayDetail({
   );
 }
 
+
+
+/**
+ * 떠 있는 회원 카드
+ *
+ * 매출 화면을 떠나지 않고 「이 사람 누구고 무엇을 끊었나」를 답한다. 고치는
+ * 일은 여기서 하지 않는다 — 읽는 자리와 고치는 자리를 한 창에 섞으면, 잘못
+ * 눌러 바꿔 놓고도 모르는 일이 생긴다. 고치실 일이 있으면 밑의 단추로 회원
+ * 화면에 가시면 된다.
+ *
+ * 닫으면 보던 매출 화면이 그대로다 — 화면을 옮긴 적이 없으니 되돌릴 것도 없다.
+ */
+function MemberCardBox({
+  card, tickets, payments, productOf, branchName, staffNames, now, onClose,
+}: {
+  card: MemberCard;
+  tickets: Ticket[];
+  payments: Payment[];
+  productOf: (code: string) => ProductMeta | undefined;
+  branchName: (code: string) => string;
+  staffNames: Record<string, string>;
+  now: string;
+  onClose: () => void;
+}) {
+  /* 살아 있는 것을 위로 — 끝난 이용권부터 보여주면 「지금 뭘 쓰고 있나」를
+     한참 내려가서 찾게 된다 */
+  const 줄 = tickets
+    .slice()
+    .sort((a, b) => (b.종료일 ?? "").localeCompare(a.종료일 ?? ""));
+  const 살아있음 = (t: Ticket) => !(t.종료일 ?? "") || (t.종료일 ?? "") >= now;
+  const 산돈 = payments.reduce((s, x) => s + 받은돈(x), 0);
+  const 밀린돈 = payments.reduce((s, x) => s + 남은미수(x), 0);
+
+  return (
+    <div className="modal-back" {...backdrop(onClose)}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{card.이름}</h3>
+        <p className="page-sub" style={{ margin: "2px 0 12px" }}>
+          {card.id} · {branchName(card.지점코드)}
+          {card.회원상태 && card.회원상태 !== "유효" ? ` · ${card.회원상태}` : ""}
+        </p>
+
+        <div className="kv">
+          <div className="kv-row"><span>연락처</span>
+            <b className="num">{showPhone(card.전화번호) || "-"}</b></div>
+          <div className="kv-row"><span>성별 · 나이대</span>
+            <b>{[card.성별, card.나이대].filter(Boolean).join(" · ") || "-"}</b></div>
+          <div className="kv-row"><span>가입일</span><b className="num">{card.가입일 || "-"}</b></div>
+          <div className="kv-row"><span>담당</span>
+            <b>{staffNames[card.담당직원사번] ?? "-"}</b></div>
+          <div className="kv-row"><span>지금까지 받은 돈</span>
+            <b className="num">{money(산돈)}원 · {payments.length}건</b></div>
+          {밀린돈 > 0 && (
+            <div className="kv-row"><span>못 받은 돈</span>
+              <b className="num bad">{money(밀린돈)}원</b></div>
+          )}
+        </div>
+
+        <h4 className="viz-title mt">이용권 {줄.length}개</h4>
+        {줄.length === 0 ? (
+          <p className="stat-note">아직 이용권이 없습니다.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="grid">
+              <thead>
+                <tr><th>상품</th><th>기간</th><th className="r">금액</th><th /></tr>
+              </thead>
+              <tbody>
+                {줄.map((t) => (
+                  <tr key={t.id}>
+                    <td className="nm">{productOf(t.상품코드)?.name || t.상품코드}</td>
+                    <td className="dim num">
+                      {[(t.시작일 ?? "").slice(0, 10), (t.종료일 ?? "").slice(0, 10)]
+                        .filter(Boolean).join(" ~ ") || "-"}
+                    </td>
+                    <td className="r num">{num(t.금액) > 0 ? money(num(t.금액)) : "-"}</td>
+                    <td>
+                      <span className={`pill${살아있음(t) ? " good" : ""}`}>
+                        {살아있음(t) ? "이용중" : "끝남"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="modal-actions">
+          <a className="btn-ghost" href={`/dashboard/members#${encodeURIComponent(card.id)}`}>
+            회원 화면에서 고치기
+          </a>
+          <button className="btn-dark" onClick={onClose}>닫기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * 환불 칸 만들기

@@ -2083,10 +2083,14 @@ table.perm-table tr.off .what { opacity: .55; }
   눈이 그쪽으로만 끌린다. 손을 올리면 그때 밑줄이 뜬다.
 */
 .mlink {
-  color: inherit; text-decoration: none; cursor: pointer;
+  padding: 0; background: none; border: 0;
+  font: inherit; color: inherit; cursor: pointer;
   border-bottom: 1px dashed color-mix(in srgb, var(--muted) 60%, transparent);
 }
 .mlink:hover { color: var(--s1); border-bottom-color: currentColor; }
+
+/* 창 밑단의 단추 자리에 들어가는 링크 — 단추와 키를 맞춘다 */
+a.btn-ghost { display: inline-flex; align-items: center; text-decoration: none; }
 
 /* 근태표 : 원래 안 나오는 날 */
 table.cal td.cell.off-day { color: var(--line); background: var(--surface-2); }
