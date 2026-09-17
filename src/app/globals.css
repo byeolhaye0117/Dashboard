@@ -1781,6 +1781,8 @@ table.grid .late { color: var(--bad); font-weight: 800; }
   padding: 1px 5px; margin-left: 5px; border-radius: 5px;
   background: var(--surface); border: 1px solid var(--line); color: var(--muted);
 }
+/* 제 값이 아니라 저쪽 값을 쓴 줄 — 그냥 두면 두 값이 같은 것처럼 읽힌다 */
+.qm-nm .tag.warn { color: var(--warn); border-color: var(--warn); }
 .qm-line .input.mini { width: 100%; }
 .qm-line .input.mini.r { text-align: right; }
 .qm-sum {

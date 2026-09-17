@@ -2906,6 +2906,8 @@ function QuickMember({
     key: string; 상품코드: string; 시작일: string; 종료일: string; 금액: string;
     /** 만료일에 손을 대셨나 — 그 뒤로는 시작일을 바꿔도 안 덮는다 */
     끝손댐?: boolean;
+    /** 금액에 손을 대셨나 — 그 뒤로는 결제수단을 바꿔도 안 덮는다 */
+    값손댐?: boolean;
   };
   const [cart, setCart] = useState<Line[]>([]);
   /* 받은 금액에 손을 대셨으면 합계로 덮지 않는다 — 깎아 주신 값이 사라진다 */
@@ -2920,9 +2922,27 @@ function QuickMember({
   })).filter((x) => x.list.length > 0);
 
   const prOf = (code: string) => products.find((x) => x.code === code);
-  const 정가 = (p2?: ProductMeta) =>
-    (f.결제수단 === "현금" || f.결제수단 === "계좌" ? p2?.cash : p2?.card) ||
-    p2?.card || p2?.cash || 0;
+
+  /*
+   * 이 결제수단으로 받으면 얼마인가
+   *
+   * ── 대신 쓴 값을 말해 준다 ─────────────────────────────────
+   * 현금으로 받는데 상품에 현금가가 안 적혀 있으면 0원이 된다. 0원으로
+   * 넣는 것보다는 카드가로 채우는 편이 낫지만, 그걸 말 없이 하면 화면에는
+   * 「현금가와 카드가가 같다」로 읽힌다 — 실제로 그렇게 보였다.
+   *
+   * 그래서 대신 쓴 것인지를 같이 돌려주고, 담은 줄에 딱지로 적는다.
+   * 값이 틀린 것이 아니라 「여기 안 적혀 있어서 저기 것을 썼다」는 말이다.
+   */
+  const 값매기기 = (p2: ProductMeta | undefined, 수단: string) => {
+    const 현금쪽 = 수단 === "현금" || 수단 === "계좌";
+    const 제값 = 현금쪽 ? p2?.cash : p2?.card;
+    if (제값) return { 값: 제값, 대신: "" };
+    const 남은것 = 현금쪽 ? p2?.card : p2?.cash;
+    if (남은것) return { 값: 남은것, 대신: 현금쪽 ? "카드가" : "현금가" };
+    return { 값: 0, 대신: "" };
+  };
+  const 정가 = (p2?: ProductMeta) => 값매기기(p2, f.결제수단).값;
 
   const 끝나는날of = (code: string, 시작일: string) => {
     const p2 = prOf(code);
@@ -2963,9 +2983,34 @@ function QuickMember({
           /* 만료일에 손을 대신 줄은 그대로 둔다 — 정해 두신 날이다 */
           return { ...x, 시작일: v, 종료일: x.끝손댐 ? x.종료일 : 끝나는날of(x.상품코드, v) };
         }
-        return { ...x, 금액: v };
+        return { ...x, 금액: v, 값손댐: true };
       })
     );
+
+  /*
+   * 결제수단을 바꾸면 담은 줄의 값도 다시 매긴다
+   *
+   * ── 무엇이 틀렸었나 ────────────────────────────────────────
+   * 금액은 담는 그 순간의 결제수단으로 정해지고, 그 뒤에 현금으로 바꾸셔도
+   * 그대로였다. 카드가 217,800원이 담긴 채로 결제수단만 현금이 되어,
+   * 현금가와 카드가가 같은 것처럼 보였다.
+   *
+   * 손으로 고치신 줄은 안 건드린다 — 깎아 드린 값을 수단 한 번 바꿨다고
+   * 덮으면 안 된다. 서비스도 그대로 0원이다.
+   */
+  const 수단바꾸기 = (수단: string) => {
+    set("결제수단", 수단);
+    setCart((o) =>
+      o.map((x) => {
+        if (x.값손댐) return x;
+        const p2 = prOf(x.상품코드);
+        if (p2?.isService) return x;
+        return { ...x, 금액: String(값매기기(p2, 수단).값) };
+      })
+    );
+    /* 받은 금액도 합계를 다시 따라가게 한다 */
+    set손댐(false);
+  };
   const 빼기 = (key: string) => setCart((o) => o.filter((x) => x.key !== key));
 
   const 합계 = cart.reduce((s, x) => s + num(x.금액), 0);
@@ -3128,6 +3173,16 @@ function QuickMember({
                         {p2?.isService && <i className="tag">서비스</i>}
                         {p2?.isOption && <i className="tag">얹음</i>}
                         {x.끝손댐 && <i className="tag">기간 고침</i>}
+                        {/* 제 값이 안 적혀 있어 저쪽 값을 쓴 줄은 말해 준다 —
+                            말 없이 채우면 두 값이 같은 것처럼 읽힌다 */}
+                        {!x.값손댐 && !p2?.isService && 값매기기(p2, f.결제수단).대신 && (
+                          <i className="tag warn"
+                             title={`이 상품에 ${f.결제수단}가가 안 적혀 있어 ` +
+                                    `${값매기기(p2, f.결제수단).대신}로 넣었습니다. ` +
+                                    `상품 관리에서 값을 적어 두시면 다음부터는 제 값이 들어갑니다.`}>
+                            {값매기기(p2, f.결제수단).대신}로 넣음
+                          </i>
+                        )}
                       </div>
                       <input className="input mini" type="date" value={x.시작일}
                              onChange={(e) => 줄고치기(x.key, "시작일", e.target.value)} />
@@ -3153,7 +3208,7 @@ function QuickMember({
           <div className="field">
             <label>결제 수단</label>
             <select className="input" value={f.결제수단}
-                    onChange={(e) => set("결제수단", e.target.value)}>
+                    onChange={(e) => 수단바꾸기(e.target.value)}>
               {(options["결제수단"]?.length ? options["결제수단"]
                 : options["결제유형"]?.length ? options["결제유형"]
                 : ["카드", "현금", "계좌"]).map((m) => <option key={m} value={m}>{m}</option>)}
