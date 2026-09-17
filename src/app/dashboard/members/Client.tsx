@@ -808,18 +808,6 @@ export default function Client(p: Props) {
                       이용권 <b>{x.이용권}</b> · 결제 <b>{x.결제}</b>
                     </span>
                     {x.상담발 && <span className="pill">상담에서 올라옴</span>}
-                    {p.can.update && p.can.remove && g.length === 2 && (
-                      /* 이 줄을 남기고 나머지 한 줄을 여기로 옮겨 붙인다.
-                         셋 이상 겹친 경우는 어느 쪽부터 합칠지 정해야 해서
-                         내놓지 않는다 — 두 번 눌러 차례로 합치시면 된다 */
-                      <button className="btn-ghost mini ok"
-                              onClick={() => setMerging({
-                                keep: x.m.id,
-                                drop: g.find((y) => y.m.id !== x.m.id)!.m.id,
-                              })}>
-                        이 줄로 합치기
-                      </button>
-                    )}
                     {p.can.remove && (
                       비었나 ? (
                         <button className="btn-ghost mini danger"
@@ -833,6 +821,32 @@ export default function Client(p: Props) {
                   </div>
                 );
               })}
+              {p.can.update && p.can.remove && g.length === 2 && (() => {
+                /*
+                 * 어느 줄을 남길지는 여기서 정해 둔다
+                 *
+                 * 줄마다 「이 줄로 합치기」를 달았더니 같은 단추가 둘이라
+                 * 무엇이 어떻게 되는지 알 수가 없었다. 단추는 하나만 두고,
+                 * 달린 것이 많은 줄을 남긴다 — 옮길 것이 적을수록 덜 흔든다.
+                 * 같으면 먼저 만들어진 줄(번호가 빠른 쪽)을 남긴다.
+                 */
+                const 점수 = (y: typeof g[number]) => y.이용권 + y.결제;
+                const [남길, 내릴] = [...g].sort(
+                  (a, b2) => 점수(b2) - 점수(a) || a.m.id.localeCompare(b2.m.id)
+                );
+                return (
+                  <div className="dupe-act">
+                    <button className="btn-ghost mini ok"
+                            onClick={() => setMerging({ keep: 남길.m.id, drop: 내릴.m.id })}>
+                      두 줄 합치기
+                    </button>
+                    <span className="dim">
+                      <b>{남길.m.id}</b> 를 남기고 <b>{내릴.m.id}</b> 의
+                      이용권 {내릴.이용권}개 · 결제 {내릴.결제}건을 옮겨옵니다
+                    </span>
+                  </div>
+                );
+              })()}
               {g.length > 2 && (
                 <p className="stat-note">
                   세 줄 이상 겹쳤습니다. 두 줄씩 차례로 합치시면 됩니다.
@@ -927,10 +941,12 @@ export default function Client(p: Props) {
             <div className="modal" onClick={(e) => e.stopPropagation()}>
               <h3>두 줄을 하나로 합칩니다</h3>
               <div className="kv">
+                {/* 어느 쪽이 남는지가 이 창에서 제일 먼저 읽혀야 한다.
+                    바꾸고 싶으시면 밑의 「바꾸기」로 뒤집을 수 있다 */}
                 <div className="kv-row"><span>남길 줄</span>
-                  <b>{merging.keep} {K?.이름}</b></div>
+                  <b className="good">{merging.keep} {K?.이름}</b></div>
                 <div className="kv-row"><span>내릴 줄</span>
-                  <b>{merging.drop} {D?.이름}</b></div>
+                  <b className="bad">{merging.drop} {D?.이름}</b></div>
                 <div className="kv-row"><span>옮겨올 것</span>
                   <b className="num">이용권 {dc.t}개 · 결제 {dc.y}건</b></div>
               </div>
@@ -944,6 +960,10 @@ export default function Client(p: Props) {
               </p>
               {mergeErr && <div className="alert-bad">{mergeErr}</div>}
               <div className="modal-actions">
+                <button className="btn-ghost" disabled={mergeBusy}
+                        onClick={() => setMerging({ keep: merging.drop, drop: merging.keep })}>
+                  바꾸기
+                </button>
                 <button className="btn-ghost" disabled={mergeBusy}
                         onClick={() => setMerging(null)}>그만두기</button>
                 <button className="btn-dark" disabled={mergeBusy} onClick={doMerge}>
