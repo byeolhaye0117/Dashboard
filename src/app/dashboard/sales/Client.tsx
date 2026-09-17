@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
-import { termOf, type ProductMeta } from "@/lib/productMeta";
+import { termOf, groupOf, type ProductMeta } from "@/lib/productMeta";
 import { typeOf } from "@/lib/saleTypes";
 import { joinKinds } from "@/lib/joinKind";
 import { stageNow, baseDate, STAGES } from "@/lib/stage";
@@ -2858,42 +2858,89 @@ function QuickMember({
 }) {
   const [f, setF] = useState({
     이름: "", 전화번호: "", 지점코드: defaultBranch || branches[0]?.code || "",
-    상품코드: "", 시작일: now, 금액: "", 결제수단: "카드",
+    시작일: now, 금액: "", 결제수단: "카드",
     결제일: now, 결제담당사번: "", 매출유형: "신규",
   });
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const pr = products.find((x) => x.code === f.상품코드);
-  /* 파는 자리에서 고르는 것만 세운다 — 판매중지한 것은 새로 팔 수 없다 */
-  const 팔것 = products.filter((x) => x.onSale && !x.isService);
-  /* 상품을 고르면 값과 끝나는 날을 채워 준다. 다르면 그 자리에서 고치시면 된다 */
-  const 끝나는날 = (() => {
-    if (!pr || !f.시작일) return "";
-    if (pr.unit === "일") return pr.days ? addDaysLocal(f.시작일, pr.days - 1) : "";
-    return pr.months ? addMonthsLocal(f.시작일, pr.months) : "";
-  })();
+  /*
+   * 담은 것 — 둘 이상 팔 수 있어야 한다
+   *
+   * ── 무엇이 모자랐나 ────────────────────────────────────────
+   * 고르개가 하나뿐이라 회원권 하나밖에 못 넣었다. 그런데 실제로 파는 자리는
+   * 회원권 + 사물함 + 운동복처럼 여러 개고, 무료로 얹어주는 서비스도 같이
+   * 적어야 한다. 기타매출도 한 번에 여러 건이 나온다.
+   *
+   * 그래서 고른 것을 줄줄이 담는다. 담은 줄마다 시작일과 금액을 따로 고칠 수
+   * 있다 — 회원권은 오늘부터, 사물함은 다음 달부터가 흔하다.
+   *
+   * 얹는 옵션(24시 · 여성전용)은 제 이용권이 아니라 첫 회원권에 매달린다.
+   * 서비스로 얹어주는 것은 돈을 안 받으므로 금액이 0이다.
+   */
+  type Line = { key: string; 상품코드: string; 시작일: string; 금액: string };
+  const [cart, setCart] = useState<Line[]>([]);
+  /* 받은 금액에 손을 대셨으면 합계로 덮지 않는다 — 깎아 주신 값이 사라진다 */
+  const [손댐, set손댐] = useState(false);
 
-  function 상품고르기(code: string) {
-    const p2 = products.find((x) => x.code === code);
-    setF((o) => ({
+  /* 판매중지한 것은 새로 팔 수 없다. 서비스·옵션은 보인다 — 얹어 드리는 것도
+     적어야 하기 때문이다 */
+  const 팔것 = products.filter((x) => x.onSale);
+  const 갈래별 = ["이용권", "부가", "옵션", "서비스"].map((g) => ({
+    g,
+    list: 팔것.filter((x) => groupOf(x) === g),
+  })).filter((x) => x.list.length > 0);
+
+  const prOf = (code: string) => products.find((x) => x.code === code);
+  const 정가 = (p2?: ProductMeta) =>
+    (f.결제수단 === "현금" || f.결제수단 === "계좌" ? p2?.cash : p2?.card) ||
+    p2?.card || p2?.cash || 0;
+
+  const 끝나는날of = (code: string, 시작일: string) => {
+    const p2 = prOf(code);
+    if (!p2 || !시작일) return "";
+    if (p2.unit === "일") return p2.days ? addDaysLocal(시작일, p2.days - 1) : "";
+    return p2.months ? addMonthsLocal(시작일, p2.months) : "";
+  };
+
+  function 담기(code: string) {
+    if (!code) return;
+    const p2 = prOf(code);
+    setCart((o) => [
       ...o,
-      상품코드: code,
-      /* 카드로 받으면 카드가, 현금·계좌면 현금가 */
-      금액: String((o.결제수단 === "현금" || o.결제수단 === "계좌" ? p2?.cash : p2?.card) || p2?.card || p2?.cash || ""),
-    }));
+      {
+        key: `${code}-${Date.now()}`,
+        상품코드: code,
+        /* 회원권 뒤에 얹는 서비스는 앞 줄이 끝난 다음 날부터가 자연스럽다 */
+        시작일: p2?.isService && o.length > 0
+          ? addDaysLocal(끝나는날of(o[o.length - 1].상품코드, o[o.length - 1].시작일) || f.시작일, 1)
+          : f.시작일,
+        금액: p2?.isService ? "0" : String(정가(p2)),
+      },
+    ]);
+    setMsg("");
   }
+  const 줄고치기 = (key: string, k: "시작일" | "금액", v: string) =>
+    setCart((o) => o.map((x) => (x.key === key ? { ...x, [k]: v } : x)));
+  const 빼기 = (key: string) => setCart((o) => o.filter((x) => x.key !== key));
+
+  const 합계 = cart.reduce((s, x) => s + num(x.금액), 0);
+  const 받은금액 = 손댐 ? num(f.금액) : 합계;
 
   async function save() {
     if (busy) return;
     if (!f.이름.trim()) return setMsg("이름을 적어주세요.");
     if (!f.전화번호.trim()) return setMsg("연락처를 적어주세요.");
     if (!f.지점코드) return setMsg("지점을 골라주세요.");
-    if (!f.상품코드) return setMsg("무엇을 파셨는지 골라주세요.");
+    if (cart.length === 0) return setMsg("무엇을 파셨는지 담아주세요.");
     setBusy(true);
     setMsg("");
     try {
+      /* 얹는 옵션은 제 이용권이 아니다 — 첫 회원권에 매달린다 */
+      const 이용권줄 = cart.filter((x) => !prOf(x.상품코드)?.isOption);
+      const 옵션줄 = cart.filter((x) => prOf(x.상품코드)?.isOption);
+
       const res = await fetch("/api/members", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2901,18 +2948,23 @@ function QuickMember({
           이름: f.이름.trim(),
           전화번호: f.전화번호.trim(),
           지점코드: f.지점코드,
-          가입일: f.시작일,
+          /* 가입일은 제일 이른 시작일이다 — 언제부터 다니셨나가 뒤로 밀리면 안 된다 */
+          가입일: 이용권줄.map((x) => x.시작일).filter(Boolean).sort()[0] || f.시작일,
           결제담당사번: f.결제담당사번,
           매출유형: f.매출유형,
-          이용권: [{
-            상품코드: f.상품코드,
-            시작일: f.시작일,
-            종료일: 끝나는날,
-            총횟수: pr?.count ? String(pr.count) : "",
-            금액: String(num(f.금액)),
-          }],
+          이용권: 이용권줄.map((x) => ({
+            상품코드: x.상품코드,
+            시작일: x.시작일,
+            종료일: 끝나는날of(x.상품코드, x.시작일),
+            총횟수: prOf(x.상품코드)?.count ? String(prOf(x.상품코드)!.count) : "",
+            금액: String(num(x.금액)),
+          })),
+          부가서비스: 옵션줄.map((x) => ({
+            상품코드: x.상품코드,
+            추가금액: String(num(x.금액)),
+          })),
           결제수단: f.결제수단,
-          결제금액: String(num(f.금액)),
+          결제금액: String(받은금액),
           결제일: f.결제일,
         }),
       });
@@ -2930,7 +2982,8 @@ function QuickMember({
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>회원 한 분 넣기</h3>
         <p className="modal-lead">
-          회원권 하나를 끊고 결제까지 한 번에 넣습니다. 상품을 <b>둘 이상</b> 파셨거나
+          판 것을 <b>담은 만큼 다</b> 넣고 결제까지 한 번에 적습니다 — 회원권 · 사물함 ·
+          운동복도, 무료로 얹어 드린 <b>서비스</b>도 같이 담으시면 됩니다.
           미수금·트레이너를 적으셔야 하면 <b>회원 화면</b>에서 넣으시는 것이 맞습니다.
         </p>
 
@@ -2954,26 +3007,61 @@ function QuickMember({
           </div>
           <div className="field">
             <label>무엇을 팔았나</label>
-            <select className="input" value={f.상품코드}
-                    onChange={(e) => 상품고르기(e.target.value)}>
-              <option value="">고르기</option>
-              {팔것.map((x) => (
-                <option key={x.code} value={x.code}>
-                  {x.name}{termOf(x) ? ` · ${termOf(x)}` : ""}
-                </option>
+            {/* 고르면 바로 담긴다. 「담기」 단추를 따로 두면 고르고 안 누르신
+                채로 저장해 빈 채로 들어간다 */}
+            <select className="input" value=""
+                    onChange={(e) => 담기(e.target.value)}>
+              <option value="">고르면 아래에 담깁니다</option>
+              {갈래별.map((g) => (
+                <optgroup key={g.g} label={g.g === "부가" ? "부가 상품" : g.g}>
+                  {g.list.map((x) => (
+                    <option key={x.code} value={x.code}>
+                      {x.name}{termOf(x) ? ` · ${termOf(x)}` : ""}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
           <div className="field">
-            <label>시작일</label>
+            <label>기본 시작일</label>
+            {/* 담을 때 이 날로 채워진다. 줄마다 아래에서 따로 고칠 수 있다 */}
             <input className="input" type="date" value={f.시작일}
                    onChange={(e) => set("시작일", e.target.value)} />
           </div>
-          <div className="field">
-            <label>끝나는 날</label>
-            {/* 상품에 적힌 기간으로 알아서 잰다. 보여만 주고 고치지는 않는다 —
-                고칠 일이 있으면 회원 화면에서 하시는 것이 맞다 */}
-            <input className="input" value={끝나는날 || "상품을 고르면 채워집니다"} readOnly />
+          <div className="field full">
+            <label>담은 것 {cart.length > 0 && <span className="dim">· {cart.length}개</span>}</label>
+            {cart.length === 0 ? (
+              <div className="empty-mini">위에서 고르시면 여기 담깁니다</div>
+            ) : (
+              <div className="qm-cart">
+                {cart.map((x) => {
+                  const p2 = prOf(x.상품코드);
+                  const 끝 = 끝나는날of(x.상품코드, x.시작일);
+                  return (
+                    <div className="qm-line" key={x.key}>
+                      <div className="qm-nm">
+                        {p2?.name ?? x.상품코드}
+                        {p2?.isService && <i className="tag">서비스</i>}
+                        {p2?.isOption && <i className="tag">얹음</i>}
+                        {끝 && <span className="dim"> {x.시작일} ~ {끝}</span>}
+                      </div>
+                      <input className="input mini" type="date" value={x.시작일}
+                             onChange={(e) => 줄고치기(x.key, "시작일", e.target.value)} />
+                      <input className="input mini r" inputMode="numeric" value={x.금액}
+                             onChange={(e) => {
+                               줄고치기(x.key, "금액", e.target.value.replace(/[^0-9]/g, ""));
+                               set손댐(false);
+                             }} />
+                      <button className="btn-ghost mini" onClick={() => 빼기(x.key)}>빼기</button>
+                    </div>
+                  );
+                })}
+                <div className="qm-sum">
+                  합계 <b className="num">{money(합계)}원</b>
+                </div>
+              </div>
+            )}
           </div>
           <div className="field">
             <label>결제 수단</label>
@@ -2986,8 +3074,18 @@ function QuickMember({
           </div>
           <div className="field">
             <label>받은 금액</label>
-            <input className="input" inputMode="numeric" value={f.금액}
-                   onChange={(e) => set("금액", e.target.value.replace(/[^0-9]/g, ""))} />
+            {/* 담은 것의 합계로 따라간다. 깎아 드렸으면 그 자리에서 고치시면
+                되고, 그 뒤로는 합계가 덮지 않는다 */}
+            <input className="input" inputMode="numeric" value={String(받은금액)}
+                   onChange={(e) => {
+                     set손댐(true);
+                     set("금액", e.target.value.replace(/[^0-9]/g, ""));
+                   }} />
+            {손댐 && 받은금액 !== 합계 && (
+              <span className="hint">
+                합계 {money(합계)}원과 {money(Math.abs(합계 - 받은금액))}원 다릅니다
+              </span>
+            )}
           </div>
           <div className="field">
             <label>결제일</label>
