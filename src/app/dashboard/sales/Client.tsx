@@ -80,8 +80,12 @@ type Goal = { 지점코드: string; 연월: string; 목표금액: number };
 type Lead = {
   지점코드: string; 상담날짜: string; 약속일시: string;
   진행상태: string; 상담자사번: string;
-  /** 숫자를 눌러 명단을 펼칠 때 쓴다 */
-  이름?: string; 문의채널?: string; 미등록사유?: string;
+  /** 숫자를 눌러 명단을 펼치고, 한 줄을 눌러 자세히 볼 때 쓴다 */
+  상담번호?: string; 이름?: string; 전화번호?: string;
+  문의채널?: string; 문의유형?: string; 문의내용?: string;
+  미등록사유?: string; 메모?: string; 다음연락예정일?: string;
+  /** 등록으로 이어져 회원이 된 경우의 회원번호 */
+  전환회원번호?: string;
 };
 
 /** 떠 있는 창에 적을 회원 한 줄 */
@@ -588,6 +592,8 @@ export default function Client(p: Props) {
 
   /** 눌러서 펼친 상담 명단 — 「등록」인지 「미등록」인지 */
   const [leadBox, setLeadBox] = useState<"" | "등록" | "미등록">("");
+  /* 명단에서 한 줄을 눌러 편 상담. 명단 위에 겹쳐 뜨므로 닫으면 명단으로 돌아온다 */
+  const [leadOne, setLeadOne] = useState<Lead | null>(null);
 
   /** 화면에 적는 구간 이름 — 「이 달」인지 「이 날」인지 */
   const branchName = (c: string) => p.branches.find((b) => b.code === c)?.name ?? c;
@@ -2062,7 +2068,22 @@ export default function Client(p: Props) {
           staffNames={p.staffNames}
           branchName={branchName}
           now={now}
-          onClose={() => setLeadBox("")}
+          onPick={setLeadOne}
+          onClose={() => { setLeadBox(""); setLeadOne(null); }}
+        />
+      )}
+
+      {/* 명단 위에 겹쳐 뜬다 — 닫으면 명단이 그대로 남아 다음 사람을 볼 수 있다 */}
+      {leadOne && (
+        <LeadDetailBox
+          c={leadOne}
+          staffNames={p.staffNames}
+          branchName={branchName}
+          now={now}
+          onMember={p.canSeeMember
+            ? (id) => { setLeadOne(null); setLeadBox(""); setCard(id); }
+            : undefined}
+          onClose={() => setLeadOne(null)}
         />
       )}
 
@@ -2567,13 +2588,15 @@ function PayDetail({
  * 세는 규칙은 위 칸과 똑같은 것(stageNow)을 쓴다. 명단을 따로 세면 「88%인데
  * 목록은 13명」 같은 일이 난다.
  */
-function LeadListBox({ title, sub, rows, staffNames, branchName, now, onClose }: {
+function LeadListBox({ title, sub, rows, staffNames, branchName, now, onPick, onClose }: {
   title: string;
   sub: string;
   rows: Lead[];
   staffNames: Record<string, string>;
   branchName: (code: string) => string;
   now: string;
+  /** 한 줄을 누르면 그 상담을 자세히 편다 */
+  onPick: (c: Lead) => void;
   onClose: () => void;
 }) {
   /* 최근 것이 위다 — 오늘 무슨 일이 있었나가 먼저 읽혀야 한다 */
@@ -2591,7 +2614,9 @@ function LeadListBox({ title, sub, rows, staffNames, branchName, now, onClose }:
           <p className="stat-note">이 달에 해당하는 상담이 없습니다.</p>
         ) : (
           <div className="table-wrap">
-            <table className="grid">
+            {/* 창 안의 표는 보통 읽으라고만 있는데 이 표는 눌러서 편다.
+                그래서 눌린다는 티를 따로 낸다 */}
+            <table className="grid picky">
               <thead>
                 <tr>
                   <th>이름</th><th>날짜</th><th>지점</th>
@@ -2602,7 +2627,9 @@ function LeadListBox({ title, sub, rows, staffNames, branchName, now, onClose }:
                 {줄.map((c, i) => {
                   const st = stageNow(c, now);
                   return (
-                    <tr key={`${c.상담날짜}-${c.이름}-${i}`}>
+                    /* 줄을 누르면 그 상담이 자세히 열린다 — 이름만 보고
+                       「이 사람 왜 등록 안 했지」에서 멈추지 않게 */
+                    <tr key={`${c.상담번호 || c.상담날짜}-${i}`} onClick={() => onPick(c)}>
                       <td className="nm">{(c.이름 ?? "").trim() || <span className="dim">이름 모름</span>}</td>
                       <td className="dim num">{baseDate(c).slice(5) || "-"}</td>
                       <td className="dim">{branchName(c.지점코드)}</td>
@@ -2629,6 +2656,83 @@ function LeadListBox({ title, sub, rows, staffNames, branchName, now, onClose }:
         )}
 
         <div className="modal-actions">
+          <button className="btn-dark" onClick={onClose}>닫기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 떠 있는 상담 한 건
+ *
+ * 명단에서 이름만 보면 「이 사람 왜 등록 안 했지」에서 멈춘다. 답은 사유와
+ * 메모에 있고 그건 상담 탭에 있다. 여기서 끝내려고 한 줄을 눌러 편다.
+ *
+ * 고치는 일은 여기서 하지 않는다 — 읽는 자리와 고치는 자리를 섞으면 잘못
+ * 눌러 바꿔 놓고도 모른다. 고치실 일이 있으면 상담 화면으로 가시면 된다.
+ */
+function LeadDetailBox({ c, staffNames, branchName, now, onMember, onClose }: {
+  c: Lead;
+  staffNames: Record<string, string>;
+  branchName: (code: string) => string;
+  now: string;
+  /** 등록으로 이어진 상담이면 그 회원 카드로 건너뛴다 */
+  onMember?: (id: string) => void;
+  onClose: () => void;
+}) {
+  const st = stageNow(c, now);
+  const 약속 = (c.약속일시 ?? "").trim().slice(0, 16).replace("T", " ");
+  const 회원 = (c.전환회원번호 ?? "").trim();
+
+  return (
+    <div className="modal-back" {...backdrop(onClose)}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{(c.이름 ?? "").trim() || "이름 모름"}</h3>
+        <p className="page-sub" style={{ margin: "2px 0 12px" }}>
+          {branchName(c.지점코드)}
+          {c.상담번호 ? ` · ${c.상담번호}` : ""}
+        </p>
+
+        <div className="kv">
+          <div className="kv-row"><span>상태</span>
+            <b className={st === "등록" ? "good" : st === "미등록" ? "bad" : ""}>{st}</b></div>
+          <div className="kv-row"><span>연락처</span>
+            <b className="num">{showPhone(c.전화번호 ?? "") || "-"}</b></div>
+          <div className="kv-row"><span>문의 들어온 날</span>
+            <b className="num">{(c.상담날짜 ?? "").slice(0, 10) || "-"}</b></div>
+          {약속 && (
+            <div className="kv-row"><span>방문 약속</span><b className="num">{약속}</b></div>
+          )}
+          <div className="kv-row"><span>채널 · 유형</span>
+            <b>{[c.문의채널, c.문의유형].filter(Boolean).join(" · ") || "-"}</b></div>
+          <div className="kv-row"><span>상담자</span>
+            <b>{staffNames[c.상담자사번] ?? "-"}</b></div>
+          {(c.다음연락예정일 ?? "").trim() && (
+            <div className="kv-row"><span>다음 연락</span>
+              <b className="num">{c.다음연락예정일}</b></div>
+          )}
+          {/* 등록 안 한 까닭 — 이 창을 여는 진짜 이유다 */}
+          {st === "미등록" && (
+            <div className="kv-row"><span>등록 안 한 까닭</span>
+              <b className="bad">{(c.미등록사유 ?? "").trim() || "안 적혀 있습니다"}</b></div>
+          )}
+        </div>
+
+        {((c.문의내용 ?? "").trim() || (c.메모 ?? "").trim()) && (
+          <>
+            <h4 className="viz-title mt">무슨 얘기를 했나</h4>
+            <p className="stat-note" style={{ whiteSpace: "pre-wrap" }}>
+              {[(c.문의내용 ?? "").trim(), (c.메모 ?? "").trim()].filter(Boolean).join("\n")}
+            </p>
+          </>
+        )}
+
+        <div className="modal-actions">
+          {회원 && onMember && (
+            <button className="btn-ghost" onClick={() => onMember(회원)}>회원 카드 보기</button>
+          )}
+          <a className="btn-ghost" href="/dashboard/consultations">상담 화면으로</a>
           <button className="btn-dark" onClick={onClose}>닫기</button>
         </div>
       </div>
@@ -2724,7 +2828,7 @@ function MemberCardBox({
 
         <div className="modal-actions">
           <a className="btn-ghost" href={`/dashboard/members#${encodeURIComponent(card.id)}`}>
-            회원 화면에서 고치기
+            회원 화면으로
           </a>
           <button className="btn-dark" onClick={onClose}>닫기</button>
         </div>

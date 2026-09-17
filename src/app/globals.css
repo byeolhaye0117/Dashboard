@@ -1629,6 +1629,9 @@ table.grid tbody tr:last-child td { border-bottom: 0; }
 /* 창 안에 든 표는 읽으라고 있는 것이지 누르라고 있는 것이 아니다 */
 .modal table.grid tbody tr { cursor: default; }
 .modal table.grid tbody tr:hover td { background: none; }
+/* 다만 눌러서 펴는 표는 예외다 — 눌린다는 티가 나야 아무도 안 누르지 않는다 */
+.modal table.grid.picky tbody tr { cursor: pointer; }
+.modal table.grid.picky tbody tr:hover td { background: var(--surface-2); }
 table.grid .strong { font-weight: 800; font-size: 14px; letter-spacing: -.01em; }
 table.grid .dim { color: var(--muted); }
 table.grid .late { color: var(--bad); font-weight: 800; }
@@ -2090,7 +2093,7 @@ table.perm-table tr.off .what { opacity: .55; }
 .mlink:hover { color: var(--s1); border-bottom-color: currentColor; }
 
 /* 창 밑단의 단추 자리에 들어가는 링크 — 단추와 키를 맞춘다 */
-a.btn-ghost { display: inline-flex; align-items: center; text-decoration: none; }
+a.btn-ghost { display: inline-flex; align-items: center; text-decoration: none; white-space: nowrap; }
 
 /* 근태표 : 원래 안 나오는 날 */
 table.cal td.cell.off-day { color: var(--line); background: var(--surface-2); }
