@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { today } from "@/lib/time";
 import { showPhone } from "@/lib/phone";
-import type { ProductMeta } from "@/lib/productMeta";
+import { termOf, type ProductMeta } from "@/lib/productMeta";
 import { stageNow, baseDate, STAGES } from "@/lib/stage";
 import { fitsKind, KIND_PT, KIND_GROUP } from "@/lib/lessonMeta";
 import { backdrop } from "@/lib/backdrop";
@@ -527,6 +527,9 @@ export default function Client(p: Props) {
   const [detailItem, setDetailItem] = useState<string>("");
   /* 이름을 눌러 여는 회원 카드. 화면을 옮기지 않으므로 닫으면 보던 자리 그대로다 */
   const [card, setCard] = useState<string>("");
+  /* 여기서 바로 회원 한 분 넣기 — 결제 내역을 보다가 빠진 분을 알게 되는
+     자리가 여기라서, 회원 화면으로 건너가지 않고 그 자리에서 받는다 */
+  const [quick, setQuick] = useState(false);
   const [wiping, setWiping] = useState(false);
   const [wipeErr, setWipeErr] = useState("");
 
@@ -1564,6 +1567,11 @@ export default function Client(p: Props) {
             {payLines.length > payRows.length && (
               <span className="dim" style={{ fontWeight: 600 }}> · 상품 {payLines.length}줄</span>
             )}
+            {p.canEditPay && (
+              <button type="button" className="linkish" onClick={() => setQuick(true)}>
+                회원 한 분 넣기
+              </button>
+            )}
           </h3>
             {pick && !allMonth && (
               <p className="viz-sub" style={{ margin: "2px 0 0" }}>{pick.label} 것만 보고 있습니다</p>
@@ -1585,6 +1593,10 @@ export default function Client(p: Props) {
             <Icon name="card" size={26} />
             <b>{pick && !allMonth ? `${pick.label}에 등록된 결제가 없습니다` : "이 달에 등록된 결제가 없습니다"}</b>
             <p>회원 등록이나 상품 추가로 결제가 쌓이면 여기에 나옵니다.</p>
+            {p.canEditPay && (
+              <button className="btn-dark" style={{ marginTop: 12 }}
+                      onClick={() => setQuick(true)}>회원 한 분 넣기</button>
+            )}
           </div>
         ) : (
           <div className="table-wrap t2wrap">
@@ -2103,6 +2115,18 @@ export default function Client(p: Props) {
             ? (id) => { setLeadOne(null); setLeadBox(""); setCard(id); }
             : undefined}
           onClose={() => setLeadOne(null)}
+        />
+      )}
+
+      {quick && (
+        <QuickMember
+          products={p.products}
+          branches={p.branches}
+          options={p.options}
+          staffNames={p.staffNames}
+          defaultBranch={branch !== "전체" ? branch : p.currentBranch || p.branches[0]?.code || ""}
+          now={now}
+          onClose={() => setQuick(false)}
         />
       )}
 
@@ -2652,6 +2676,218 @@ function PayDetail({
 }
 
 
+
+/**
+ * 매출 화면에서 바로 회원 한 분 넣기
+ *
+ * ── 왜 여기에 두나 ──────────────────────────────────────────
+ * 결제 내역을 보다가 「이 분 아직 안 넣었네」를 알게 되는 자리가 여기다.
+ * 회원 화면으로 건너가면 보던 날짜와 걸러 둔 것을 잃는다. 떠 있는 창으로
+ * 받고, 닫으면 보던 매출 화면 그대로 둔다.
+ *
+ * ── 왜 상품을 하나만 받나 ───────────────────────────────────
+ * 회원 화면의 등록 창은 장바구니·미수금·트레이너까지 딸린 큰 창이다. 여기서
+ * 하는 일은 대개 「회원권 한 개 끊고 결제」 한 건이라, 그 큰 창을 옮겨오는
+ * 대신 그 한 건만 빠르게 받는다. 둘 이상 파실 때는 회원 화면이 맞다 —
+ * 그렇다고 창에 적어 둔다.
+ */
+function QuickMember({
+  products, branches, options, staffNames, defaultBranch, now, onClose,
+}: {
+  products: ProductMeta[];
+  branches: Named[];
+  options: Record<string, string[]>;
+  staffNames: Record<string, string>;
+  defaultBranch: string;
+  now: string;
+  onClose: () => void;
+}) {
+  const [f, setF] = useState({
+    이름: "", 전화번호: "", 지점코드: defaultBranch || branches[0]?.code || "",
+    상품코드: "", 시작일: now, 금액: "", 결제수단: "카드",
+    결제일: now, 결제담당사번: "", 매출유형: "신규",
+  });
+  const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const pr = products.find((x) => x.code === f.상품코드);
+  /* 파는 자리에서 고르는 것만 세운다 — 판매중지한 것은 새로 팔 수 없다 */
+  const 팔것 = products.filter((x) => x.onSale && !x.isService);
+  /* 상품을 고르면 값과 끝나는 날을 채워 준다. 다르면 그 자리에서 고치시면 된다 */
+  const 끝나는날 = (() => {
+    if (!pr || !f.시작일) return "";
+    if (pr.unit === "일") return pr.days ? addDaysLocal(f.시작일, pr.days - 1) : "";
+    return pr.months ? addMonthsLocal(f.시작일, pr.months) : "";
+  })();
+
+  function 상품고르기(code: string) {
+    const p2 = products.find((x) => x.code === code);
+    setF((o) => ({
+      ...o,
+      상품코드: code,
+      /* 카드로 받으면 카드가, 현금·계좌면 현금가 */
+      금액: String((o.결제수단 === "현금" || o.결제수단 === "계좌" ? p2?.cash : p2?.card) || p2?.card || p2?.cash || ""),
+    }));
+  }
+
+  async function save() {
+    if (busy) return;
+    if (!f.이름.trim()) return setMsg("이름을 적어주세요.");
+    if (!f.전화번호.trim()) return setMsg("연락처를 적어주세요.");
+    if (!f.지점코드) return setMsg("지점을 골라주세요.");
+    if (!f.상품코드) return setMsg("무엇을 파셨는지 골라주세요.");
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          이름: f.이름.trim(),
+          전화번호: f.전화번호.trim(),
+          지점코드: f.지점코드,
+          가입일: f.시작일,
+          결제담당사번: f.결제담당사번,
+          매출유형: f.매출유형,
+          이용권: [{
+            상품코드: f.상품코드,
+            시작일: f.시작일,
+            종료일: 끝나는날,
+            총횟수: pr?.count ? String(pr.count) : "",
+            금액: String(num(f.금액)),
+          }],
+          결제수단: f.결제수단,
+          결제금액: String(num(f.금액)),
+          결제일: f.결제일,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? "저장하지 못했습니다.");
+      location.reload();
+    } catch (e: any) {
+      setMsg(String(e.message ?? e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-back" {...backdrop(() => !busy && onClose())}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <h3>회원 한 분 넣기</h3>
+        <p className="modal-lead">
+          회원권 하나를 끊고 결제까지 한 번에 넣습니다. 상품을 <b>둘 이상</b> 파셨거나
+          미수금·트레이너를 적으셔야 하면 <b>회원 화면</b>에서 넣으시는 것이 맞습니다.
+        </p>
+
+        <div className="form-grid">
+          <div className="field">
+            <label>이름</label>
+            <input className="input" value={f.이름} autoFocus
+                   onChange={(e) => { set("이름", e.target.value); setMsg(""); }} />
+          </div>
+          <div className="field">
+            <label>연락처</label>
+            <input className="input" inputMode="tel" placeholder="010-0000-0000"
+                   value={f.전화번호} onChange={(e) => set("전화번호", e.target.value)} />
+          </div>
+          <div className="field">
+            <label>지점</label>
+            <select className="input" value={f.지점코드}
+                    onChange={(e) => set("지점코드", e.target.value)}>
+              {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>무엇을 팔았나</label>
+            <select className="input" value={f.상품코드}
+                    onChange={(e) => 상품고르기(e.target.value)}>
+              <option value="">고르기</option>
+              {팔것.map((x) => (
+                <option key={x.code} value={x.code}>
+                  {x.name}{termOf(x) ? ` · ${termOf(x)}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>시작일</label>
+            <input className="input" type="date" value={f.시작일}
+                   onChange={(e) => set("시작일", e.target.value)} />
+          </div>
+          <div className="field">
+            <label>끝나는 날</label>
+            {/* 상품에 적힌 기간으로 알아서 잰다. 보여만 주고 고치지는 않는다 —
+                고칠 일이 있으면 회원 화면에서 하시는 것이 맞다 */}
+            <input className="input" value={끝나는날 || "상품을 고르면 채워집니다"} readOnly />
+          </div>
+          <div className="field">
+            <label>결제 수단</label>
+            <select className="input" value={f.결제수단}
+                    onChange={(e) => set("결제수단", e.target.value)}>
+              {(options["결제수단"]?.length ? options["결제수단"]
+                : options["결제유형"]?.length ? options["결제유형"]
+                : ["카드", "현금", "계좌"]).map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>받은 금액</label>
+            <input className="input" inputMode="numeric" value={f.금액}
+                   onChange={(e) => set("금액", e.target.value.replace(/[^0-9]/g, ""))} />
+          </div>
+          <div className="field">
+            <label>결제일</label>
+            <input className="input" type="date" value={f.결제일}
+                   onChange={(e) => set("결제일", e.target.value)} />
+          </div>
+          <div className="field">
+            <label>결제 담당</label>
+            <select className="input" value={f.결제담당사번}
+                    onChange={(e) => set("결제담당사번", e.target.value)}>
+              <option value="">정하지 않음</option>
+              {Object.entries(staffNames)
+                .map(([id, nm]) => ({ id, nm }))
+                .sort((a, b) => a.nm.localeCompare(b.nm, "ko"))
+                .map((x) => <option key={x.id} value={x.id}>{x.nm}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>매출 유형</label>
+            <select className="input" value={f.매출유형}
+                    onChange={(e) => set("매출유형", e.target.value)}>
+              {(options["매출유형"]?.length ? options["매출유형"]
+                : ["신규", "재등록", "기타매출"]).map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {msg && <div className="alert-bad">{msg}</div>}
+
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onClose} disabled={busy}>그만두기</button>
+          <button className="btn-dark" onClick={save} disabled={busy}>
+            {busy ? "넣는 중…" : "넣기"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* 이 창에서만 쓰는 날짜 셈 — 회원 화면과 같은 규칙이다 */
+function addDaysLocal(d: string, n: number): string {
+  const t = new Date(`${d}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+}
+function addMonthsLocal(d: string, n: number): string {
+  const t = new Date(`${d}T00:00:00Z`);
+  const day = t.getUTCDate();
+  t.setUTCMonth(t.getUTCMonth() + n);
+  if (t.getUTCDate() < day) t.setUTCDate(0);
+  t.setUTCDate(t.getUTCDate() - 1);
+  return t.toISOString().slice(0, 10);
+}
 
 /**
  * 떠 있는 상담 명단
