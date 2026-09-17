@@ -365,7 +365,21 @@ export async function breakToggle(
  * 회차를 집어 고치고, 그 회차가 없으면 새로 만든다.
  */
 export async function patchAttendance(
-  target: { 사번: string; 날짜: string; 지점코드: string; 회차?: number },
+  target: {
+    사번: string; 날짜: string; 지점코드: string; 회차?: number;
+    /**
+     * 고칠 줄을 번호로 집는다
+     *
+     * ── 왜 회차로는 모자란가 ──────────────────────────────────
+     * 회차가 같은 줄이 둘 있는 날이 실제로 있었다. 옛 줄에 회차가 안 적혀
+     * 있으면 둘 다 1회차로 읽히기 때문이다. 그러면 회차로 찾아서는 늘 앞의
+     * 줄만 잡히고, 뒤의 줄은 화면에서 손댈 길이 없어진다.
+     *
+     * 근태번호는 줄마다 하나뿐이라 헷갈릴 일이 없다. 화면이 보고 있는 그
+     * 줄을 그대로 집어 준다.
+     */
+    근태번호?: string;
+  },
   changes: Record<string, string>,
   byStaffId: string
 ): Promise<void> {
@@ -376,7 +390,10 @@ export async function patchAttendance(
   const round = target.회차 ?? 1;
   const mine = findDay(rows, rowNumbers, cols, target.사번, day);
 
-  const hit = mine.find((x) => (Number(get(x.r, cols, "회차")) || 1) === round);
+  const 번호 = (target.근태번호 ?? "").trim();
+  const hit = 번호
+    ? mine.find((x) => get(x.r, cols, "근태번호") === 번호)
+    : mine.find((x) => (Number(get(x.r, cols, "회차")) || 1) === round);
   const next = { ...changes, 수정일시: stamp, 수정자: byStaffId };
 
   if (hit) {

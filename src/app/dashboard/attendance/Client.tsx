@@ -677,15 +677,29 @@ function EditBox({ person, day, rounds, canRemove, onClose }: {
    * 이제 실제로 있는 회차만 세운다. 오전에 갔다 저녁에 다시 온 것을 손으로
    * 적으셔야 할 때를 위해 「다음 회차」 자리를 하나만 더 둔다.
    */
-  const 있는회차 = [...new Set(rounds.map((r) => r.회차))].sort((a, b) => a - b);
-  const 다음 = (있는회차[있는회차.length - 1] ?? 0) + 1;
-  const 단추 = 있는회차.length > 0 ? [...있는회차, 다음] : [1];
+  /*
+   * 단추는 회차 번호가 아니라 「있는 줄」로 세운다
+   *
+   * ── 무엇이 틀렸었나 ────────────────────────────────────────
+   * 회차 번호로 단추를 세우고, 그 번호로 줄을 찾았다. 그런데 회차가 같은 줄이
+   * 둘 있는 날이 있다 — 옛 줄에 회차가 안 적혀 있으면 둘 다 1회차로 읽힌다.
+   * 그러면 칸에 마우스를 대면 두 구간이 다 보이는데, 눌러서 열면 앞의 한
+   * 줄만 나오고 뒤의 줄은 손댈 길이 없었다. 화면과 창이 서로 다른 말을 했다.
+   *
+   * 이제 줄마다 단추 하나다. 어느 줄을 고치는지가 번호가 아니라 눈에 보이는
+   * 시각으로 갈린다. 저장할 때도 그 줄의 근태번호를 그대로 집어 보낸다 —
+   * 회차로 찾지 않으니 헷갈릴 일이 없다.
+   */
+  const 줄들 = rounds.slice().sort((a, b) => a.회차 - b.회차);
+  /** 새로 만들 때 쓸 회차 — 있는 것 중 제일 큰 것 다음 */
+  const 다음회차 = (줄들[줄들.length - 1]?.회차 ?? 0) + 1;
 
-  /* 값이 적힌 회차부터 연다 — 빈 줄이 앞에 끼어 있어도 빈 창이 뜨지 않는다 */
-  const [round, setRound] = useState(
-    rounds.find((r) => r.출근시각)?.회차 ?? 있는회차[0] ?? 1
-  );
-  const row = rounds.find((r) => r.회차 === round);
+  /* 값이 적힌 줄부터 연다 — 빈 줄이 앞에 끼어 있어도 빈 창이 뜨지 않는다 */
+  const 첫자리 = Math.max(0, 줄들.findIndex((r) => r.출근시각));
+  /** 몇 번째 줄을 보고 있나. 줄 수와 같으면 「새 구간」이다 */
+  const [nth, setNth] = useState(줄들.length > 0 ? 첫자리 : 0);
+  const row = 줄들[nth];
+  const round = row?.회차 ?? 다음회차;
   const [f, setF] = useState({
     근무구분: rounds[0]?.근무구분 ?? "",
     출근시각: row?.출근시각 ?? "",
@@ -694,12 +708,12 @@ function EditBox({ person, day, rounds, canRemove, onClose }: {
     메모: row?.메모 ?? "",
   });
 
-  /** 회차를 바꾸면 그 회차 값으로 갈아 끼운다 */
-  const pick = (n: number) => {
-    const r = rounds.find((x) => x.회차 === n);
-    setRound(n);
+  /** 줄을 바꾸면 그 줄 값으로 갈아 끼운다 */
+  const pick = (i: number) => {
+    const r = 줄들[i];
+    setNth(i);
     setF({
-      근무구분: rounds[0]?.근무구분 ?? "",
+      근무구분: 줄들[0]?.근무구분 ?? "",
       출근시각: r?.출근시각 ?? "",
       퇴근시각: r?.퇴근시각 ?? "",
       휴게분: r?.휴게분 ?? "",
@@ -743,8 +757,11 @@ function EditBox({ person, day, rounds, canRemove, onClose }: {
           사번: person.id,
           날짜: day,
           회차: round,
-          // 그날 판정은 첫 줄에만 적는다. 회차 2를 고칠 땐 건드리지 않는다
-          changes: round === 1 ? f : { 출근시각: f.출근시각, 퇴근시각: f.퇴근시각, 휴게분: f.휴게분, 메모: f.메모 },
+          /* 고치는 줄을 번호로 집어 보낸다 — 회차가 같은 줄이 둘 있는 날에도
+             화면이 보고 있는 그 줄이 고쳐진다. 새로 만들 때는 비어 있다 */
+          근태번호: row?.id ?? "",
+          // 그날 판정은 첫 줄에만 적는다. 뒤 구간을 고칠 땐 건드리지 않는다
+          changes: nth === 0 ? f : { 출근시각: f.출근시각, 퇴근시각: f.퇴근시각, 휴게분: f.휴게분, 메모: f.메모 },
         }),
       });
       const data = await res.json();
@@ -762,17 +779,25 @@ function EditBox({ person, day, rounds, canRemove, onClose }: {
         <h3>{person.name} · {korDate(day)}</h3>
 
         <div className="tab-bar" style={{ marginBottom: 12 }}>
-          {단추.map((n) => (
-            <button key={n} type="button"
-                    className={`mini-tab${round === n ? " on" : ""}`}
-                    onClick={() => pick(n)}>
-              {있는회차.includes(n) ? `${n}회차` : `${n}회차 만들기`}
+          {줄들.map((r, i) => (
+            <button key={r.id || i} type="button"
+                    className={`mini-tab${nth === i ? " on" : ""}`}
+                    onClick={() => pick(i)}>
+              {/* 어느 줄인지가 번호가 아니라 눈에 보이는 시각으로 갈린다 */}
+              {i + 1}회차
+              {r.출근시각 && ` ${r.출근시각}~${r.퇴근시각 || "…"}`}
             </button>
           ))}
+          <button type="button"
+                  className={`mini-tab${nth === 줄들.length ? " on" : ""}`}
+                  onClick={() => pick(줄들.length)}>
+            {줄들.length === 0 ? "기록 적기" : "구간 더 넣기"}
+          </button>
         </div>
 
         <div className="form-grid">
-          <div className="field full" style={{ display: round === 1 ? "block" : "none" }}>
+          {/* 그날 판정은 첫 줄에만 적는다 — 여러 줄에 같은 값을 두면 언젠가 어긋난다 */}
+          <div className="field full" style={{ display: nth === 0 ? "block" : "none" }}>
             <label>근무 구분</label>
             <select className="input" value={f.근무구분} onChange={(e) => set("근무구분", e.target.value)}>
               <option value="">기록 없음</option>

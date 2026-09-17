@@ -2864,6 +2864,15 @@ function QuickMember({
     이름: "", 전화번호: "", 지점코드: defaultBranch || branches[0]?.code || "",
     시작일: now, 금액: "", 결제수단: "카드",
     결제일: now, 결제담당사번: "", 매출유형: "신규",
+    /*
+     * 어떤 분인가 — 여기서 안 적으면 영영 안 적힌다
+     *
+     * 매출 화면 밑의 「등록한 분들」이 이 값으로 그려진다. 20대 여성이
+     * 몰리는데 광고는 40대 남성에게 나가고 있으면 숫자만 보고는 모른다.
+     * 그런데 넣는 자리에 칸이 없으면 나중에 회원 화면을 다시 열어 채워야
+     * 하고, 그 일은 대개 안 일어난다 — 「모름」이 제일 큰 갈래가 된다.
+     */
+    성별: "", 나이대: "", 거주동네: "", 직업: "", 방문경로: "",
   });
   const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
   const [busy, setBusy] = useState(false);
@@ -2883,7 +2892,21 @@ function QuickMember({
    * 얹는 옵션(24시 · 여성전용)은 제 이용권이 아니라 첫 회원권에 매달린다.
    * 서비스로 얹어주는 것은 돈을 안 받으므로 금액이 0이다.
    */
-  type Line = { key: string; 상품코드: string; 시작일: string; 금액: string };
+  /*
+   * 만료일은 담을 때 상품 기간으로 채워 주되, 고칠 수 있게 둔다
+   *
+   * 상품에 적힌 기간이 늘 맞지는 않는다 — 한 달 더 얹어 드리기도 하고,
+   * 여행 다녀오실 동안 미뤄 드리기도 한다. 자동으로만 잡고 못 고치게 하면,
+   * 넣고 나서 회원 화면으로 다시 가 고쳐야 한다.
+   *
+   * 시작일을 바꾸면 만료일도 같이 밀린다. 다만 만료일에 손을 대신 뒤로는
+   * 그대로 둔다 — 정해 두신 날을 시작일 한 번 고쳤다고 덮으면 안 된다.
+   */
+  type Line = {
+    key: string; 상품코드: string; 시작일: string; 종료일: string; 금액: string;
+    /** 만료일에 손을 대셨나 — 그 뒤로는 시작일을 바꿔도 안 덮는다 */
+    끝손댐?: boolean;
+  };
   const [cart, setCart] = useState<Line[]>([]);
   /* 받은 금액에 손을 대셨으면 합계로 덮지 않는다 — 깎아 주신 값이 사라진다 */
   const [손댐, set손댐] = useState(false);
@@ -2911,22 +2934,38 @@ function QuickMember({
   function 담기(code: string) {
     if (!code) return;
     const p2 = prOf(code);
-    setCart((o) => [
-      ...o,
-      {
-        key: `${code}-${Date.now()}`,
-        상품코드: code,
-        /* 회원권 뒤에 얹는 서비스는 앞 줄이 끝난 다음 날부터가 자연스럽다 */
-        시작일: p2?.isService && o.length > 0
-          ? addDaysLocal(끝나는날of(o[o.length - 1].상품코드, o[o.length - 1].시작일) || f.시작일, 1)
-          : f.시작일,
-        금액: p2?.isService ? "0" : String(정가(p2)),
-      },
-    ]);
+    setCart((o) => {
+      /* 회원권 뒤에 얹는 서비스는 앞 줄이 끝난 다음 날부터가 자연스럽다 */
+      const 앞줄 = o[o.length - 1];
+      const 시작 = p2?.isService && 앞줄
+        ? addDaysLocal(앞줄.종료일 || 끝나는날of(앞줄.상품코드, 앞줄.시작일) || f.시작일, 1)
+        : f.시작일;
+      return [
+        ...o,
+        {
+          key: `${code}-${Date.now()}`,
+          상품코드: code,
+          시작일: 시작,
+          종료일: 끝나는날of(code, 시작),
+          금액: p2?.isService ? "0" : String(정가(p2)),
+        },
+      ];
+    });
     setMsg("");
   }
-  const 줄고치기 = (key: string, k: "시작일" | "금액", v: string) =>
-    setCart((o) => o.map((x) => (x.key === key ? { ...x, [k]: v } : x)));
+
+  const 줄고치기 = (key: string, k: "시작일" | "종료일" | "금액", v: string) =>
+    setCart((o) =>
+      o.map((x) => {
+        if (x.key !== key) return x;
+        if (k === "종료일") return { ...x, 종료일: v, 끝손댐: true };
+        if (k === "시작일") {
+          /* 만료일에 손을 대신 줄은 그대로 둔다 — 정해 두신 날이다 */
+          return { ...x, 시작일: v, 종료일: x.끝손댐 ? x.종료일 : 끝나는날of(x.상품코드, v) };
+        }
+        return { ...x, 금액: v };
+      })
+    );
   const 빼기 = (key: string) => setCart((o) => o.filter((x) => x.key !== key));
 
   const 합계 = cart.reduce((s, x) => s + num(x.금액), 0);
@@ -2952,6 +2991,11 @@ function QuickMember({
           이름: f.이름.trim(),
           전화번호: f.전화번호.trim(),
           지점코드: f.지점코드,
+          성별: f.성별,
+          나이대: f.나이대,
+          거주동네: f.거주동네.trim(),
+          직업: f.직업.trim(),
+          방문경로: f.방문경로.trim(),
           /* 가입일은 제일 이른 시작일이다 — 언제부터 다니셨나가 뒤로 밀리면 안 된다 */
           가입일: 이용권줄.map((x) => x.시작일).filter(Boolean).sort()[0] || f.시작일,
           결제담당사번: f.결제담당사번,
@@ -2959,7 +3003,9 @@ function QuickMember({
           이용권: 이용권줄.map((x) => ({
             상품코드: x.상품코드,
             시작일: x.시작일,
-            종료일: 끝나는날of(x.상품코드, x.시작일),
+            /* 화면에서 고치신 만료일을 그대로 보낸다 — 상품 기간으로 다시
+               재면 고치신 뜻이 사라진다 */
+            종료일: x.종료일 || 끝나는날of(x.상품코드, x.시작일),
             총횟수: prOf(x.상품코드)?.count ? String(prOf(x.상품코드)!.count) : "",
             금액: String(num(x.금액)),
           })),
@@ -3009,6 +3055,34 @@ function QuickMember({
               {branches.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
             </select>
           </div>
+          {/*
+            정해 둔 값이 있으면 고르게, 없으면 손으로 적게 한다
+
+            선택목록에 아무것도 안 넣어 두신 갈래(거주동네·직업이 흔하다)까지
+            고르개로 세우면, 「고르기」 하나뿐인 빈 고르개가 서서 적을 길이
+            아예 없어진다.
+          */}
+          {[
+            { k: "성별", list: options["성별"] },
+            { k: "나이대", list: options["나이대"] },
+            { k: "거주동네", list: options["거주동네"] },
+            { k: "직업", list: options["직업"] },
+            { k: "방문경로", list: options["문의채널"] ?? options["방문경로"] },
+          ].map(({ k, list }) => (
+            <div className="field" key={k}>
+              <label>{k === "방문경로" ? "방문 경로" : k}</label>
+              {list?.length ? (
+                <select className="input" value={(f as any)[k]}
+                        onChange={(e) => set(k, e.target.value)}>
+                  <option value="">모름</option>
+                  {list.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              ) : (
+                <input className="input" value={(f as any)[k]} placeholder="안 적으셔도 됩니다"
+                       onChange={(e) => set(k, e.target.value)} />
+              )}
+            </div>
+          ))}
           <div className="field">
             <label>무엇을 팔았나</label>
             {/* 고르면 바로 담긴다. 「담기」 단추를 따로 두면 고르고 안 누르신
@@ -3039,19 +3113,28 @@ function QuickMember({
               <div className="empty-mini">위에서 고르시면 여기 담깁니다</div>
             ) : (
               <div className="qm-cart">
+                {/* 줄마다 「시작 · 만료 · 금액」을 적어 두었더니 이름 자리를
+                    좁혀 긴 상품명이 두 줄로 접혔다. 머리에 한 번만 적는다 */}
+                <div className="qm-line qm-head">
+                  <span>무엇</span><span>시작일</span><span>만료일</span>
+                  <span className="r">금액</span><span />
+                </div>
                 {cart.map((x) => {
                   const p2 = prOf(x.상품코드);
-                  const 끝 = 끝나는날of(x.상품코드, x.시작일);
                   return (
                     <div className="qm-line" key={x.key}>
                       <div className="qm-nm">
                         {p2?.name ?? x.상품코드}
                         {p2?.isService && <i className="tag">서비스</i>}
                         {p2?.isOption && <i className="tag">얹음</i>}
-                        {끝 && <span className="dim"> {x.시작일} ~ {끝}</span>}
+                        {x.끝손댐 && <i className="tag">기간 고침</i>}
                       </div>
                       <input className="input mini" type="date" value={x.시작일}
                              onChange={(e) => 줄고치기(x.key, "시작일", e.target.value)} />
+                      {/* 상품 기간으로 채워 주되 고칠 수 있게 둔다 — 한 달 더
+                          얹어 드리거나 미뤄 드리는 일이 실제로 있다 */}
+                      <input className="input mini" type="date" value={x.종료일}
+                             onChange={(e) => 줄고치기(x.key, "종료일", e.target.value)} />
                       <input className="input mini r" inputMode="numeric" value={x.금액}
                              onChange={(e) => {
                                줄고치기(x.key, "금액", e.target.value.replace(/[^0-9]/g, ""));

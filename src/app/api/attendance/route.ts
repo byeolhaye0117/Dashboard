@@ -88,7 +88,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "근태를 고칠 권한이 없습니다." }, { status: 403 });
       }
 
-      const { 사번, 날짜, 회차, changes } = body;
+      const { 사번, 날짜, 회차, 근태번호, changes } = body;
       if (!사번 || !날짜) {
         return NextResponse.json({ error: "직원과 날짜가 필요합니다." }, { status: 400 });
       }
@@ -105,7 +105,13 @@ export async function POST(req: Request) {
       }
 
       await patchAttendance(
-        { 사번, 날짜, 지점코드: where[0] ?? "", 회차: Number(회차) || 1 },
+        {
+          사번, 날짜, 지점코드: where[0] ?? "",
+          회차: Number(회차) || 1,
+          /* 화면이 보고 있는 그 줄을 그대로 집는다 — 회차가 같은 줄이 둘 있는
+             날이 있어서, 회차로만 찾으면 늘 앞의 줄만 잡힌다 */
+          근태번호: String(근태번호 ?? "").trim(),
+        },
         changes ?? {},
         session.staffId
       );
